@@ -1,0 +1,8 @@
+{
+  "extends": "../../core/tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../../..",
+    "paths": { "@malloy-runtime/compiler": ["packages/core/src/index.ts"] }
+  },
+  "include": ["../../protocol/src/records.ts"]
+}
