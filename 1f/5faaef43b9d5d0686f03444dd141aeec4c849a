@@ -1,0 +1,66 @@
+packages/python/src/pymalloy/analysis.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 3
+packages/python/src/pymalloy/validation.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 14
+packages/python/src/pymalloy/_model/errors.py
+  s_eb8331ad77ae5f::t_12d1cae50d4677 3
+development_docs/authoring.md
+  s_eb8331ad77ae5f::t_12d1cae50d4677 57,161
+packages/python/src/pymalloy/_server/api.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 13
+packages/python/src/pymalloy/_server/compiler.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 10
+packages/python/src/pymalloy/_server/runtime.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 16-27
+packages/python/src/pymalloy/execution.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 13
+packages/python/src/pymalloy/export/_python.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 9
+packages/python/src/pymalloy/widget.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 14-15
+packages/python/src/pymalloy/export/__init__.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 9
+development_docs/README.md
+  s_eb8331ad77ae5f::t_12d1cae50d4677 74
+packages/python/src/pymalloy/_authoring/python.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 12
+packages/python/src/pymalloy/_server/tooling.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 11
+packages/python/src/pymalloy/_model/__init__.py
+  s_eb8331ad77ae5f::t_12d1cae50d4677 1
+packages/python/src/pymalloy/export/_bundle.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 20-24
+packages/python/src/pymalloy/_authoring/draft.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 11-17
+packages/python/src/pymalloy/_server/validation.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 11
+packages/python/src/pymalloy/authoring.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 22-24
+development_docs/architecture.md
+  s_eb8331ad77ae5f::t_12d1cae50d4677 38-44,51-60,62-69,72
+  s_eb8331ad77ae5f::t_9fa099b3b630dd 70-71
+packages/python/src/pymalloy/export/_document.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 12
+packages/python/src/pymalloy/_authoring/syntax.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 12-13
+packages/python/src/pymalloy/export/_compile.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 16
+packages/python/src/pymalloy/expressions.py
+  s_eb8331ad77ae5f::t_95c240b78d76d7 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1f5faaef43b9d5d0686f03444dd141aeec4c849a",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
