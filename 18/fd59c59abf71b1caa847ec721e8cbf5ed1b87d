@@ -1,0 +1,26 @@
+tools/benchmark_authoring.py
+  s_eb8331ad77ae5f::t_62ea9cd1c6faf9 108-110
+  s_eb8331ad77ae5f::t_84c521a4daf6b8 17-107,111-165
+packages/python/src/pymalloy/_server/tooling.py
+  s_eb8331ad77ae5f::t_9d449bc4612b83 12-26,30,40,43-44
+packages/python/src/pymalloy/_draft.py
+  s_eb8331ad77ae5f::t_4f3d801551d85d 105,107-110
+development_docs/authoring.md
+  s_eb8331ad77ae5f::t_f977a7b9b368fe 163-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "18fd59c59abf71b1caa847ec721e8cbf5ed1b87d",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
