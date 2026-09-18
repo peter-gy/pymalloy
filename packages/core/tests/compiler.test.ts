@@ -1,12 +1,11 @@
+import { CompiledModel, type Fulfilled } from "../src/index.js";
+import { compile, drive } from "./host.js";
 import { expect, test } from "vite-plus/test";
-import { CompiledModel } from "../src/index.js";
-
 async function describe() {
   return [{ name: "value", type: "INTEGER" }];
 }
-
 test("document compilation binds per-export givens into every selected query", async () => {
-  const model = await CompiledModel.load({
+  const model = await compile({
     url: new URL("memory://project/parameterized.malloynb"),
     source: `>>>malloy
 ##! experimental.givens
@@ -20,18 +19,36 @@ SELECT * FROM %{ numbers -> {select: value where: value > $cutoff} }%
     readURL: async () => "",
   });
   const givens = { cutoff: 10 };
-  const pending = model.document([], givens);
+  const pending = drive(
+    model.document({
+      givens: givens,
+    }),
+  );
   givens.cutoff = 20;
   const cells = await pending;
-  expect(cells.map((cell) => cell.kind === "query" && cell.name)).toEqual(["run:1", "sql:1"]);
+  expect(cells.map((cell) => cell.kind === "query" && cell.name)).toEqual(["run:0", "sql:0"]);
   for (const cell of cells) {
     expect(cell.kind === "query" && cell.sql).toContain(">10");
   }
-  expect(await model.document([], { cutoff: 10 })).toEqual(cells);
-  const changed = await model.document(["sql:1"], { cutoff: 20 });
+  expect(
+    await drive(
+      model.document({
+        givens: { cutoff: 10 },
+      }),
+    ),
+  ).toEqual(cells);
+  const changed = await drive(
+    model.document({
+      queries: ["sql:0"],
+      givens: { cutoff: 20 },
+    }),
+  );
   expect(changed[0].kind === "query" && changed[0].sql).toContain(">20");
+  await expect(drive(model.prepare("sql:0", { givens: { cutoff: "invalid" } }))).rejects.toThrow(
+    /cutoff/,
+  );
+  expect(await drive(model.document({ givens: { cutoff: 10 } }))).toEqual(cells);
 });
-
 test("loads documents and imports through the supplied URL reader", async () => {
   const files = new Map([
     [
@@ -50,7 +67,7 @@ SELECT * FROM %{ numbers -> { select: value } }%
     ["https://models.example/base.malloy", "source: numbers is duckdb.sql('SELECT 42 AS value')"],
   ]);
   const reads: string[] = [];
-  const model = await CompiledModel.load({
+  const model = await compile({
     url: new URL("https://models.example/report.malloynb"),
     describe,
     async readURL(url) {
@@ -64,17 +81,16 @@ SELECT * FROM %{ numbers -> { select: value } }%
     "https://models.example/report.malloynb",
     "https://models.example/base.malloy",
   ]);
-  expect(model.queries).toEqual(["run:1", "sql:1"]);
-  const cells = await model.document([]);
+  expect(model.queries.map((query) => query.name)).toEqual(["run:0", "sql:0"]);
+  const cells = await drive(model.document({}));
   expect(cells.map((cell) => cell.kind)).toEqual(["markdown", "query", "markdown", "query"]);
   expect(cells[0]).toEqual({ kind: "markdown", text: "# Values" });
   expect(cells[2]).toEqual({ kind: "markdown", text: "## Entries" });
-  expect((await model.query("sql:1")).name).toBe("sql:1");
+  expect((await drive(model.prepare("sql:0", {}))).name).toBe("sql:0");
 });
-
 test("inline sources use their URL as the base for imports", async () => {
   const reads: string[] = [];
-  const model = await CompiledModel.load({
+  const model = await compile({
     url: new URL("memory://project/models/query.malloy"),
     source: "import 'base.malloy'\nrun: numbers -> { select: value }",
     describe,
@@ -85,10 +101,9 @@ test("inline sources use their URL as the base for imports", async () => {
     },
   });
   expect(reads).toEqual(["memory://project/models/base.malloy"]);
-  expect(model.queries).toEqual(["run:1"]);
-  expect((await model.query()).name).toBe("run:1");
+  expect(model.queries.map((query) => query.name)).toEqual(["run:0"]);
+  expect((await drive(model.prepare(undefined, {}))).name).toBe("run:0");
 });
-
 test("source bundles replay complete notebooks and nested imports after original sources change", async () => {
   const url = new URL("file:///project/report.malloynb");
   const source = `>>>markdown
@@ -107,7 +122,7 @@ SELECT * FROM %{ numbers -> { select: value } }%
     ],
     ["file:///project/data.malloy", "source: data_numbers is duckdb.sql('SELECT 42 AS value')"],
   ]);
-  const original = await CompiledModel.load({
+  const original = await compile({
     url,
     describe,
     async readURL(importURL) {
@@ -116,12 +131,12 @@ SELECT * FROM %{ numbers -> { select: value } }%
       return content;
     },
   });
-  const cells = await original.document([]);
+  const cells = await drive(original.document({}));
   const bundle = original.source();
   files.delete(url.href);
   expect(bundle).toEqual({ url: url.href, text: source, imports: Object.fromEntries(files) });
   files.clear();
-  const replay = await CompiledModel.load({
+  const replay = await compile({
     url: new URL(bundle.url),
     source: bundle.text,
     describe,
@@ -131,18 +146,46 @@ SELECT * FROM %{ numbers -> { select: value } }%
       return content;
     },
   });
-  expect(await replay.document([])).toEqual(cells);
-  expect(replay.queries).toEqual(original.queries);
-  expect(await replay.query(null, "run: numbers -> { select: value } ")).toEqual(
-    await original.query(null, "run: numbers -> { select: value } "),
+  expect(await drive(replay.document({}))).toEqual(cells);
+  expect(replay.queries.map((query) => query.name)).toEqual(
+    original.queries.map((query) => query.name),
+  );
+  expect(
+    (
+      await drive(
+        replay.prepare(
+          {
+            malloy: "run: numbers -> { select: value } ",
+          },
+          {},
+        ),
+      )
+    ).sql,
+  ).toEqual(
+    (
+      await drive(
+        original.prepare(
+          {
+            malloy: "run: numbers -> { select: value } ",
+          },
+          {},
+        ),
+      )
+    ).sql,
   );
   bundle.imports["file:///project/data.malloy"] = "changed";
   expect(original.source().imports["file:///project/data.malloy"]).toContain("SELECT 42 AS value");
 });
-
 test("source captures query extension imports once and preserves earlier snapshots", async () => {
   let reads = 0;
-  const model = await CompiledModel.load({
+  const host = {
+    describe,
+    async readURL() {
+      reads += 1;
+      return "source: extra is duckdb.sql('SELECT 10 AS value')";
+    },
+  };
+  const model = await compile({
     url: new URL("memory://project/root.malloy"),
     source: "source: numbers is duckdb.sql('SELECT 42 AS value')",
     describe,
@@ -153,18 +196,33 @@ test("source captures query extension imports once and preserves earlier snapsho
   });
   const before = model.source();
   const extension = "import 'extra.malloy'\nrun: extra -> {select: value}";
-  await model.query(null, extension);
-  await model.query(null, extension);
+  await drive(
+    model.prepare(
+      {
+        malloy: extension,
+      },
+      {},
+    ),
+    host,
+  );
+  await drive(
+    model.prepare(
+      {
+        malloy: extension,
+      },
+      {},
+    ),
+    host,
+  );
   expect(reads).toBe(1);
   expect(before.imports).toEqual({});
   expect(model.source().imports["memory://project/extra.malloy"]).toContain("SELECT 10 AS value");
 });
-
 test("inline source and an imported physical file can share a URL in a replay bundle", async () => {
   const url = new URL("file:///project/model.malloy");
   const source = "import 'model.malloy'\nrun: numbers -> { select: value }";
   const imported = "source: numbers is duckdb.sql('SELECT 42 AS value')";
-  const original = await CompiledModel.load({
+  const original = await compile({
     url,
     source,
     describe,
@@ -172,7 +230,7 @@ test("inline source and an imported physical file can share a URL in a replay bu
   });
   const bundle = original.source();
   expect(bundle).toEqual({ url: url.href, text: source, imports: { [url.href]: imported } });
-  const replay = await CompiledModel.load({
+  const replay = await compile({
     url: new URL(bundle.url),
     source: bundle.text,
     describe,
@@ -182,12 +240,11 @@ test("inline source and an imported physical file can share a URL in a replay bu
       return content;
     },
   });
-  expect(await replay.document([])).toEqual(await original.document([]));
+  expect(await drive(replay.document({}))).toEqual(await drive(original.document({})));
 });
-
 test("reader failures identify the affected import", async () => {
   await expect(
-    CompiledModel.load({
+    compile({
       url: new URL("https://models.example/query.malloy"),
       source: "import 'private.malloy'",
       describe,
@@ -197,9 +254,8 @@ test("reader failures identify the affected import", async () => {
     }),
   ).rejects.toThrow("Access denied: https://models.example/private.malloy");
 });
-
 test("query discovery and documents expose public views", async () => {
-  const model = await CompiledModel.load({
+  const model = await compile({
     url: new URL("memory://project/model.malloy"),
     source: `source: numbers is duckdb.sql('SELECT 42 AS value') extend {
       private view: hidden is { select: value }
@@ -209,16 +265,25 @@ test("query discovery and documents expose public views", async () => {
     describe,
     readURL: async () => "",
   });
-  expect(model.queries).toEqual(["numbers.visible"]);
-  expect((await model.query()).name).toBe("numbers.visible");
-  expect(await model.document([])).toEqual([
-    { kind: "query", name: "numbers.visible", sql: (await model.query()).sql },
+  expect(model.queries.map((query) => query.name)).toEqual(["numbers.visible"]);
+  expect((await drive(model.prepare(undefined, {}))).name).toBe("numbers.visible");
+  expect(await drive(model.document({}))).toEqual([
+    {
+      kind: "query",
+      name: "numbers.visible",
+      sql: (await drive(model.prepare(undefined, {}))).sql,
+    },
   ]);
-  expect(await model.document(["*"])).toEqual(await model.document([]));
+  expect(
+    await drive(
+      model.document({
+        all: true,
+      }),
+    ),
+  ).toEqual(await drive(model.document({})));
 });
-
 test("embedded query SQL preserves literal replacement tokens", async () => {
-  const model = await CompiledModel.load({
+  const model = await compile({
     url: new URL("memory://project/model.malloynb"),
     source: `>>>malloy
 source: numbers is duckdb.sql('SELECT 42 AS value')
@@ -228,13 +293,12 @@ SELECT * FROM %{ numbers -> { select: label is '$& $$' } }%`,
     describe,
     readURL: async () => "",
   });
-  const direct = await model.query("run:1");
-  const embedded = await model.query("sql:1");
+  const direct = await drive(model.prepare("run:0", {}));
+  const embedded = await drive(model.prepare("sql:0", {}));
   expect(embedded.sql).toBe(`SELECT * FROM (${direct.sql})`);
 });
-
 test("embedded query replacement follows source ranges around comments and Unicode", async () => {
-  const model = await CompiledModel.load({
+  const model = await compile({
     url: new URL("memory://project/model.malloynb"),
     source: `>>>malloy
 source: numbers is duckdb.sql('SELECT 42 AS value')
@@ -246,17 +310,16 @@ CROSS JOIN (%{ numbers -> { select: value } }%) b`,
     describe,
     readURL: async () => "",
   });
-  const direct = await model.query("run:1");
-  expect((await model.query("sql:1")).sql).toBe(
+  const direct = await drive(model.prepare("run:0", {}));
+  expect((await drive(model.prepare("sql:0", {}))).sql).toBe(
     `-- %{ numbers -> { select: value } }%\nSELECT '😀', * FROM (${direct.sql}) a\nCROSS JOIN (${direct.sql}) b`,
   );
 });
-
 test.each([
   {
-    selector: "run:1",
+    selector: "run:0",
     source: `source: numbers is duckdb.sql('SELECT 42 AS value')
-query: \`run:1\` is numbers -> { select: value }
+query: \`run:0\` is numbers -> { select: value }
 run: numbers -> { aggregate: total is value.sum() }`,
     extension: "malloy",
   },
@@ -279,9 +342,9 @@ source: numbers is duckdb.sql('SELECT 42 AS value') extend {
     extension: "malloy",
   },
   {
-    selector: "sql:1",
+    selector: "sql:0",
     source: `>>>malloy
-query: \`sql:1\` is duckdb.sql('SELECT 42 AS value') -> { select: value }
+query: \`sql:0\` is duckdb.sql('SELECT 42 AS value') -> { select: value }
 >>>sql connection:duckdb
 SELECT 1 AS different`,
     extension: "malloynb",
@@ -290,7 +353,7 @@ SELECT 1 AS different`,
   "rejects ambiguous selector $selector before choosing a query",
   async ({ source, selector, extension }) => {
     await expect(
-      CompiledModel.load({
+      compile({
         url: new URL(`memory://project/model.${extension}`),
         source,
         describe,
@@ -299,3 +362,48 @@ SELECT 1 AS different`,
     ).rejects.toThrow(`Ambiguous query selector '${selector}'`);
   },
 );
+
+test("synchronous jobs accept host connection identity, dialect, and field definitions", () => {
+  const job = CompiledModel.begin({
+    url: new URL("memory://project/model.malloy"),
+    source: "run: warehouse.table('project.dataset.orders') -> {select: amount}",
+    connection: { name: "warehouse", dialect: "standardsql" },
+  });
+  let step = job.step();
+  while ("needs" in step) {
+    const fulfilled: Fulfilled = { urls: {}, schemas: {} };
+    for (const schema of step.needs.schemas)
+      fulfilled.schemas[schema.key] = {
+        value: [{ name: "amount", type: "number", numberType: "integer" }],
+      };
+    step = job.step(fulfilled);
+  }
+  const prepared = step.result.prepare().step();
+  expect("result" in prepared && prepared.result.malloy?.connection_name).toBe("warehouse");
+  expect("result" in prepared && prepared.result.sql).toContain("base.`amount`");
+});
+
+test("embedded SQL queries retain compiled schemas while rebinding givens", async () => {
+  let schemaAvailable = true;
+  const host = {
+    describe: async () => {
+      if (!schemaAvailable) throw new Error("Schema discovery is unavailable");
+      return [{ name: "value", type: "INTEGER" }];
+    },
+    readURL: async () => "",
+  };
+  const model = await compile({
+    url: new URL("memory://project/embedded.malloynb"),
+    source: `>>>malloy
+##! experimental.givens
+given: cutoff :: number
+>>>sql connection:duckdb
+SELECT * FROM %{ duckdb.sql('SELECT 42 AS value') -> {select: value where: value > $cutoff} }%`,
+    ...host,
+  });
+  schemaAvailable = false;
+  for (const cutoff of [10, 20]) {
+    const prepared = await drive(model.prepare("sql:0", { givens: { cutoff } }), host);
+    expect(prepared.sql).toContain(`>${cutoff}`);
+  }
+});
