@@ -6,7 +6,7 @@ import {
   compilerVersion,
 } from "@malloy-runtime/compiler/tooling";
 import { CompiledModel, ToolingError, type Job, type Fulfilled } from "@malloy-runtime/compiler";
-import { connection, fields } from "@malloy-runtime/duckdb";
+import { fields } from "@malloy-runtime/duckdb";
 import {
   decodeGivens,
   type Request,
@@ -59,7 +59,12 @@ export class CompilerService {
         case "begin":
           if (this.model) throw new Error("Compiler already owns a model");
           return this.begin(
-            CompiledModel.begin({ url: new URL(input.url), source: input.source, connection }),
+            CompiledModel.begin({
+              url: new URL(input.url),
+              source: input.source,
+              documentKind: input.documentKind,
+              connection: input.connection,
+            }),
             (model) => {
               this.model = model;
               return {
@@ -71,14 +76,20 @@ export class CompilerService {
             },
           );
         case "check":
-          return this.begin(
-            checkSource({ ...input, url: new URL(input.url), connection }),
-            (report) => ({ kind: "check", report }),
-          );
+          return this.begin(checkSource({ ...input, url: new URL(input.url) }), (report) => ({
+            kind: "check",
+            report,
+          }));
         case "format":
           return { kind: "format", ...formatSource(input.source) };
         case "parse":
-          return { kind: "parse", report: parseSource(input.source, { url: new URL(input.url) }) };
+          return {
+            kind: "parse",
+            report: parseSource(input.source, {
+              url: new URL(input.url),
+              documentKind: input.documentKind,
+            }),
+          };
         case "syntax":
           return { kind: "syntax", syntax: syntaxSource(input.source, new URL(input.url)) };
         case "source":
@@ -114,11 +125,10 @@ export class CompilerService {
     } catch (error) {
       this.active?.close();
       this.active = undefined;
-      return {
-        kind: "error",
-        message: error instanceof Error ? error.message : String(error),
-        diagnostics: error instanceof ToolingError ? error.diagnostics : [],
-      };
+      const message = error instanceof Error ? error.message : String(error);
+      return error instanceof ToolingError
+        ? { kind: "error", message, diagnostics: error.diagnostics }
+        : { kind: "failure", message };
     }
   }
 

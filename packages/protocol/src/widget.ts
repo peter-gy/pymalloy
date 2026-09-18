@@ -1,4 +1,4 @@
-import type { QueryDescriptor, Diagnostic } from "@malloy-runtime/compiler";
+import type { QueryDescriptor, Diagnostic, DocumentKind } from "@malloy-runtime/compiler";
 import type { Result } from "@malloydata/malloy-interfaces";
 import type { Given } from "./givens";
 /** @title Input */
@@ -14,6 +14,8 @@ export interface Definition {
   /** @asType integer @minimum 0 */
   revision: number;
   source: string;
+  documentKind: DocumentKind;
+  connectionName: string;
   url?: string | null;
   imports?: Readonly<Record<string, string>> | null;
   files: Record<string, ArrayBufferView | { url: string }>;

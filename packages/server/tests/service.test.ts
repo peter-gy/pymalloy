@@ -1,5 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import { CompilerService } from "../src/service";
+import { connection } from "@malloy-runtime/duckdb";
 import type { Response } from "@pymalloy/protocol";
 
 function finish(service: CompilerService, first: Response): Response {
@@ -25,6 +26,7 @@ test("a compiler service replaces abandoned work and retains its model after rej
   const service = new CompilerService();
   const begin = {
     op: "begin",
+    connection,
     url: "file:///model.malloy",
     source: "run: duckdb.sql('SELECT 42 AS value') -> {select:value}",
   } as const;
@@ -33,7 +35,7 @@ test("a compiler service replaces abandoned work and retains its model after rej
     "parse",
   );
   expect(service.request({ op: "step", fulfilled: { urls: {}, schemas: {} } })).toMatchObject({
-    kind: "error",
+    kind: "failure",
     message: "Compiler has no pending request",
   });
 
@@ -42,7 +44,7 @@ test("a compiler service replaces abandoned work and retains its model after rej
     queries: [{ name: "run:0", kind: "run" }],
   });
   expect(service.request(begin)).toMatchObject({
-    kind: "error",
+    kind: "failure",
     message: "Compiler already owns a model",
   });
   const query = finish(service, service.request({ op: "query", givens: {} }));
@@ -50,5 +52,24 @@ test("a compiler service replaces abandoned work and retains its model after rej
   expect(finish(service, service.request({ op: "document", givens: {} }))).toMatchObject({
     kind: "document",
     cells: [{ kind: "query", name: "run:0" }],
+  });
+});
+
+test("compiler diagnostics remain distinct from internal request failures", () => {
+  const service = new CompilerService();
+  expect(
+    service.request({
+      op: "begin",
+      connection,
+      url: "file:///model.malloy",
+      source: "run: missing",
+    }),
+  ).toMatchObject({
+    kind: "error",
+    diagnostics: [expect.objectContaining({ severity: "error" })],
+  });
+  expect(service.request({ op: "query", givens: {} })).toEqual({
+    kind: "failure",
+    message: "Compiler has no model",
   });
 });

@@ -9,6 +9,8 @@ import type {
   DocumentCell,
   QueryDescriptor,
   Needs,
+  LoadOptions,
+  DocumentKind,
   Diagnostic,
   Column,
 } from "@malloy-runtime/compiler";
@@ -21,15 +23,29 @@ export interface HostAnswers {
   schemas: Record<string, SchemaAnswer>;
 }
 export type Request =
-  | { op: "begin"; url: string; source?: string }
+  | {
+      op: "begin";
+      url: string;
+      source?: string;
+      documentKind: DocumentKind;
+      connection: LoadOptions["connection"];
+    }
   | { op: "step"; fulfilled: HostAnswers }
   | { op: "query"; selection?: QuerySelection; givens: Record<string, Given> }
   | { op: "document"; queries?: string[]; all?: boolean; givens: Record<string, Given> }
   | { op: "inspect"; position?: SourcePosition & { url?: string } }
   | { op: "source" }
-  | { op: "check"; url: string; source: string; syntaxOnly?: boolean; position?: SourcePosition }
+  | {
+      op: "check";
+      url: string;
+      source: string;
+      documentKind: DocumentKind;
+      connection: LoadOptions["connection"];
+      syntaxOnly?: boolean;
+      position?: SourcePosition;
+    }
   | { op: "format"; source: string }
-  | { op: "parse"; source: string; url: string }
+  | { op: "parse"; source: string; url: string; documentKind: DocumentKind }
   | { op: "syntax"; source: string; url: string };
 
 export interface CompilerReady {
@@ -43,6 +59,10 @@ export interface CompileError {
   kind: "error";
   message: string;
   diagnostics: Diagnostic[];
+}
+export interface CompilerFailure {
+  kind: "failure";
+  message: string;
 }
 export interface ModelReady {
   kind: "model";
@@ -89,6 +109,7 @@ export type Response =
   | CompilerReady
   | CompileNeeds
   | CompileError
+  | CompilerFailure
   | ModelReady
   | QueryReady
   | DocumentReady
@@ -98,4 +119,7 @@ export type Response =
   | ParseReady
   | FormatReady
   | SyntaxReady;
-export type Output = Exclude<Response, CompilerReady | CompileNeeds | CompileError>;
+export type Output = Exclude<
+  Response,
+  CompilerReady | CompileNeeds | CompileError | CompilerFailure
+>;
