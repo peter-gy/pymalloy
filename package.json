@@ -12,6 +12,7 @@
     "docs:preview": "pnpm --filter @pymalloy/docs preview",
     "format": "vp fmt",
     "e2e": "pnpm --filter @pymalloy/e2e test",
+    "canary": "node tools/consumer-canary.mjs",
     "records": "uv run python tools/generate-records.py"
   },
   "devDependencies": {

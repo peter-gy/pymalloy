@@ -4,7 +4,15 @@ import { defineConfig } from "vite-plus";
 
 const distribution = fileURLToPath(new URL("../../../dist/", import.meta.url));
 const runtimeFiles = new Map([
-  ["/runtime.mjs", new URL("../../../packages/browser/dist/index.mjs", import.meta.url)],
+  [
+    "/runtime.mjs",
+    new URL(
+      process.env.PYMALLOY_CONSUMER_CANARY
+        ? "../../../nogit/consumer-canary/browser.mjs"
+        : "../../../packages/browser/dist/index.mjs",
+      import.meta.url,
+    ),
+  ],
   ...[
     "duckdb-mvp.wasm",
     "duckdb-browser-mvp.worker.js",
