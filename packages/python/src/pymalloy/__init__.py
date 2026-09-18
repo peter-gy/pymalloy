@@ -9,6 +9,7 @@ from pymalloy.analysis import QueryDescriptor
 from pymalloy.authoring import (
     Fragment,
     aggregate,
+    data,
     dimension,
     group_by,
     having,
@@ -69,6 +70,7 @@ __all__ = [
     "check",
     "col",
     "count",
+    "data",
     "dimension",
     "draft",
     "format",
