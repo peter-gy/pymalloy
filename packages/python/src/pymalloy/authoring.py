@@ -42,13 +42,16 @@ __all__ = [
 ]
 
 
-def table(path: str | Path) -> Fragment:
-    value = (
+def _table_path(path: str | Path) -> str:
+    return (
         "'" + path.as_posix().replace("'", "''") + "'"
         if isinstance(path, Path)
         else path
     )
-    return syntax(f"duckdb.table({json.dumps(value, ensure_ascii=False)})")
+
+
+def table(path: str | Path) -> Fragment:
+    return syntax(f"duckdb.table({json.dumps(_table_path(path), ensure_ascii=False)})")
 
 
 def sql(text: str) -> Fragment:

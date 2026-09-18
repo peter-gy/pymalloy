@@ -10,7 +10,7 @@ from urllib.parse import unquote, urlsplit
 from msgspec import structs
 
 from pymalloy._records import NativeMetadata
-from pymalloy._source import read_text
+from pymalloy._source import ModelSource, read_text
 from pymalloy.analysis import CheckReport, Diagnostic
 from pymalloy.execution import ExecutionContext
 from pymalloy.result import Result
@@ -123,6 +123,14 @@ class Validation:
                 failures.append(self.error)
             raise ValueError("Model validation failed: " + "; ".join(failures))
         return self
+
+    @property
+    def source(self) -> ModelSource:
+        """The closed source graph accepted by validation, ready for export."""
+        self.require_valid()
+        if self.draft.imports is None:
+            raise ValueError("Validation has no captured source graph")
+        return ModelSource(self.draft.url, self.draft.text, self.draft.imports)
 
     def save(
         self,
