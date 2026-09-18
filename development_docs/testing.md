@@ -5,21 +5,29 @@ Use the smallest boundary that proves the contract, then check affected runtimes
 
 ## Choose tests by contract
 
-| Contract                                                     | Primary evidence                                   | Additional boundary                                   |
-| ------------------------------------------------------------ | -------------------------------------------------- | ----------------------------------------------------- |
-| Malloy parsing, imports, query selection, and document order | `packages/core/tests`                              | Python tooling and export tests                       |
-| Source coordinates, diagnostics, inspection, and formatting  | Core tooling tests and Python `test_tooling.py`    | MalloyWidget error recovery in a browser              |
-| Native file resolution and database identifiers              | Node session tests and Python `test_runtime.py`    | Exported notebook execution from another directory    |
-| Nested values, exact integers, dates, and nulls              | Node/Python result tests and browser Arrow tests   | Pyodide numeric readback                              |
-| Model reuse, queued calls, close, and borrowed transactions  | Node session tests and Python runtime tests        | MalloyWidget multiple-view and worker lifecycle cases |
-| Input revisions, state snapshots, and trait validation       | Python `test_widget.py` and widget lifecycle tests | marimo, JupyterLab, and Pyodide synchronization       |
-| Ordered Markdown/SQL cells and COPY writes                   | Python document, marimo, and Jupyter tests         | Executed notebooks and upstream samples               |
-| Bundled assets, optional imports, and distribution contents  | Isolated wheel/source-archive installs             | Browser tests against the installed wheel             |
+| Contract                                                     | Primary evidence                                    | Additional boundary                                          |
+| ------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------ |
+| Malloy parsing, imports, query selection, and document order | `packages/core/tests`                               | Python tooling and export tests                              |
+| Source coordinates, diagnostics, inspection, and formatting  | Core tooling tests and Python `test_tooling.py`     | MalloyWidget error recovery in a browser                     |
+| Native file resolution and database identifiers              | Node session tests and Python `test_runtime.py`     | Exported notebook execution from another directory           |
+| Nested values, exact integers, dates, and nulls              | Node/Python result tests and browser Arrow tests    | Pyodide numeric readback                                     |
+| Model reuse, queued calls, close, and borrowed transactions  | Node session tests and Python runtime tests         | MalloyWidget multiple-view and worker lifecycle cases        |
+| Input revisions, state snapshots, and trait validation       | Python `test_widget.py` and widget lifecycle tests  | marimo, JupyterLab, and Pyodide synchronization              |
+| Ordered Markdown/SQL cells and COPY writes                   | Python document, marimo, and Jupyter tests          | Executed notebooks and upstream samples                      |
+| Symbolic edits and Python reconstruction                     | Authoring/expression tests and `check_roundtrip.py` | Upstream queries compared by SQL structure and typed results |
+| Captured inputs and bundle relocation                        | `test_data_inputs.py`, `test_source_bundle.py`      | Re-execution after source files move or disappear            |
+| Bundled assets, optional imports, and distribution contents  | Isolated wheel/source-archive installs              | Browser tests against the installed wheel                    |
 
 For lifecycle races, control when work settles and assert which result survives.
 Avoid sleeps, private field layouts, and mirrored implementation constants.
 
-`pnpm test` covers core, Node, Arrow conversion, and widget lifecycle. `pytest`
+Python Result tests verify the Arrow table after engine closure, connection-local
+types, nested exact values, empty SELECT schemas, and COPY output. Rows use Arrow
+scalar representations. Native cancellation tests interrupt both active execution
+and the gap between statement parsing and execution, then reuse the same model.
+Documentation lint tests opt into `DocumentationPolicy` explicitly.
+
+`pnpm test` covers core, Node, the compiler service, Arrow conversion, and widget lifecycle. `pytest`
 runs `packages/python/tests`, including compiler processes and exported notebooks.
 Build assets and install Python extras first.
 
@@ -48,20 +56,21 @@ pnpm e2e
 
 The test servers use `uv run --no-sync` to retain the selected installation.
 Set `PYMALLOY_KERNEL_PYTHON` to run the Jupyter kernel with a separate interpreter.
-CI installs the base wheel, PyArrow, and ipykernel there, with neither Deno nor native DuckDB.
+CI installs the wheel with the `widget` extra, PyArrow, and ipykernel there, with
+neither Deno nor native DuckDB.
 The fixture authoring process may use the server extra to prepare an exported
-notebook. Execution of that notebook happens in the base-only kernel.
+notebook. Execution of that notebook happens in the widget-only kernel.
 Run `uv sync --frozen --all-packages --all-extras` to return to the editable
 workspace afterward.
 
 Playwright starts and stops three servers defined in
 `apps/e2e/playwright.config.ts`:
 
-| Host               | Port  | Boundary exercised                                                                                |
-| ------------------ | ----- | ------------------------------------------------------------------------------------------------- |
-| marimo             | 28441 | MalloyWidget rendering, reactive Python readback, and input updates                               |
-| JupyterLab         | 28442 | Kernel communication, several views of one widget, recovery, and close                            |
-| Standalone Pyodide | 28443 | Base-wheel installation in browser Python, binary inputs, precise readback, and browser execution |
+| Host               | Port  | Boundary exercised                                                                                  |
+| ------------------ | ----- | --------------------------------------------------------------------------------------------------- |
+| marimo             | 28441 | MalloyWidget rendering, reactive Python readback, and input updates                                 |
+| JupyterLab         | 28442 | Kernel communication, several views of one widget, recovery, and close                              |
+| Standalone Pyodide | 28443 | Widget-extra installation in browser Python, binary inputs, precise readback, and browser execution |
 
 Pyodide supplies an anywidget-model adapter to test the packaged frontend against
 browser Python. JupyterLab tests the host's widget manager and communication.
@@ -97,7 +106,8 @@ whole workspace. Pages deploys on `main` and contributes to the required gate.
 Pull requests and release tags build docs without deploying.
 
 Use `required` for branch protection. CI covers the Python version matrix on
-Ubuntu with Chromium. Test other affected platforms when changing paths,
+Ubuntu with Chromium, plus a Python 3.12 run resolving direct dependencies at
+their lower bounds. Test other affected platforms when changing paths,
 processes, or workers.
 
 ## Check upstream samples
@@ -139,17 +149,19 @@ Every SELECT runs through both models on the same single-thread DuckDB connectio
 COPY statements are compiled and recorded but not executed.
 
 `results.json` records source hashes, the sample revision, compilation failures,
-SQL equivalence, column names and types, row counts, and result hashes. A passing
+SQL equivalence, column names and types, row counts, and result hashes.
+These are regression observations for the tested queries, inputs, and versions,
+not a proof for every Malloy expression or future compiler. A passing
 query requires identical SQL or identical DuckDB syntax trees after removing
 source-location metadata, plus matching results. Matching rows alone cannot prove
 equivalence: different filters can return the same rows on one dataset.
 
 Results preserve row order and exact floats by default. `--unordered` explicitly
-compares top-level rows as a multiset; `--float-precision 9` explicitly rounds
+compares top-level rows as a multiset. `--float-precision 9` explicitly rounds
 floats to nine significant digits. The report records both options. Nested-list
 order always remains significant. These options never relax the SQL-equivalence
 gate. Value mismatches trigger another original-query execution to check whether
-the baseline itself varies; baseline variability is evidence for review, not an
+the baseline itself varies. Baseline variability is evidence for review, not an
 automatic pass.
 
 Generated Python is retained under `sources/`. The command returns nonzero for

@@ -8,8 +8,10 @@ uv build --package pymalloy --no-sources
 ```
 
 pnpm builds in dependency order. `packages/python/build.mjs` copies the widget,
-compiler, and production dependency notices into `pymalloy/_assets`.
-Hatch checks that all four staged artifacts exist and are nonempty before building
+compiler, per-artifact dependency notices and installed agent guidance into
+`pymalloy/_assets`. Notices come from each bundle's included modules. External
+sourcemaps remain alongside build outputs and are excluded from the wheel.
+Hatch checks the required staged artifacts exist and are nonempty before building
 a wheel or source archive. Missing assets fail the build with the `pnpm build`
 instruction. The source archive includes this check and the built artifacts.
 Rebuild after JavaScript source or dependency changes. `--no-sources` checks that
@@ -34,7 +36,7 @@ browser suite with `PYMALLOY_CONSUMER_CANARY=1 pnpm --filter @pymalloy/e2e exec
 playwright test --project browser`.
 
 CI tests isolated installs of the wheel and a wheel rebuilt from the source
-archive. It checks base imports, a server query, and
+archive. It checks base imports, independent widget/server/agent extras, a server query, and
 [browser behavior against the built wheel](testing.md#browser-tests).
 
 Check distribution metadata:

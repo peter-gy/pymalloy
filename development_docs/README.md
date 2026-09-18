@@ -70,8 +70,9 @@ Keep the anti-slop rules and license together in `tools/oxlint/anti-slop`.
 `vite.config.ts` documents exceptions for runtime decoding. Fix findings at their
 owning boundary before adding exceptions.
 
-Run `pnpm records` after changing compiler or widget records and commit both
-the generated schema and Python records. CI checks generation for drift.
+Run `pnpm records` after changing compiler or widget records, or upgrading Malloy.
+Commit the generated schema, Python records and `_lexicon.py` keyword metadata
+together. CI checks generation for drift.
 
 Rebuild after changes to generated-asset inputs. Browser, widget, lifecycle, and
 cross-language changes also require the [browser suite](testing.md#browser-tests).
@@ -108,14 +109,27 @@ BASE_PATH=/pymalloy/ pnpm docs:build
 BASE_PATH=/pymalloy/ pnpm docs:preview
 ```
 
-Guides teach tasks and concepts. Reference pages define signatures, defaults,
-results, errors, and lifecycle. Keep transport, build, and release details in
-contributor pages.
+Give each explanation a canonical home:
+
+| Surface                                | Owns                                                                    |
+| -------------------------------------- | ----------------------------------------------------------------------- |
+| Root and Python package READMEs        | Shared capability summary, first examples, and links                    |
+| `docs/guide/overview.md`               | Workflow and dependency choices                                         |
+| `docs/guide/concepts.md`               | Public vocabulary and the scope of captured or checked evidence         |
+| Other guides                           | One workflow per page with executable examples                          |
+| `docs/reference`                       | Signatures, defaults, data shapes, failure behavior, and file contracts |
+| `development_docs`                     | Package ownership, internal invariants, build, tests, and release       |
+| `skills/pymalloy` and `pymalloy.agent` | Installed agent workflow and offline recipes                            |
+
+Keep shared README examples in parity. Link to the owning page for detailed
+contracts. Skills intentionally carry executable recipes for installed agents,
+which may have no checkout or site access. Dataset-specific task records and
+research evidence belong to the producing project.
 
 ## Upgrade a dependency
 
-The compiler and document parser share a pin in `pnpm-workspace.yaml`, currently
-`0.0.433`. Diagnose behavior against that version, not a newer upstream checkout.
+The compiler and document parser share a pin in `pnpm-workspace.yaml`.
+Diagnose behavior against that installed version, not a newer upstream checkout.
 
 1. Update the importing package or shared catalog, then run `pnpm install` or
    `uv lock`.

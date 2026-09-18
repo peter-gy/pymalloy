@@ -16,7 +16,9 @@ and replacements resolve their named bindings together. Each immutable fragment
 owns its lazy scope index and rendered-text cache, and new fragments start with
 fresh caches. Malloy text rendering uses an explicit work stack and joins emitted
 pieces once, so long expressions do not consume the Python call stack.
-Named bindings have one expression child and optional owned documentation leaves. Binding
+Constructor-owned blocks carry layout metadata for nested indentation. Literal
+SQL, comments and imported source text retain their own whitespace.
+Named bindings have one expression child and optional owned annotation leaves. Binding
 prefixes and suffixes retain names, other annotations, comments, and punctuation.
 Anonymous fragments compose expressions and clauses. A `Draft` owns the document fragment, source URL, captured imports,
 and the original file revision used for persistence checks.
@@ -31,27 +33,34 @@ The compiler projects named source, query, field, and explicit join bindings fro
 Malloy's parser. Unrepresented grammar remains literal text between those
 bindings. This keeps new Malloy syntax usable without a Python grammar change.
 Schema validation remains a separate compiler operation. The parser identifies
-single-line `#"` tags owned by a binding. Supplying `.doc(...)` in a replacement
-replaces those leaves. Shared statement tags and block annotations remain opaque
-text, so the editor cannot accidentally claim or erase another declaration's
-documentation.
+annotation routes owned by each binding. `.annotate(text, route=...)` replaces
+that owned route, and `.doc(text)` selects the documentation route. Shared
+statement annotations remain literal text so an edit cannot claim another
+declaration's annotations.
 
 `read_model` parses plain Malloy through the optional server compiler.
 `draft(*parts)` constructs syntax without runtime dependencies. Both return the
 same `Draft`. The parser projects supported scalar expressions into operation
 records. Python construction produces those same records through `col`, `lit`,
 operators, aggregate methods, and namespaces. Python emission walks this tree
-and emits editable scalar constructors inside `pm.draft` and `pm.syntax`.
+and emits source/query constructors for parser-recognized structure, including
+handwritten models. Scalar operations become editable constructors. Grammar that
+cannot be reconstructed retains its literal syntax with named editing scopes.
 Unsupported scalar grammar is represented explicitly by `raw_expr`. Generated
 code retains named editing scopes and captured imports.
 
 The compiler wire contract distinguishes concrete syntax containers from scalar
 leaves with a tagged union. Containers carry syntax parts. Scalar leaves carry
 an operation tree and their original source spelling. Python protocol decoding
-rejects mixed shapes. Identifier quoting sits below both syntax and scalar APIs.
+rejects mixed shapes. Identifier rendering sits below both syntax and scalar APIs.
+Safe names remain unquoted. Reserved words come from the pinned Malloy lexer,
+projected by `packages/core/scripts/lexicon.mjs` into Python `_lexicon.py` during
+`pnpm records`. This build-time projection keeps pure Python construction
+independent of the compiler process.
 
-Scalar `.doc()` retains the scalar type and attaches pending field documentation.
-Binding consumes that metadata into owned annotation syntax once. Source/query
+Scalar `.annotate()` retains the scalar type and attaches pending routed metadata.
+`.doc()` selects the native documentation route. Binding consumes that metadata
+into owned annotation syntax once. Source/query
 fragments carry annotations as syntax. Python emission walks the resulting tree.
 
 Reading and saving unchanged source preserves its exact text, including line
@@ -63,34 +72,24 @@ is semantic equivalence with preserved surrounding trivia, not identical scalar
 spelling. Verify equivalent SQL and query results with the same source identity,
 imports, data, and connection configuration.
 
-## Design precedents
+## Semantic boundary
 
-The source repositories informed three concrete choices:
+Malloy supplies expression semantics and type checking. Python builds operation
+records without inferring field types. Scalar positions require `Expr`, and
+ordinary values beside expressions become literals. `raw_expr` and `syntax` mark
+additional scalar and source/query grammar respectively.
 
-- Ibis separates immutable expressions from operation nodes in
-  [`ibis/expr/types/core.py`](https://github.com/ibis-project/ibis/blob/main/ibis/expr/types/core.py)
-  and [`ibis/expr/operations/core.py`](https://github.com/ibis-project/ibis/blob/main/ibis/expr/operations/core.py).
-  Its [`decompile`](https://github.com/ibis-project/ibis/blob/main/ibis/expr/decompile.py)
-  walks that existing representation. PyMalloy likewise emits Python from its
-  canonical syntax tree.
-- Polars [`with_columns`](https://github.com/pola-rs/polars/blob/main/py-polars/src/polars/lazyframe/frame.py)
-  normalizes named expressions before delegating to its native plan. PyMalloy uses
-  keyword bindings and one expression conversion boundary, then delegates language
-  semantics to Malloy.
-- Mosaic's [`vgplot` grammar](https://github.com/uwdata/mosaic/blob/main/docs/api/vgplot/plot.md)
-  composes independently reusable directives. PyMalloy clauses are values that can
-  be composed, stored, and reused through one `extend(*clauses)` operation.
-
-Malloy supplies expression semantics and type checking. Python builds a typed
-operation tree without inferring field types. Scalar positions require `Expr`,
-and ordinary values beside expressions become literals. `raw_expr` and `syntax`
-mark the boundaries for additional scalar and source/query grammar respectively.
+Opaque scalar subtrees make their entire enclosing imported expression opaque.
+Parentheses in Malloy can change temporal range comparisons into point comparisons,
+so partially reconstructing an unsupported literal is unsafe. Numeric token
+spelling is retained with `number` when Python numeric construction would change
+its inferred type.
 
 ## Validation and persistence
 
-`Draft.check` combines compiler diagnostics with documentation warnings in the
-existing `CheckReport`. Documentation checks use compiled metadata and flag
-missing descriptions on public sources, measures, and views. Business meaning,
+`Draft.check` returns compiler diagnostics in `CheckReport`. A supplied
+`DocumentationPolicy` adds checks from compiled annotation metadata for missing
+descriptions on the selected objects. Documentation lint is opt-in. Business meaning,
 keys, and join cardinality require executable evidence and review.
 
 `Draft.validate` compiles once, captures imports, runs named source/query
@@ -126,29 +125,25 @@ verified grain, documented definitions, measured thresholds, and join checks.
 loads this module. It contains discovery and documentation, with execution owned
 by the ordinary Python API.
 
-The root plugin and selected skill files ship through wheel, editable, and source
-builds using `[tool.agent-plugins] root = "../.."`. Agent discovery and syntax
-construction work with base dependencies. Parser-backed reading, compilation,
-and execution require the server extra.
+The asset build stages the root plugin and `skills/pymalloy` under
+`pymalloy/_assets/agent`. Standard Hatch packages those assets in wheels and source
+archives. Guidance access requires the `agent` extra. Syntax construction works
+with base dependencies. Parser-backed reading, compilation and execution require
+the server extra.
 
 Verify semantic Python roundtrips and unchanged-file preservation on upstream
 models, scoped edits, source/query behavior, closed imports, stale writes, failed assertions, and installed skill discovery.
 Run base-only construction and generated-Python reconstruction with Deno and
 DuckDB absent. Test the installed artifacts as well as the source checkout.
 
-Opaque scalar subtrees make their entire enclosing imported expression opaque.
-Parentheses in Malloy can change temporal range comparisons into point comparisons,
-so partially reconstructing an unsupported literal is unsafe. Supported operations
-use generated scalar records. Numeric token spelling is retained with `number`
-when ordinary Python numeric construction would change its inferred type.
-
 ## Source artifacts and failures
 
 The Python export layer materializes a closed `ModelSource` graph. Native import
 literal spans and table-call ranges identify changes. Data bindings are explicit,
 and SQL readers retain their authored SQL. No filesystem semantics enter core.
-`Validation.source` exposes the accepted graph. Exported files are recompiled
-against their copied inputs to verify relocation.
+`Validation.source` exposes the accepted graph. Export checks syntax and import
+closure. Recompilation and execution against copied inputs belong to the caller's
+relocation verification. Bundle creation does not run those queries.
 
 Runtime compilation retains the source graph and compiler version. An engine
 failure wraps the original exception with detached query evidence. Source imports
@@ -158,22 +153,31 @@ DESCRIBE SQL through the compiler's exception chain.
 `NativeMetadata.annotations` projects stable source and field annotations through
 Malloy's exported `routeOf` and `payloadOf` helpers. Python documentation policy
 selects routes and severity from that projection. It does not parse annotations.
-The syntax editor replaces directly owned native descriptions and preserves
-other routes and shared annotation ownership.
+The syntax editor replaces requested owned routes and preserves other routes
+and shared annotation ownership.
 
-## Measure authoring latency
+## Captured input ownership
 
-Run `uv run python tools/benchmark_authoring.py --output timings.json` to measure
-fresh Python execution, parsing, draft formatting/checking/validation, compilation,
-warm ad hoc query compilation, schema discovery, execution and result conversion.
-The report retains samples, medians and dependency versions. Warm query edits use
-one retained model. Cold starts use fresh Python processes but retain OS and Deno
-caches. Schema discovery is measured directly through DESCRIBE, not inferred by
-subtracting total compile times.
+`_inputs.py` owns immutable Arrow IPC snapshots and once-only Parquet
+materializations. IPC serialization retains Python-owned bytes. Parquet
+verification reads bounded batches and checks exact values, schemas, and row
+counts. A native table-reference node carries its optional input owner through
+composition. The compiler sees an ordinary DuckDB path and has no Arrow dependency.
 
-On the development Mac, five-sample medians for the 100,000-row benchmark measured
-270 ms for draft formatting before sharing its compiler process and 137 ms after.
-Draft compilation remained approximately 131 ms and warm ad hoc compilation
-approximately 2.4 ms. These are local workload measurements, not performance
-promises. The optimization changes process ownership for format-plus-parse and
-introduces no cache.
+Runtime models, queries, execution evidence, and validations retain input owners
+independently of connection lifetime. Extracting `ModelSource` retains source
+text only. Widget definitions pair logical paths with Parquet bytes without loading
+the server adapter.
+
+The producer notebook or script owns dataframe preparation and its dependency
+graph. Bundling publishes accepted snapshots without executing that producer.
+Explicit `files` bindings are copied at export time and are not validation-time
+data snapshots. Input capture IDs distinguish origins from content hashes.
+
+Bundle rewriting indexes source lines once and applies reference edits in one
+forward pass. Copied files are hashed once per destination, including shared
+Parquet assets. Physical deduplication preserves each input's identity.
+
+Measure syntax, compilation, and capture costs with the
+[authoring and dataframe benchmarks](testing.md#measure-authoring-and-dataframe-costs).
+Record workload, dependency versions, and samples with each performance claim.
