@@ -1,13 +1,7 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2023",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "types": ["vite/client"],
-    "verbatimModuleSyntax": true
+    "types": ["vite/client"]
   },
   "include": ["src/**/*.ts", "vite.config.ts"]
 }

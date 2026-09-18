@@ -35,6 +35,16 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: ["packages/**/*.ts", "apps/**/*.ts", "apps/**/*.mts"],
+        rules: {
+          "import/extensions": [
+            "error",
+            "ignorePackages",
+            { js: "never", ts: "never", checkTypeImports: true },
+          ],
+        },
+      },
+      {
         files: ["packages/core/src/diagnostics.ts"],
         // JavaScript can throw arbitrary values. This adapter decodes Malloy errors
         // and maps source URLs while preserving unrelated host exceptions.

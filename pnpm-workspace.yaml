@@ -15,6 +15,7 @@ catalog:
   "@malloydata/malloy-sql": 0.0.433
   "@duckdb/node-api": 1.5.5-r.4
   "@types/node": 22.20.1
+  "@types/emscripten": 1.41.6
   typescript: 6.0.3
   vite-plus: 0.3.0
   vite: npm:@voidzero-dev/vite-plus-core@0.3.0

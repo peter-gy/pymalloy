@@ -1,10 +1,9 @@
 {
-  "extends": "../../core/tsconfig.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": "../../..",
     "paths": {
-      "@malloy-runtime/compiler": ["packages/core/src/index.ts"],
-      "@malloy-runtime/compiler/tooling": ["packages/core/src/tooling.ts"]
+      "@malloy-runtime/compiler": ["../../core/src/index.ts"],
+      "@malloy-runtime/compiler/tooling": ["../../core/src/tooling.ts"]
     }
   },
   "include": ["../../protocol/src/records.ts"]

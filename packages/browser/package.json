@@ -19,6 +19,7 @@
     "@duckdb/duckdb-wasm": "catalog:",
     "@malloy-runtime/compiler": "workspace:*",
     "@malloy-runtime/duckdb": "workspace:*",
+    "@types/emscripten": "catalog:",
     "apache-arrow": "catalog:",
     "process": "catalog:"
   },
