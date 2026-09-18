@@ -89,3 +89,15 @@ Replay runs `replay.py` against frozen Parquet. Rebuilding means explicitly reru
 the notebook or producer script, validating the new result, and exporting to a new
 directory. External files, services, environment settings, and randomness remain
 requirements of that Python program. Existing bundles are never overwritten.
+
+## Use a browser without Deno
+
+```python
+widget = pm.MalloyWidget(candidate, query="by_region")
+widget
+```
+
+This needs the base package and PyArrow, or `pymalloy[dataframes]`. The widget
+materializes Parquet locally and sends it with the draft to DuckDB-WASM. Browser
+Malloy compilation requires neither the server extra nor Deno. Additional
+`files=` may supply other virtual files but cannot replace managed inputs.

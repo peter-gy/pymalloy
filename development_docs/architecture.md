@@ -152,3 +152,23 @@ explicit `files`. MalloyWidget exports reject COPY and native database state.
 Marimo serialization adds Python dependencies after COPY. Jupyter executes cells
 in order. Identical inputs, schemas, options, output paths and dependencies must
 produce identical notebook bytes.
+
+## Captured Python inputs
+
+The Python input layer owns immutable Arrow IPC snapshots and once-only Parquet
+materializations. IPC serialization retains immutable Python-owned bytes without
+coalescing the entire input. Parquet verification reads bounded batches and checks
+exact values, schemas, and row counts. Native table-reference syntax carries an optional input owner
+through composition. The compiler receives ordinary DuckDB table paths and has no
+Arrow dependency. Runtime models, queries, execution evidence, and validations
+retain input owners independently of connection lifetime. Widget definitions
+combine logical table paths with Parquet bytes without loading the server runtime.
+
+The producing notebook or script owns preparation logic and its dependency graph.
+Export publishes accepted data snapshots, source, bindings, and validation evidence.
+It never executes preparation code or inspects notebook runtime internals.
+
+Bundle export indexes source lines once and applies all reference edits in one
+forward pass. Copied files are hashed once per destination, including shared
+Parquet assets. Input identities and integrity checks remain independent of
+physical file deduplication.

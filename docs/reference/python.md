@@ -8,7 +8,7 @@ widget
 ```
 
 `MalloyWidget(source, *, files=None, query=None, givens=None, runtime=None)` creates an
-anywidget view. Source is text or `ModelSource`. `files`, `query`, `givens`, and
+anywidget view. Source is text, `ModelSource`, or `Draft`. `files`, `query`, `givens`, and
 `source` can be assigned after construction. Assign complete mappings to update
 files or givens. Returned mappings and state are detached snapshots.
 
@@ -26,3 +26,8 @@ policy configured to allow them.
 [Server queries, models, and results](server.md) are available with the
 server extra. `pip install pymalloy` is sufficient for widgets: Malloy compilation
 and DuckDB execution run in the browser, with no Deno dependency or extra.
+
+A `Draft` can carry `pm.data(frame)` inputs. MalloyWidget sends their captured
+Parquet bytes as managed virtual files. This requires PyArrow, without the server
+extra or Deno. User `files` cannot shadow managed names. See the
+[dataframe guide](../guide/dataframes.md).

@@ -48,7 +48,7 @@ pnpm e2e
 
 The test servers use `uv run --no-sync` to retain the selected installation.
 Set `PYMALLOY_KERNEL_PYTHON` to run the Jupyter kernel with a separate interpreter.
-CI installs the base wheel and ipykernel there, with neither Deno nor native DuckDB.
+CI installs the base wheel, PyArrow, and ipykernel there, with neither Deno nor native DuckDB.
 The fixture authoring process may use the server extra to prepare an exported
 notebook. Execution of that notebook happens in the base-only kernel.
 Run `uv sync --frozen --all-packages --all-extras` to return to the editable
