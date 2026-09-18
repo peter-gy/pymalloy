@@ -71,7 +71,7 @@ Keep the anti-slop rules and license together in `tools/oxlint/anti-slop`.
 owning boundary before adding exceptions.
 
 Run `pnpm records` after changing compiler or widget records, or upgrading Malloy.
-Commit the generated schema, Python records and `_lexicon.py` keyword metadata
+Commit the generated schema, `_protocol/records.py` and `_authoring/lexicon.py` keyword metadata
 together. CI checks generation for drift.
 
 Rebuild after changes to generated-asset inputs. Browser, widget, lifecycle, and

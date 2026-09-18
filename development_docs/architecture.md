@@ -25,27 +25,51 @@ same needs synchronously. Compiler jobs contain no connection or filesystem APIs
 
 ## Owners
 
-| Owner                                                    | Responsibility                                                                                        |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `packages/core` (`@malloy-runtime/compiler`)             | Synchronous compiler jobs, shared Model/Query contracts, documents, diagnostics, metadata and tooling |
-| `packages/duckdb`                                        | DuckDB type conversion, search-path statements, Arrow materialization and stable result conversion    |
-| `packages/node`                                          | Native connection ownership, local source readers and session execution                               |
-| `packages/browser`                                       | WebAssembly worker ownership, virtual files, imports and execution                                    |
-| `packages/widget`                                        | anywidget revision synchronization and Malloy result rendering                                        |
-| `packages/protocol`                                      | Shared Python wire contracts, exact givens, and widget state                                          |
-| `packages/server`                                        | Deno compiler service and framed process entry point                                                  |
-| `pymalloy._server`                                       | Deno process, Python DuckDB engine, model ownership and deadlines                                     |
-| `pymalloy.authoring`, `expressions`, `_draft`, `_syntax` | Immutable syntax, scoped edits, and Python reconstruction                                             |
-| `pymalloy._inputs`                                       | Captured Arrow values and verified Parquet materialization                                            |
-| `pymalloy.validation`                                    | Detached reports and documentation-presence policy                                                    |
-| `pymalloy.widget`                                        | Python inputs and detached widget snapshots                                                           |
-| `pymalloy.export`                                        | Source bundles, notebook plans, COPY destination anchoring, and format serialization                  |
-| `apps`                                                   | Documentation and notebook-host acceptance tests                                                      |
+| Owner                                        | Responsibility                                                                                        |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `packages/core` (`@malloy-runtime/compiler`) | Synchronous compiler jobs, shared Model/Query contracts, documents, diagnostics, metadata and tooling |
+| `packages/duckdb`                            | DuckDB type conversion, search-path statements, Arrow materialization and stable result conversion    |
+| `packages/node`                              | Native connection ownership, local source readers and session execution                               |
+| `packages/browser`                           | WebAssembly worker ownership, virtual files, imports and execution                                    |
+| `packages/widget`                            | anywidget revision synchronization and Malloy result rendering                                        |
+| `packages/protocol`                          | Shared Python wire contracts, exact givens, and widget state                                          |
+| `packages/server`                            | Deno compiler service and framed process entry point                                                  |
+| `pymalloy._server`                           | Deno process, Python DuckDB engine, model ownership and deadlines                                     |
+| `pymalloy._authoring`                        | Immutable syntax, scoped drafts, annotations, and Python reconstruction                               |
+| `pymalloy._model`                            | Source snapshots, captured data, persistence, selection, and shared failure contracts                 |
+| `pymalloy._protocol`                         | Generated compiler/widget records, exact givens, result decoding, and immutable wire snapshots        |
+| `pymalloy.validation`                        | Detached reports and documentation-presence policy                                                    |
+| `pymalloy.widget`                            | Python inputs and detached widget snapshots                                                           |
+| `pymalloy.export`                            | Source bundles, notebook plans, COPY destination anchoring, and format serialization                  |
+| `apps`                                       | Documentation and notebook-host acceptance tests                                                      |
 
 Dependency direction follows these owners. Core depends on Malloy. DuckDB helpers
 depend on core. Node and browser adapters depend on both. Python-facing protocol
 records depend on compiler types, and the widget and Deno service consume them.
 Core and DuckDB helpers never depend on those protocol records or Python adapters.
+
+### Python package layout
+
+The package root contains the public modules: `authoring`, `expressions`,
+`analysis`, `result`, `execution`, `validation`, `browser`, `widget`, `agent`, and
+`cli`. The root `__init__.py` exposes the main Python API and loads optional
+runtimes on demand.
+
+Private packages own related implementation files:
+
+| Package      | Files and role                                                                                                                                                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `_authoring` | `draft.py` coordinates edits, `syntax.py` owns fragments, `operations.py` renders scalar operations, and `python.py` reconstructs Python. Annotations, identifiers, generated lexer keywords, and table-reference syntax live beside them. |
+| `_model`     | `source.py` owns source identity and snapshots, `inputs.py` captures data, `persistence.py` publishes source, and `selection.py` validates query selection. Shared errors and the default connection name belong here.                     |
+| `_protocol`  | `records.py` is generated against `base.py`. `givens.py`, `codec.py`, and `snapshot.py` encode values, decode results, and freeze boundary data.                                                                                           |
+| `_server`    | Compiler processes, tooling leases, native engine execution, deadlines, and retained runtime models.                                                                                                                                       |
+| `export`     | Public notebook/bundle APIs and their private document, planning, file-access, and serialization modules.                                                                                                                                  |
+
+`_protocol` is independent of runtime and authoring code. `_model` depends on
+protocol types and imports Arrow when capturing data. Authoring consumes both
+packages. Parsing, formatting, checking, and compilation load the compiler/server
+code on demand. Widget and export adapters reuse those values. Keep package initializers small
+and import private definitions from their owning modules.
 
 Python's base imports expose syntax construction and captured-source records.
 The `widget` extra supplies anywidget, `server` supplies Deno, DuckDB and PyArrow,
