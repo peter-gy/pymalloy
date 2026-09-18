@@ -132,6 +132,10 @@ the user already settled. Clarify unresolved definitions when the alternatives
 materially change the answer. Do not invent thresholds or require approval for
 every edit. Documentation checks are mechanical evidence, not business review.
 
+For portable model files and dataset production, follow the executable
+[artifact recipe](references/artifacts.md). For construction, compiler, schema,
+engine, or assertion failures, use [failure triage](references/triage.md).
+
 `.doc()` emits native `#"` descriptions. `DocumentationPolicy` in
 `pymalloy.validation` selects accepted annotation routes, object kinds and severity.
 `draft.check(documentation=None)` disables documentation lint while retaining
