@@ -1,13 +1,20 @@
+import { defaultSourceURL } from "@malloy-runtime/compiler";
 export type File = Uint8Array | { url: string };
 export type Files = Readonly<Record<string, File>>;
 
-export const modelURL = new URL("https://pymalloy.local/model.malloy");
+export const modelURL = new URL(defaultSourceURL);
 
 export function snapshot(files: Files = {}): Map<string, File> {
   const result = new Map<string, File>();
   for (const [name, file] of Object.entries(files)) {
     const url = new URL(name, modelURL);
-    if (url.origin !== modelURL.origin || url.search || url.hash || url.pathname.endsWith("/")) {
+    if (
+      url.protocol !== modelURL.protocol ||
+      url.host !== modelURL.host ||
+      url.search ||
+      url.hash ||
+      url.pathname.endsWith("/")
+    ) {
       throw new Error(`File name '${name}' must be a virtual file path`);
     }
     if (!name || name.includes("\0")) throw new Error("File names must be nonempty strings");

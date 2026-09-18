@@ -1,3 +1,4 @@
+import { Table } from "apache-arrow";
 import { materialize } from "@malloy-runtime/duckdb/arrow";
 import { checkSource, formatSource } from "@malloy-runtime/compiler/tooling";
 import {
@@ -11,11 +12,13 @@ import {
 } from "@duckdb/duckdb-wasm";
 import {
   CompiledModel,
+  documentKind,
+  type DocumentKind,
   Model,
   Operations,
   ToolingError,
   type OperationOptions,
-  type RunOptions,
+  type QueryOptions,
   type SourcePosition,
   type ModelSource,
   type Column,
@@ -31,12 +34,13 @@ import { type File, type Files, modelURL, snapshot, readImport } from "./files";
 export interface SessionOptions {
   bundles?: DuckDBBundles;
   signal?: AbortSignal;
+  connectionName?: string;
 }
 export type ModelSpec = (
   | { text: string; url?: string }
   | { source: ModelSource }
   | { url: string }
-) & { files?: Files };
+) & { files?: Files; documentKind?: DocumentKind };
 export class Session {
   private readonly models = new Set<Model>();
   private readonly operations: Operations;
@@ -53,10 +57,15 @@ export class Session {
     private readonly failure: Promise<never>,
     private readonly fail: (error: Error) => void,
     private readonly removeAbortListener: () => void,
+    private readonly connectionName: string,
   ) {
-    this.operations = new Operations(() => {
-      this.fail(new Error("Active operation was cancelled"));
-      void this.close();
+    this.operations = new Operations(async () => {
+      try {
+        await this.connection.cancelSent();
+      } catch (error) {
+        this.fail(error instanceof Error ? error : new Error(String(error)));
+        throw error;
+      }
     });
   }
 
@@ -118,6 +127,7 @@ export class Session {
         failure,
         rejectFailure,
         removeAbortListener,
+        options.connectionName ?? compilerConnection.name,
       );
       void failure.catch(() => session.close());
       return session;
@@ -151,19 +161,23 @@ export class Session {
         CompiledModel.begin({
           url: root,
           source: captured?.text ?? ("text" in spec ? spec.text : undefined),
-          connection: compilerConnection,
+          connection: { ...compilerConnection, name: this.connectionName },
+          documentKind: spec.documentKind ?? captured?.documentKind ?? documentKind(root),
         }),
         host,
       );
       if (this.stopped) throw new Error("Session is closed");
+      this.operations.assertActive();
       const schemas = new Map<string, { signature: string; columns: Column[] }>();
       const model = new Model(compiled, {
-        assertActive: () => {
+        assertAvailable: () => {
           if (this.stopped) throw new Error("Session is closed");
+          this.operations.assertHealthy();
         },
-        compile: (job) => drive(job, host),
+        compile: (job) => drive(job, this.host(files, root, captured)),
         run: async (sql, template) => {
-          const table = await this.connection.query(sql);
+          const host = this.host(files, root, captured);
+          const table = await this.query(sql);
           const data = materialize(table);
           const signature = JSON.stringify(table.schema, (_key, value) =>
             value instanceof Map ? [...value] : value,
@@ -173,7 +187,7 @@ export class Session {
             table.schema.dictionaries.size === 0 && sql.length + signature.length <= 65_536;
           let columns = reusable && cached?.signature === signature ? cached.columns : undefined;
           if (!columns) {
-            columns = await host.describe(sql);
+            columns = await host.describe(`DESCRIBE ${sql}`);
             if (reusable) {
               if (schemas.size === 32) schemas.delete(schemas.keys().next().value!);
               schemas.set(sql, { signature, columns });
@@ -183,7 +197,7 @@ export class Session {
             sql,
             rows: data.rows,
             columns: structuredClone(columns),
-            malloy: stableResult(sql, columns, data.rows, template),
+            malloy: stableResult(sql, columns, data.rows, template, this.connectionName),
           };
         },
         submit: (task, options) =>
@@ -200,7 +214,7 @@ export class Session {
       return model;
     }, options);
   }
-  async run(text: string, options: RunOptions & { files?: Files } = {}) {
+  async run(text: string, options: QueryOptions & { files?: Files } = {}) {
     const captured = { givens: structuredClone(options.givens), signal: options.signal };
     const model = await this.model({ text, files: options.files }, captured);
     try {
@@ -215,6 +229,7 @@ export class Session {
       files?: Files;
       url?: string;
       syntaxOnly?: boolean;
+      documentKind?: DocumentKind;
       position?: SourcePosition;
     } & OperationOptions = {},
   ) {
@@ -226,8 +241,9 @@ export class Session {
         checkSource({
           url: root,
           source: text,
-          connection: compilerConnection,
+          connection: { ...compilerConnection, name: this.connectionName },
           syntaxOnly: options.syntaxOnly,
+          documentKind: options.documentKind ?? documentKind(root),
           position: options.position,
         }),
         this.host(files, root),
@@ -258,15 +274,31 @@ export class Session {
 
   private enqueue<T>(task: () => Promise<T>, options: OperationOptions = {}): Promise<T> {
     if (this.stopped) return Promise.reject(new Error("Session is closed"));
-    return this.operations.run(() => Promise.race([task(), this.failure]), options);
+    return this.operations.run(() => {
+      if (this.stopped) throw new Error("Session is closed");
+      return Promise.race([task(), this.failure]);
+    }, options);
+  }
+
+  private async query(sql: string): Promise<Table> {
+    const active = this.operations.signal;
+    const signal = active ? AbortSignal.any([active, this.imports.signal]) : this.imports.signal;
+    signal.throwIfAborted();
+    const reader = await this.connection.send(sql, false);
+    signal.throwIfAborted();
+    const batches = await reader.readAll();
+    signal.throwIfAborted();
+    return new Table(reader.schema, batches);
   }
 
   private async activate(files: Map<string, File>): Promise<void> {
+    this.operations.assertActive();
     if (this.activeSnapshot === files) return;
     this.activeSnapshot = undefined;
     for (const name of this.activeFiles) await this.database.dropFile(name);
     this.activeFiles = [];
     for (const [name, file] of files) {
+      this.operations.assertActive();
       if (file instanceof Uint8Array) await this.database.registerFileBuffer(name, file.slice());
       else await this.database.registerFileURL(name, file.url, DuckDBDataProtocol.HTTP, true);
       this.activeFiles.push(name);
@@ -275,15 +307,20 @@ export class Session {
   }
 
   private host(files: Map<string, File>, root: URL, captured?: ModelSource): Host {
+    const operations = this.operations;
+    const signal = operations.signal
+      ? AbortSignal.any([operations.signal, this.imports.signal])
+      : this.imports.signal;
     return {
+      signal,
       describe: async (sql) => {
-        const result = await this.connection.query(`DESCRIBE ${sql}`);
+        const result = await this.query(sql);
         return result
           .toArray()
           .map((row) => ({ name: String(row.column_name), type: String(row.column_type) }));
       },
       readURL: async (url) => {
-        if (!captured) return readImport(files, url, this.imports.signal, root);
+        if (!captured) return readImport(files, url, signal, root);
         if (!Object.hasOwn(captured.imports, url.href))
           throw new Error(`Source bundle is missing '${url.href}'`);
         return captured.imports[url.href];

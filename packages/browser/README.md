@@ -17,7 +17,7 @@ try {
 }
 ```
 
-`Session.open({bundles?,signal?})` configures worker assets and session lifetime.
+`Session.open({bundles?,signal?,connectionName?})` configures worker assets and session lifetime.
 Models accept text, a URL, or `ModelSource` plus virtual files. URL descriptors
 require CORS. Models share the compiler's Model/Query/Result contract with Node.
 
