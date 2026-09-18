@@ -9,7 +9,8 @@ Start with the instructions shipped with this installed version::
     print(skill.body)
     print(skill.file("references/modeling.md").read_text())
 
-For portable artifacts, read references/artifacts.md. For failed queries, read
+For captured dataframe inputs, use pm.data(frame) and bundle(accepted, directory).
+For portable artifacts and notebook workflows, read references/artifacts.md. For failed queries, read
 references/triage.md. Both include executable public-API workflows.
 
 Compose sources with pm.table(...).extend(pm.measure(revenue=pm.col("amount").sum())),

@@ -59,11 +59,14 @@ expressions so temporal range and partial-filter semantics are preserved.
 
 Source constructors return immutable `Fragment` values. Scalar clause arguments
 require `Expr` values, including documented expressions. Bare strings are rejected.
-Construction uses base dependencies and performs no compilation.
+Construction performs no compilation. `data(frame, *, name=None)` additionally
+requires PyArrow and captures a detached Arrow snapshot. Other constructors use
+base dependencies. See [dataframe inputs](../guide/dataframes.md).
 
 | Constructor                                                                             | Meaning                                                                                   |
 | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `table(path: str \| Path)`                                                              | DuckDB table expression. `Path` explicitly denotes a file                                 |
+| `data(frame, *, name=None)`                                                             | Capture a materialized dataframe-like input through Arrow                                 |
 | `sql(text: str)`                                                                        | DuckDB SQL source expression                                                              |
 | `ref(name: str)`                                                                        | Quoted reference to one source or query name                                              |
 | `dimension(**fields)`, `measure(**fields)`                                              | Named scalar expressions                                                                  |
@@ -133,7 +136,7 @@ slots but does not resolve schemas or validate business meaning.
 | `.include(url: str \| Path)`                                                             | Add an import to a live draft                                                |
 | `.diff(previous=None)`                                                                   | Unified diff against another draft or the originally loaded file             |
 | `.format()`                                                                              | Format with Malloy and rebuild editable syntax                               |
-| `.to_python(name="model")`                                                               | Executable Python reconstructing scalar operations, syntax, URL, and imports |
+| `.to_python(name="model", inputs=None)`                                                  | Executable Python reconstructing scalar operations, syntax, URL, and imports |
 | `.check(documentation=DocumentationPolicy(), **options)`                                 | `CheckReport` with compiler diagnostics and documentation warnings           |
 | `.compile(**options)`                                                                    | Retained runtime `Model`, explicitly closable                                |
 | `.validate(checks=None, *, givens=None, documentation=DocumentationPolicy(), **options)` | Revision-bound `Validation`                                                  |
@@ -208,3 +211,8 @@ syntax is unambiguous. Other syntax remains explicit `pm.syntax` or `raw_expr`.
 It does not interpret language meaning or simplify expressions. Extend a named
 source with `pm.ref("orders").extend(...)`. Use `candidate["orders"].replace(...)`
 to edit the existing definition rather than copy it into a new source.
+
+Drafts carrying captured data use `bundle(draft.validate(), directory)` for
+persistence. `.save()` cannot write their managed inputs. `.to_python(inputs=...)`
+maps input names to Python variable names and reconstructs shared source
+expressions. `.inputs` exposes the captured resources.

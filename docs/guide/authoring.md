@@ -182,7 +182,10 @@ Documentation checks flag missing source, measure, and view descriptions.
 Warnings remain advisory unless `warnings_as_errors=True` is passed to
 `Validation.require_valid()` or `Validation.save()`.
 
-`Draft.save()` saves unfinished work. `Validation.save()` requires successful
+For [captured dataframe inputs](dataframes.md), publish with `bundle(accepted, ...)`.
+Plain `.save()` rejects managed inputs.
+
+`Draft.save()` saves unfinished work without managed inputs. `Validation.save()` requires successful
 validation and saves the captured revision. Both reject an unrelated existing
 file unless `overwrite=True`. Loaded files reject external changes. Reload after
 saving before making another revision.

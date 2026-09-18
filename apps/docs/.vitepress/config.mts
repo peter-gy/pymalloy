@@ -21,6 +21,7 @@ const sections = [
       { text: "Parameterize queries with givens", link: "/guide/givens" },
       { text: "Check and inspect Malloy source", link: "/guide/language-tools" },
       { text: "Author and verify models", link: "/guide/authoring" },
+      { text: "Publish Python data as a Malloy model", link: "/guide/dataframes" },
       { text: "Export notebooks", link: "/guide/export" },
       { text: "Troubleshooting", link: "/guide/troubleshooting" },
     ],

@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory() as temporary:
     }
     accepted = candidate.validate(checks, givens=parameters).require_valid()
     artifact = bundle(
-        accepted.source, workspace / "export", files={data: data},
+        accepted, workspace / "export", files={data: data},
         query="by_region", givens=parameters,
     )
     manifest = json.loads(artifact.manifest.read_text())
@@ -88,3 +88,17 @@ parameters. Compare SQL structure as well as typed results when checking Python
 reconstruction. Matching rows on one snapshot is insufficient evidence of general
 semantic equivalence. Nested ordering, nulls, large integers and denominators are
 part of the comparison.
+
+## Prepared Python data
+
+Use `pm.data(prepared, name="orders")` for captured Python inputs and retain the
+returned source through grammar composition. Capture after deliberate `.collect()`
+for lazy data. Validate the candidate, then call `bundle(accepted, directory)`.
+Do not extract `.source` first: the validation owns managed input resources and
+parameters. Export never reruns preparation.
+
+Keep preparation, model construction, validation, and export in separate marimo
+cells with direct variable references. Retain the notebook or Python producer
+script alongside the bundle. It owns the preparation logic and external rebuild
+requirements. Replay uses bundled Parquet. Rebuilding requires deliberately
+rerunning the producer, validating, and exporting a new revision.

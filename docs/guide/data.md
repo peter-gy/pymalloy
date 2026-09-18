@@ -51,3 +51,8 @@ Browser models receive virtual files with `files`. Each model snapshots its
 mapping. URL descriptors require HTTP(S) and server CORS permission. COPY output
 paths in native DuckDB follow DuckDB's rules. Notebook exporters anchor relative
 COPY destinations to their exported data root.
+
+For Python data that must travel with a model, use `pm.data(frame)` in the
+[authoring grammar](dataframes.md). It captures an immutable Arrow snapshot and
+exports ordinary Parquet with the validated model. Runtime `tables=` registration
+is limited to that connection and does not create portable input artifacts.

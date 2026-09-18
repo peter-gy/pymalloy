@@ -30,7 +30,7 @@ and does not write the output file or execute queries.
 
 ## Source bundles
 
-`bundle(source: ModelSource, directory, *, files=None, query=None, givens=None,
+`bundle(source: Validation | ModelSource, directory, *, files=None, query=None, givens=None,
 format=True, timeout=120) -> SourceBundle` materializes a closed source graph into
 a new directory. Its parent must exist. Existing destinations are rejected.
 Requires the server compiler for native parsing and formatting.
@@ -41,11 +41,10 @@ from pymalloy.export import bundle
 parameters = {"minimum": 10}
 accepted = candidate.validate(checks, givens=parameters).require_valid()
 artifact = bundle(
-    accepted.source,
+    accepted,
     "orders-export",
     files={"orders.parquet": "data/orders.parquet"},
     query="by_region",
-    givens=parameters,
 )
 ```
 
@@ -71,3 +70,11 @@ establish that the selected parameters and data produce the intended result.
 Revalidate and replay from the exported directory. See the executable artifact
 recipe distributed with `pymalloy.agent.agent_skill()` at
 `references/artifacts.md`.
+
+An accepted `Validation` retains managed dataframe inputs and its bound givens.
+Export rejects failed validation, changed bindings, and changed captured files.
+Its manifest adds Arrow schemas, row counts, input identities, and assertion SQL.
+The bundle includes editable Python grammar in `model.py` and a `replay.py` script
+for frozen inputs. Keep preparation logic in the producing notebook or script.
+See [Python dataframe inputs](../guide/dataframes.md). A code-only `ModelSource`
+remains available for explicit source and file packaging.
