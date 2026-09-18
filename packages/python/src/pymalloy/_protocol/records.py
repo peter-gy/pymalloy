@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from msgspec import UNSET, Meta, UnsetType, field
 
-from pymalloy._record_base import Record
+from pymalloy._protocol.base import Record
 
 
 class Annotation(Record):

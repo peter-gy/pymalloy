@@ -53,4 +53,4 @@ const source = `"""Generated from Malloy ${version}'s native lexer. Run pnpm rec
   .sort((left, right) => left.localeCompare(right, "en"))
   .map((word) => `    ${JSON.stringify(word)},\n`)
   .join("")}})\n`;
-writeFileSync(new URL("../../python/src/pymalloy/_lexicon.py", import.meta.url), source);
+writeFileSync(new URL("../../python/src/pymalloy/_authoring/lexicon.py", import.meta.url), source);

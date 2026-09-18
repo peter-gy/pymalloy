@@ -9,7 +9,7 @@ from typing import Any
 import msgspec
 from msgspec import Struct
 
-from pymalloy._records import State
+from pymalloy._protocol.records import State
 
 
 def to_dict(value: Any) -> Any:
