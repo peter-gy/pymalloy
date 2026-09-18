@@ -1,0 +1,21 @@
+{
+  "name": "@pymalloy/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "vp build",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@malloy-runtime/compiler": "workspace:*",
+    "@malloy-runtime/duckdb": "workspace:*",
+    "@pymalloy/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
