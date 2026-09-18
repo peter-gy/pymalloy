@@ -1,0 +1,105 @@
+.pymalloy-widget {
+  color: inherit;
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 6px;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.pymalloy-widget header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.pymalloy-widget label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.pymalloy-widget select {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 4px;
+  padding: 4px 8px;
+  max-width: min(260px, 60vw);
+}
+.pymalloy-widget [role="status"] {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.pymalloy-widget .pymalloy-result {
+  overflow: auto;
+  max-height: 520px;
+}
+.pymalloy-widget table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pymalloy-widget caption {
+  text-align: left;
+  font-size: 12px;
+  opacity: 0.7;
+  margin-bottom: 8px;
+}
+.pymalloy-widget th,
+.pymalloy-widget td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  vertical-align: top;
+  white-space: nowrap;
+}
+.pymalloy-widget th {
+  font-weight: 600;
+}
+.pymalloy-widget details {
+  margin-top: 8px;
+}
+.pymalloy-widget td details {
+  margin: 0;
+}
+.pymalloy-widget summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+.pymalloy-widget pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    12px/1.6 ui-monospace,
+    monospace;
+}
+.pymalloy-widget [role="alert"] {
+  border-left: 3px solid #b45342;
+  padding-left: 12px;
+}
+
+.pymalloy-widget .pymalloy-diagnostics {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+.pymalloy-widget .pymalloy-diagnostics li + li {
+  margin-top: 12px;
+}
+.pymalloy-widget .pymalloy-diagnostics p {
+  margin: 0 0 4px;
+}
+.pymalloy-widget .pymalloy-diagnostics small {
+  font-size: 11px;
+  opacity: 0.75;
+}
+.pymalloy-widget .pymalloy-diagnostics[role="alert"] {
+  padding-left: 12px;
+}
