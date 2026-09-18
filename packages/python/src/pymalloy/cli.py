@@ -2,8 +2,11 @@ import argparse
 import json
 import math
 import sys
+import time
+from importlib.metadata import version
 from pathlib import Path
 
+from pymalloy._connection import DEFAULT_CONNECTION
 from pymalloy.analysis import Diagnostic, to_dict
 
 
@@ -42,9 +45,25 @@ def _parse_files(text: str) -> dict[str, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Check, format, and export Malloy analyses."
+        description="Run, check, format, and export Malloy analyses."
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"pymalloy {version('pymalloy')}"
     )
     commands = parser.add_subparsers(dest="command", required=True)
+    run = commands.add_parser("run", help="execute a query and write JSON records")
+    run.add_argument("path", type=Path, help="local Malloy source file")
+    run.add_argument(
+        "-q", "--query", help="query name (default: the model's default query)"
+    )
+    run.add_argument("--givens", type=_parse_givens, metavar="JSON")
+    run.add_argument("--data-root", type=Path, help="directory for relative data paths")
+    run.add_argument(
+        "--database", type=Path, help="existing DuckDB database, opened read-only"
+    )
+    run.add_argument(
+        "--timeout", type=float, default=120, help="operation deadline in seconds"
+    )
     export = commands.add_parser("export", help="export a runnable notebook")
     export.add_argument(
         "model", type=Path, help="local .malloy, .malloynb, or .malloysql file"
@@ -79,6 +98,12 @@ def main() -> None:
         default={},
         metavar="JSON",
         help="file aliases and local paths for widget SQL readers",
+    )
+    export.add_argument(
+        "--remote-file",
+        action="append",
+        default=[],
+        help="HTTP(S) URL used inside SQL (repeatable)",
     )
     export.add_argument(
         "--data-root",
@@ -122,7 +147,22 @@ def main() -> None:
         action="store_true",
         help="exit with status 1 if formatting would change the file",
     )
+    for command in (run, check, export):
+        command.add_argument(
+            "--extension",
+            action="append",
+            default=[],
+            help="native DuckDB extension loaded before compilation (repeatable)",
+        )
+        command.add_argument(
+            "--connection-name",
+            default=DEFAULT_CONNECTION,
+            help="Malloy connection name served by DuckDB",
+        )
     args = parser.parse_args()
+    if args.command == "run":
+        _run(args)
+        return
     if args.command != "export":
         _tool(args)
         return
@@ -133,7 +173,7 @@ def _tool(args: argparse.Namespace) -> None:
     try:
         import duckdb
 
-        from pymalloy import CompilationError, ModelError, check, format
+        from pymalloy import CompilationError, PyMalloyError, check, format
     except ImportError as error:
         print(
             f"pymalloy: {error}. Install language tools with pip install 'pymalloy[server]'",
@@ -147,6 +187,8 @@ def _tool(args: argparse.Namespace) -> None:
                 path=args.path,
                 syntax_only=args.syntax_only,
                 data_root=args.data_root,
+                connection_name=args.connection_name,
+                extensions=args.extension,
                 database=args.database,
                 read_only=args.database is not None,
             )
@@ -176,9 +218,20 @@ def _tool(args: argparse.Namespace) -> None:
                 _diagnostic(diagnostic, args.path)
         else:
             print(f"pymalloy: {error}", file=sys.stderr)
+        for note in getattr(error, "__notes__", ()):
+            print(note, file=sys.stderr)
         raise SystemExit(1) from None
-    except (OSError, ValueError, TimeoutError, ModelError, duckdb.Error) as error:
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        TimeoutError,
+        PyMalloyError,
+        duckdb.Error,
+    ) as error:
         print(f"pymalloy: {error}", file=sys.stderr)
+        for note in getattr(error, "__notes__", ()):
+            print(note, file=sys.stderr)
         raise SystemExit(1) from None
 
 
@@ -207,24 +260,28 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
     }:
         export.error("--output must differ from the model and database")
     try:
-        from pymalloy import CompilationError
-        from pymalloy.export import compile, jupyter, marimo
+        import duckdb
+
+        from pymalloy import PyMalloyError
+        from pymalloy.export import jupyter, marimo, prepare
     except ImportError as error:
-        extra = "server,marimo" if args.format == "marimo" else "server"
         print(
-            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[{extra}]'",
+            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[server]'",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
     try:
-        document = compile(
+        document = prepare(
             args.model,
             profile=args.profile,
             queries=args.query,
             all=args.all,
             files=args.files,
+            remote_files=args.remote_file,
             givens=args.givens,
             data_root=args.data_root,
+            connection_name=args.connection_name,
+            extensions=args.extension,
             database=args.database,
             title=args.title,
         )
@@ -234,11 +291,62 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
         args.output.write_text(source, encoding="utf-8")
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[server,marimo]'",
+            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[server]'",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
-    except (CompilationError, OSError, ValueError, TypeError) as error:
+    except (
+        PyMalloyError,
+        OSError,
+        ValueError,
+        TypeError,
+        TimeoutError,
+        duckdb.Error,
+    ) as error:
         print(f"pymalloy: {error}", file=sys.stderr)
+        for note in getattr(error, "__notes__", ()):
+            print(note, file=sys.stderr)
         raise SystemExit(1) from None
     print(f"Wrote {args.output} ({len(document.queries)} queries)", file=sys.stderr)
+
+
+def _run(args: argparse.Namespace) -> None:
+    try:
+        from contextlib import closing
+
+        import duckdb
+
+        import pymalloy as pm
+
+        deadline = time.monotonic() + args.timeout
+        with closing(
+            pm.model(
+                args.path,
+                data_root=args.data_root,
+                connection_name=args.connection_name,
+                extensions=args.extension,
+                database=args.database,
+                read_only=args.database is not None,
+                timeout=args.timeout,
+            )
+        ) as model:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Query execution exceeded its deadline")
+            result = model.query(args.query).run(givens=args.givens, timeout=remaining)
+            print(
+                json.dumps(
+                    result.rows(), ensure_ascii=False, default=str, allow_nan=False
+                )
+            )
+    except ImportError as error:
+        print(
+            f"pymalloy: {error}. Install execution with pip install 'pymalloy[server]'",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
+    except (OSError, ValueError, TimeoutError, pm.PyMalloyError, duckdb.Error) as error:
+        print(f"pymalloy: {error}", file=sys.stderr)
+        for note in getattr(error, "__notes__", ()):
+            print(note, file=sys.stderr)
+        raise SystemExit(1) from None
