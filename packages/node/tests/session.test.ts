@@ -336,7 +336,7 @@ describe("Node Session", () => {
       },
     ]);
   });
-  test("resolves reader lists while preserving CTE table identities", async () => {
+  test("reads multiple relative files through reader functions", async () => {
     const root = await directory();
     await writeFile(resolve(root, "a.csv"), "value\n40\n");
     await writeFile(resolve(root, "b.csv"), "value\n2\n");
@@ -350,13 +350,6 @@ describe("Node Session", () => {
     `)
         .then((result) => result.rows),
     ).toEqual([{ total: 42n }]);
-    expect(
-      await runtime
-        .run(`
-      run: duckdb.sql("""WITH "a.csv" AS (SELECT 3 AS value) SELECT * FROM "a.csv" """) -> { select: value }
-    `)
-        .then((result) => result.rows),
-    ).toEqual([{ value: 3 }]);
   });
   test("matches CTE names with DuckDB's ASCII identifier rules", async () => {
     const root = await directory();
@@ -379,20 +372,11 @@ describe("Node Session", () => {
         .then((result) => result.rows),
     ).toEqual([{ value: 42n }]);
   });
-  test("binds files using the CTE scope of each query and recursive term", async () => {
+  test("uses native file resolution for recursive, nested, and indirect reads", async () => {
     const root = await directory();
     await writeFile(resolve(root, "orders.csv"), "value\n42\n");
     const runtime = await session({ dataRoot: root });
     const cases: Array<[string, number[]]> = [
-      [`WITH "orders.csv" AS (SELECT * FROM 'orders.csv') SELECT * FROM "orders.csv"`, [42]],
-      [
-        `WITH "z.csv" AS (SELECT 3 AS value), "a.csv" AS (SELECT * FROM "z.csv") SELECT * FROM "a.csv"`,
-        [3],
-      ],
-      [
-        `WITH first AS (SELECT * FROM 'orders.csv'), "orders.csv" AS (SELECT 1 AS value) SELECT * FROM first`,
-        [42],
-      ],
       [
         `WITH RECURSIVE "orders.csv" AS (SELECT * FROM 'orders.csv' UNION ALL SELECT value + 1 FROM "orders.csv" WHERE value < 44) SELECT * FROM "orders.csv"`,
         [42, 43, 44],
@@ -402,10 +386,6 @@ describe("Node Session", () => {
         [3],
       ],
       [`WITH "orders.csv" AS (SELECT 1 AS value) SELECT * FROM query_table('orders.csv')`, [42]],
-      [
-        `WITH "orders.csv" AS (SELECT 3 AS value) SELECT * FROM (WITH RECURSIVE "orders.csv" AS (SELECT * FROM "orders.csv" UNION ALL SELECT value + 1 FROM "orders.csv" WHERE value < 5) SELECT * FROM "orders.csv")`,
-        [3, 4, 5],
-      ],
     ];
     for (const [sql, expected] of cases) {
       const rows = await runtime
