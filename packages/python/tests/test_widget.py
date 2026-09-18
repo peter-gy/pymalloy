@@ -236,24 +236,7 @@ def test_widget_input_observers_receive_detached_mappings():
         widget.close()
 
 
-def test_widget_ignores_stale_browser_results_after_edit_and_close():
-    widget = MalloyWidget("run: first")
-    old = browser_state(widget)
-    widget.source = "run: second"
-    widget.set_state({"_state": old})
-    assert widget.state["status"] == "idle"
-    current = browser_state(widget, rows=[{"value": 99}])
-    widget.set_state({"_state": current})
-    assert widget.state["rows"] == [{"value": 99}]
-    widget.close()
-    widget.close()
-    widget.set_state({"_state": browser_state(widget)})
-    assert widget.state["status"] == "closed"
-    with pytest.raises(TraitError, match="closed"):
-        widget.source = "run: third"
-
-
-def test_widget_resynchronization_retains_the_latest_accepted_browser_result(
+def test_widget_revision_lifecycle_preserves_state_through_resync_and_close(
     monkeypatch,
 ):
     widget = MalloyWidget("run: first")
@@ -263,11 +246,16 @@ def test_widget_resynchronization_retains_the_latest_accepted_browser_result(
     )
     try:
         earlier = browser_state(widget, rows=[{"value": 1}])
-        widget.set_state({"_state": earlier})
         widget.source = "run: second"
+        widget.set_state({"_state": earlier})
+        assert widget.state["status"] == "idle"
+
         latest = browser_state(widget, rows=[{"value": 2}])
         widget.set_state({"_state": latest})
+        assert widget.state["rows"] == [{"value": 2}]
         widget.set_state({"_state": earlier})
+        assert widget.state["rows"] == [{"value": 2}]
+
         messages.clear()
         widget._handle_msg({"content": {"data": {"method": "request_state"}}})
         assert len(messages) == 1
@@ -275,7 +263,13 @@ def test_widget_resynchronization_retains_the_latest_accepted_browser_result(
         synchronized = messages[0]["state"]
         assert synchronized["_state"] == latest
         assert synchronized["_state"]["revision"] == synchronized["_input"]["revision"]
-        assert widget.state["rows"] == [{"value": 2}]
+
+        widget.close()
+        widget.close()
+        widget.set_state({"_state": browser_state(widget)})
+        assert widget.state["status"] == "closed"
+        with pytest.raises(TraitError, match="closed"):
+            widget.source = "run: third"
     finally:
         widget.close()
 
