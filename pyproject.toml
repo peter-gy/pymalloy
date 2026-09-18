@@ -9,7 +9,7 @@ pymalloy = { workspace = true }
 
 [dependency-groups]
 dev = [
-  "pymalloy[server,dataframes,marimo,jupyter]",
+  "pymalloy[widget,server,agent,dataframes,marimo,jupyter]",
   "pytest>=9.1.1",
   "ruff>=0.16.6",
   "ty>=0.0.80",

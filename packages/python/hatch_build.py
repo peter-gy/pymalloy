@@ -6,7 +6,15 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 class CustomBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
         assets = Path(self.root) / "src/pymalloy/_assets"
-        required = ("widget.js", "widget.css", "server.mjs", "THIRD_PARTY_LICENSES.txt")
+        required = (
+            "widget.js",
+            "widget.css",
+            "server.mjs",
+            "widget.LICENSE.txt",
+            "server.LICENSE.txt",
+            "agent/plugin.json",
+            "agent/skills/pymalloy/SKILL.md",
+        )
         missing = [
             name
             for name in required

@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pymalloy._draft import Draft, draft, read_model
-from pymalloy._errors import CompilationError, ModelError, SchemaError
+from pymalloy._errors import (
+    CompilationError,
+    CompilerError,
+    ModelError,
+    PyMalloyError,
+    SchemaError,
+)
 from pymalloy._source import ModelSource
 from pymalloy.analysis import QueryDescriptor
 from pymalloy.authoring import (
@@ -50,6 +56,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CompilationError",
+    "CompilerError",
     "Draft",
     "ExecutionContext",
     "ExecutionError",
@@ -59,6 +66,7 @@ __all__ = [
     "Model",
     "ModelError",
     "ModelSource",
+    "PyMalloyError",
     "Query",
     "QueryDescriptor",
     "Result",
@@ -107,8 +115,12 @@ def __dir__() -> list[str]:
 
 def __getattr__(name: str):
     if name == "MalloyWidget":
-        from pymalloy.widget import MalloyWidget
-
+        try:
+            from pymalloy.widget import MalloyWidget
+        except ModuleNotFoundError as error:
+            if error.name in {"anywidget", "traitlets", "ipywidgets"}:
+                raise ImportError("Browser widgets require pymalloy[widget]") from error
+            raise
         return MalloyWidget
     if name in {"model", "run", "check", "Model", "Query"}:
         from pymalloy._server import load_api

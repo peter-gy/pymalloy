@@ -1,31 +1,23 @@
-"""Author and validate Malloy models from notebook agents.
+"""Author, validate, and bundle Malloy models from notebook agents.
 
-Start with the instructions shipped with this installed version::
+Read the workflow shipped with this installed version::
 
-    import pymalloy as pm
     import pymalloy.agent as agent
 
     skill = agent.agent_skill()
     print(skill.body)
     print(skill.file("references/modeling.md").read_text())
 
-For captured dataframe inputs, use pm.data(frame) and bundle(accepted, directory).
-For portable artifacts and notebook workflows, read references/artifacts.md. For failed queries, read
-references/triage.md. Both include executable public-API workflows.
+Use references/api.md for immutable Python composition and scoped source edits,
+references/artifacts.md for captured inputs and bundle replay, and
+references/triage.md for compiler and execution failures.
 
-Compose sources with pm.table(...).extend(pm.measure(revenue=pm.col("amount").sum())),
-and name them with pm.draft().define(orders=source). Use pm.read_model(...) to
-load existing Malloy with editable named expressions. All edits return new values.
-Draft.to_python() emits editable Python operations. Supported scalar expressions
-render canonically while preserving their meaning and surrounding model syntax.
-Use pm.col and pm.given for references, pm.lit for values, and operators for
-arithmetic and predicates. Use &, |, and ~ rather than Python truth testing.
+Malloy owns language semantics. Draft.check() runs compiler checks and accepts
+optional documentation lint policies. Draft.validate() executes supplied counterexample queries against
+the configured data. Keep analytical intent and review in the producing project.
 
-Draft.check() returns compiler diagnostics and documentation warnings.
-Draft.validate() runs named source/query fragments that must return no counterexamples.
-Validation.save() writes the captured revision. Query.preview() bounds returned
-rows during exploration. Parsing and runtime checks need pymalloy[server]. Syntax
-construction and agent instructions work with the base install.
+Syntax construction uses base dependencies. Agent discovery needs pymalloy[agent]. Parsing existing
+Malloy and runtime checks need pymalloy[server]. Browser widgets need no Deno.
 """
 
 from __future__ import annotations
@@ -40,9 +32,16 @@ __all__ = ["agent_plugin", "agent_skill"]
 
 def agent_plugin() -> agent_plugins.Plugin:
     """Locate the Agent Plugin shipped with this installed PyMalloy version."""
-    import agent_plugins
+    from pathlib import Path
 
-    return agent_plugins.locate("pymalloy")
+    try:
+        import agent_plugins
+    except ModuleNotFoundError as error:
+        if error.name != "agent_plugins":
+            raise
+        raise ImportError("Agent guidance requires pymalloy[agent]") from error
+
+    return agent_plugins.Plugin(Path(__file__).parent / "_assets" / "agent")
 
 
 def agent_skill() -> agent_plugins.Skill:
