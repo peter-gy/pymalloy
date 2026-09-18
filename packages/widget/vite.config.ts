@@ -1,7 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
+import { bundleNotices } from "../../tools/bundle-notices";
+
 export default defineConfig({
+  plugins: [bundleNotices("widget.LICENSE.txt")],
   resolve: {
     alias: {
       "@malloy-runtime/browser": fileURLToPath(new URL("../browser/src/index.ts", import.meta.url)),
@@ -23,6 +26,6 @@ export default defineConfig({
         codeSplitting: false,
       },
     },
-    sourcemap: false,
+    sourcemap: "hidden",
   },
 });

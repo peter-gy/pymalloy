@@ -16,7 +16,7 @@ interface WidgetQuery {
 }
 interface WidgetSession {
   readonly closed: boolean;
-  model(spec: ModelSpec): Promise<WidgetQuery>;
+  model(spec: ModelSpec, options?: { signal?: AbortSignal }): Promise<WidgetQuery>;
   close(): Promise<void>;
 }
 
@@ -32,6 +32,7 @@ export function initialize(
     let pending: { input: Input; definition: Definition; generation: number } | undefined;
     let running = false;
     const lifetime = new AbortController();
+    let active: AbortController | undefined;
     const releaseModel = () => {
       retained?.model.close();
       retained = undefined;
@@ -49,6 +50,7 @@ export function initialize(
         const opening = createSession({
           signal: lifetime.signal,
           bundles: model.get("_runtime") ?? undefined,
+          connectionName: model.get("_definition")?.connectionName,
         });
         session = opening;
         void opening.catch(() => {
@@ -62,6 +64,8 @@ export function initialize(
       definition,
       generation: current,
     }: NonNullable<typeof pending>) => {
+      const operation = new AbortController();
+      active = operation;
       const publish = (state: Omit<State, "revision">) => {
         if (closed || generation !== current) return;
         model.set("_state", { ...state, revision: input.revision });
@@ -98,15 +102,22 @@ export function initialize(
             definition.imports && definition.url
               ? {
                   source: {
+                    documentKind: definition.documentKind,
                     text: definition.source,
                     url: definition.url,
                     imports: definition.imports,
                   },
                   files,
                 }
-              : { text: definition.source, url: definition.url ?? undefined, files },
+              : {
+                  text: definition.source,
+                  url: definition.url ?? undefined,
+                  documentKind: definition.documentKind,
+                  files,
+                },
+            { signal: operation.signal },
           );
-          if (closed) {
+          if (closed || generation !== current) {
             loaded.close();
             return;
           }
@@ -131,6 +142,7 @@ export function initialize(
         publish({ ...empty, queries, diagnostics, status: "loading" });
         const result = await loaded.query(input.query ?? undefined).run({
           givens: givens(input),
+          signal: operation.signal,
         });
         publish({
           status: "ready",
@@ -148,6 +160,8 @@ export function initialize(
           diagnostics,
           error: error instanceof Error ? error.message : String(error),
         });
+      } finally {
+        if (active === operation) active = undefined;
       }
     };
     const drain = async () => {
@@ -164,6 +178,7 @@ export function initialize(
     };
     const update = () => {
       const current = ++generation;
+      active?.abort();
       pending = undefined;
       const input = model.get("_input");
       const definition = model.get("_definition");
@@ -177,6 +192,7 @@ export function initialize(
     return async () => {
       closed = true;
       generation++;
+      active?.abort();
       pending = undefined;
       releaseModel();
       lifetime.abort();

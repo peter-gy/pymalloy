@@ -3,35 +3,39 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from urllib.parse import urlsplit
 
 import anywidget
 import traitlets as t
+from msgspec import to_builtins
 
+from pymalloy._connection import DEFAULT_CONNECTION
 from pymalloy._draft import Draft
 from pymalloy._givens import encode_givens
-from pymalloy._snapshot import snapshot
+from pymalloy._snapshot import freeze
 from pymalloy._source import ModelSource
 from pymalloy.browser import Runtime
 
 
-class _Snapshot(t.Dict):
-    def get(self, obj: Any, cls: Any = None) -> dict[str, Any]:
-        return snapshot(cast(dict[str, Any], super().get(obj, cls)))
+class _ImmutableMapping(t.Instance):
+    def validate(self, obj: Any, value: Any) -> Mapping[str, Any]:
+        return freeze(super().validate(obj, value))
 
 
-def _empty_state(status: str = "idle") -> dict[str, Any]:
-    return {
-        "status": status,
-        "result": None,
-        "queries": [],
-        "sql": None,
-        "columns": [],
-        "rows": [],
-        "error": None,
-        "diagnostics": [],
-    }
+def _empty_state(status: str = "idle") -> Mapping[str, Any]:
+    return freeze(
+        {
+            "status": status,
+            "result": None,
+            "queries": [],
+            "sql": None,
+            "columns": [],
+            "rows": [],
+            "error": None,
+            "diagnostics": [],
+        }
+    )
 
 
 def _json_value(value: Any) -> Any:
@@ -39,10 +43,14 @@ def _json_value(value: Any) -> Any:
         return value
     if isinstance(value, float) and math.isfinite(value):
         return value
-    if isinstance(value, list):
-        return [_json_value(item) for item in value]
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _json_value(item)
+        return value
     if isinstance(value, Mapping) and all(isinstance(key, str) for key in value):
-        return {key: _json_value(item) for key, item in value.items()}
+        for item in value.values():
+            _json_value(item)
+        return value
     raise t.TraitError("Givens must contain finite JSON values with string keys")
 
 
@@ -62,11 +70,11 @@ class MalloyWidget(anywidget.AnyWidget):
 
     Assign `source`, `query`, `givens`, or `files` to run an updated model.
     Files map virtual names to UTF-8 text, bytes, or `{"url": "https://..."}`.
-    `files` and `givens` return detached mappings. Assign a complete mapping
-    to apply an update.
-    `state` returns a detached snapshot with status, queries, SQL, columns, rows,
-    diagnostics with source locations, and an error message. Observe `state`
-    to receive browser result updates.
+    `files`, `givens`, and `state` are recursively read-only mappings. Sequences
+    are tuples. Assign a complete input mapping to apply an update.
+    `state` contains status, queries, SQL, columns, rows, diagnostics with source
+    locations, and an error message. Observe `state` to receive immutable result
+    snapshots that stay valid after later updates.
     """
 
     _esm = Path(__file__).with_name("_assets") / "widget.js"
@@ -74,10 +82,11 @@ class MalloyWidget(anywidget.AnyWidget):
 
     source = t.Union([t.Unicode(), t.Instance(ModelSource), t.Instance(Draft)])
     query = t.Unicode(default_value=None, allow_none=True).tag(sync=True)
-    givens = _Snapshot(default_value={})
-    files = _Snapshot(default_value={})
+    connection_name = t.Unicode(default_value=DEFAULT_CONNECTION, read_only=True)
+    givens = _ImmutableMapping(Mapping, default_value=freeze({}))
+    files = _ImmutableMapping(Mapping, default_value=freeze({}))
     runtime = t.Instance(Runtime, default_value=None, allow_none=True, read_only=True)
-    state = _Snapshot(default_value=_empty_state(), read_only=True)
+    state = _ImmutableMapping(Mapping, default_value=_empty_state(), read_only=True)
     _runtime = t.Dict(default_value=None, allow_none=True, read_only=True).tag(
         sync=True
     )
@@ -97,12 +106,15 @@ class MalloyWidget(anywidget.AnyWidget):
         query: str | None = None,
         givens: Mapping[str, Any] | None = None,
         runtime: Runtime | None = None,
+        connection_name: str = DEFAULT_CONNECTION,
     ) -> None:
         self._initializing = True
         self._closed = False
         self._revision = 0
         self._definition_revision = 0
         self._accepted_wire: dict[str, Any] | None = None
+        if not isinstance(connection_name, str) or not connection_name:
+            raise t.TraitError("connection_name must be a nonempty string")
         for name, value in (("files", files), ("givens", givens)):
             if value is not None and not isinstance(value, Mapping):
                 raise t.TraitError(f"{name} must be a mapping")
@@ -112,6 +124,7 @@ class MalloyWidget(anywidget.AnyWidget):
             query=query,
             givens=dict(givens) if givens is not None else {},
         )
+        self.set_trait("connection_name", connection_name)
         self.set_trait("runtime", runtime)
         self.set_trait("_runtime", runtime._bundles() if runtime is not None else None)
         self._initializing = False
@@ -161,7 +174,7 @@ class MalloyWidget(anywidget.AnyWidget):
                     raise t.TraitError(
                         "Files must contain UTF-8 text, bytes, or URL descriptors"
                     )
-            return result
+            return freeze(result)
         return value
 
     @t.observe("source", "query", "files", "givens")
@@ -177,7 +190,10 @@ class MalloyWidget(anywidget.AnyWidget):
             if definition_changed:
                 self._definition_revision += 1
                 source = self.source
-                files = self.files
+                files = {
+                    name: dict(item) if isinstance(item, Mapping) else item
+                    for name, item in self.files.items()
+                }
                 if isinstance(source, Draft):
                     for captured in source.inputs:
                         files[captured.reference] = (
@@ -187,12 +203,16 @@ class MalloyWidget(anywidget.AnyWidget):
                     "_definition",
                     {
                         "revision": self._definition_revision,
+                        "connectionName": self.connection_name,
                         "source": source.text
                         if isinstance(source, (ModelSource, Draft))
                         else source,
                         "url": source.url
                         if isinstance(source, (ModelSource, Draft))
                         else None,
+                        "documentKind": source.document_kind
+                        if isinstance(source, (ModelSource, Draft))
+                        else "model",
                         "imports": dict(source.imports)
                         if isinstance(source, (ModelSource, Draft))
                         and source.imports is not None
@@ -218,7 +238,7 @@ class MalloyWidget(anywidget.AnyWidget):
         if type(wire.get("revision")) is not int:
             raise t.TraitError("Browser state revision must be an integer")
         decoded = _decode_state(wire)
-        accepted = snapshot(wire)
+        accepted = to_builtins(wire)
         self._decoded_state = decoded
         self._accepted_wire = accepted
         return accepted
@@ -231,14 +251,6 @@ class MalloyWidget(anywidget.AnyWidget):
             and change.new.get("revision") == self._revision
         ):
             self.set_trait("state", self._decoded_state)
-
-    def notify_change(self, change: t.Bunch) -> None:
-        if change.name in {"state", "files", "givens"}:
-            change = t.Bunch(change)
-            if change.old is not t.Undefined:
-                change.old = snapshot(change.old)
-            change.new = snapshot(change.new)
-        super().notify_change(change)
 
     def close(self) -> None:
         """Close the widget and release its browser connection."""

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import type { AnyModel } from "@anywidget/types";
-import { ToolingError } from "@malloy-runtime/compiler";
+import { ToolingError, type QueryOptions } from "@malloy-runtime/compiler";
 import { initialize as initializeWith } from "../src/initialize";
 import type { Definition, Diagnostic, Input, State, WidgetModel } from "../src/protocol";
 
@@ -35,7 +35,16 @@ class Widget implements AnyModel<WidgetModel> {
           ? null
           : { revision: 1, definitionRevision: 1, query: null, givens: {}, ...input },
       _definition:
-        input === null ? null : { revision: 1, source: "run: example", files: {}, ...input },
+        input === null
+          ? null
+          : {
+              revision: 1,
+              source: "run: example",
+              documentKind: "model",
+              connectionName: "duckdb",
+              files: {},
+              ...input,
+            },
       _runtime: null,
       _state: null,
     };
@@ -74,6 +83,8 @@ class Widget implements AnyModel<WidgetModel> {
     if (changed)
       this.set("_definition", {
         source: definition?.source ?? "run: example",
+        documentKind: definition?.documentKind ?? "model",
+        connectionName: definition?.connectionName ?? "duckdb",
         files: definition?.files ?? {},
         ...input,
         revision: definitionRevision,
@@ -114,7 +125,7 @@ function result(sql = "SELECT 1") {
   };
 }
 function model(queries = ["run:0"], diagnostics: Diagnostic[] = []) {
-  const run = vi.fn(async () => result());
+  const run = vi.fn(async (_options: QueryOptions = {}) => result());
   return {
     queries: queries.map((name) => ({
       name,
@@ -173,11 +184,15 @@ test("a later input owns the published result while earlier work finishes", asyn
     widget.saved.filter((state) => state.status === "ready").map((state) => state.result?.sql),
   ).toEqual(["SELECT 'new'"]);
   expect(runtime.model).toHaveBeenCalledTimes(2);
-  expect(runtime.model).toHaveBeenLastCalledWith({
-    text: "run: newest",
-    files: {},
-    url: undefined,
-  });
+  expect(runtime.model).toHaveBeenLastCalledWith(
+    {
+      text: "run: newest",
+      documentKind: "model",
+      files: {},
+      url: undefined,
+    },
+    { signal: expect.any(AbortSignal) },
+  );
   expect(newModel.close).not.toHaveBeenCalled();
 });
 
@@ -212,7 +227,10 @@ test("selector and given updates reuse the model and coalesce pending work", asy
   expect(runtime.model).toHaveBeenCalledTimes(1);
   expect(loaded.run).toHaveBeenCalledTimes(2);
   expect(loaded.query).toHaveBeenLastCalledWith("selected");
-  expect(loaded.run).toHaveBeenLastCalledWith({ givens: { threshold: 2 } });
+  expect(loaded.run).toHaveBeenLastCalledWith({
+    givens: { threshold: 2 },
+    signal: expect.any(AbortSignal),
+  });
   expect(
     widget.saved.filter((state) => state.status === "ready").map((state) => state.revision),
   ).toEqual([3]);
@@ -228,15 +246,29 @@ test("a definition can arrive after the input that references it", async () => {
   expect(create).not.toHaveBeenCalled();
   expect(widget.saved).toEqual([]);
   widget.set("_input", { revision: 1, definitionRevision: 3, query: null, givens: {} });
-  widget.set("_definition", { revision: 2, source: "run: obsolete", files: {} });
-  expect(create).not.toHaveBeenCalled();
-  widget.set("_definition", { revision: 3, source: "run: current", files: {} });
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
-  expect(runtime.model).toHaveBeenCalledExactlyOnceWith({
-    text: "run: current",
+  widget.set("_definition", {
+    revision: 2,
+    source: "run: obsolete",
+    documentKind: "model",
     files: {},
-    url: undefined,
   });
+  expect(create).not.toHaveBeenCalled();
+  widget.set("_definition", {
+    revision: 3,
+    source: "run: current",
+    documentKind: "model",
+    files: {},
+  });
+  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  expect(runtime.model).toHaveBeenCalledExactlyOnceWith(
+    {
+      text: "run: current",
+      documentKind: "model",
+      files: {},
+      url: undefined,
+    },
+    { signal: expect.any(AbortSignal) },
+  );
 });
 
 test("cleanup aborts initialization and detaches input updates", async () => {
@@ -282,7 +314,7 @@ test("query choices support selection and recovery after a failed query", async 
   widget.update({ query: "orders.detail" });
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
   expect(loaded.query).toHaveBeenLastCalledWith("orders.detail");
-  expect(loaded.run).toHaveBeenLastCalledWith({ givens: {} });
+  expect(loaded.run).toHaveBeenLastCalledWith({ givens: {}, signal: expect.any(AbortSignal) });
   expect(widget.get("_state")?.result?.data).toEqual(result().malloy.data);
   expect(widget.get("_state")?.error).toBeNull();
 });
@@ -351,4 +383,26 @@ test("model revisions publish warnings, located errors, and recovered results", 
     error: null,
     result: { sql: "SELECT 1" },
   });
+});
+
+test("new input aborts an active query and publishes the replacement", async () => {
+  const loaded = model();
+  loaded.run.mockImplementationOnce(
+    ({ signal }) =>
+      new Promise((_resolve, reject) => {
+        signal!.addEventListener("abort", () => reject(signal!.reason), { once: true });
+      }),
+  );
+  const runtime = session(loaded);
+  create.mockResolvedValue(runtime);
+  const widget = new Widget();
+  await initialize(widget);
+  await vi.waitFor(() => expect(loaded.run).toHaveBeenCalledTimes(1));
+  widget.update({ givens: { threshold: { type: "number", value: 2 } } });
+  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  expect(widget.get("_state")?.revision).toBe(2);
+  expect(runtime.model).toHaveBeenCalledTimes(1);
+  expect(
+    widget.saved.filter((state) => state.status === "ready").map((state) => state.revision),
+  ).toEqual([2]);
 });
