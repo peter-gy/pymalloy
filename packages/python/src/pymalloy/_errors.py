@@ -11,9 +11,9 @@ class CompilationError(Exception):
         self.diagnostics = tuple(diagnostics)
 
 
-class SessionError(RuntimeError):
-    """The session is closed or its Deno bridge is unavailable."""
+class ModelError(RuntimeError):
+    """The model is closed or its compiler is unavailable."""
 
 
-class BridgeError(SessionError):
-    """The Deno process or protocol failed."""
+class SchemaError(RuntimeError):
+    """The data engine could not describe a compiler schema request."""
