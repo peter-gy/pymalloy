@@ -8,6 +8,7 @@ from urllib.parse import unquote, urlsplit
 
 from pymalloy._errors import CompilationError, ModelError, SchemaError
 from pymalloy._records import CompileError, CompileNeeds, ParseReady, ParseReport
+from pymalloy._source import read_text
 
 from .process import Process
 
@@ -47,7 +48,7 @@ class Compiler:
             parsed = urlsplit(url)
             if parsed.scheme != "file" or parsed.netloc not in {"", "localhost"}:
                 raise ValueError(f"Import '{url}' must be a local file")
-            return Path(unquote(parsed.path)).read_text(encoding="utf-8")
+            return read_text(Path(unquote(parsed.path)))
 
         while True:
             check_deadline()
