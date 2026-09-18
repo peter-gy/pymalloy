@@ -7,24 +7,24 @@ function isNode(part: string | SyntaxNode): part is SyntaxNode {
 }
 
 function text(node: SyntaxNode): string {
-  if (node.type === "scalar") return node.source;
+  if (node.type !== "syntax") return node.source;
   return node.parts.map((part) => (isNode(part) ? text(part) : part)).join("");
 }
 
 function children(node: SyntaxNode): SyntaxNode[] {
-  return node.type === "scalar" ? [] : node.parts.filter(isNode);
+  return node.type === "syntax" ? node.parts.filter(isNode) : [];
 }
 
 function expression(node: SyntaxNode): SyntaxNode {
   const values = children(node).filter(
-    (part) => part.type === "scalar" || part.kind === "expression",
+    (part) => part.type !== "syntax" || part.kind === "expression",
   );
   expect(values).toHaveLength(1);
   return values[0];
 }
 
 function name(node: SyntaxNode): string | null {
-  return node.type === "scalar" ? null : node.name;
+  return node.type === "syntax" ? node.name : null;
 }
 
 function scalarValue(node: SyntaxNode): Scalar {
@@ -36,8 +36,10 @@ function replaceText(node: SyntaxNode, source: string): void {
   if (node.type === "scalar") {
     node.source = source;
     node.scalar = { kind: "raw", code: source };
-  } else {
+  } else if (node.type === "syntax") {
     node.parts = [source];
+  } else {
+    node.source = source;
   }
 }
 
@@ -375,4 +377,39 @@ test("where, having, and join predicates retain their named owner and exact surr
   ).toEqual(["field", "clause"]);
   replaceText(children(sourceWhere)[0], "value > 1");
   expect(text(syntax)).toBe(source.replace("where: value > 0,", "where: value > 1,"));
+});
+
+test("native table leaves preserve file identity and authored spelling across scopes", () => {
+  const source = [
+    "// 😀 a code point before the table",
+    "source: orders is duckdb.table('orders.parquet') extend {",
+    "  join_one: other is warehouse.table('schema.other') on id = other.id",
+    "}",
+    'run: duckdb.table("inline.parquet") -> {select: *}',
+  ].join("\r\n");
+  const projected = syntaxSource(source);
+  expect(text(projected)).toBe(source);
+  function tables(node: SyntaxNode): SyntaxNode[] {
+    return node.type === "table" ? [node] : children(node).flatMap(tables);
+  }
+  expect(tables(projected)).toEqual([
+    {
+      type: "table",
+      connection: "duckdb",
+      path: "orders.parquet",
+      source: "duckdb.table('orders.parquet')",
+    },
+    {
+      type: "table",
+      connection: "warehouse",
+      path: "schema.other",
+      source: "warehouse.table('schema.other')",
+    },
+    {
+      type: "table",
+      connection: "duckdb",
+      path: "inline.parquet",
+      source: 'duckdb.table("inline.parquet")',
+    },
+  ]);
 });

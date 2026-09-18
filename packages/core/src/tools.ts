@@ -1,3 +1,4 @@
+import { tableReferences } from "./tables.js";
 import { Malloy, MalloyTranslator, Parse } from "@malloydata/malloy";
 import type { ParserRuleContext } from "antlr4ts";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
@@ -93,10 +94,10 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
     children: value.children.map(symbol),
   });
   const symbols = parsed.symbols.map(symbol);
-  const tables = parsed.tablePathInfo.map((table) => ({
-    connection: table.connectionId,
-    path: table.tablePath,
-    range: table.range.toJSON(),
+  const tables = tableReferences(translator).map(({ connection, path, range }) => ({
+    connection,
+    path,
+    range,
   }));
   const completions = options.position
     ? parsed.completions(options.position).map((value) => ({

@@ -3,9 +3,18 @@ import type { ParserRuleContext } from "antlr4ts";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
 import { diagnostics, ToolingError } from "./diagnostics.js";
 import { identifierText, scalarExpression, type Scalar } from "./scalar.js";
+import { tableReferences } from "./tables.js";
 
 /** Lossless authored syntax. Strings retain all syntax outside editable bindings. */
-export type SyntaxNode = ConcreteSyntax | ScalarSyntax;
+export type SyntaxNode = ConcreteSyntax | ScalarSyntax | TableSyntax;
+
+/** A native table source, retaining its exact spelling and resolved reference. */
+export interface TableSyntax {
+  type: "table";
+  source: string;
+  connection: string;
+  path: string;
+}
 
 export interface ConcreteSyntax {
   type: "syntax";
@@ -97,6 +106,7 @@ export function syntaxSource(
   const bindings = new Set<ParserRuleContext>();
   const opaque = new Set<ParserRuleContext>();
   const scalarExpressions = new Map<Span, ParserRuleContext>();
+  const tables = new Map<Span, TableSyntax>();
 
   function bind(
     context: ParserRuleContext,
@@ -216,7 +226,26 @@ export function syntaxSource(
     parsed.parse.root,
   );
 
+  for (const table of tableReferences(translator)) {
+    const { start, end } = table;
+    let owner = root;
+    let child;
+    while ((child = owner.children.find((value) => value.start <= start && value.end >= end))) {
+      owner = child;
+    }
+    const span: Span = { kind: "expression", name: null, start, end, children: [] };
+    owner.children.push(span);
+    tables.set(span, {
+      type: "table",
+      source: characters.slice(start, end).join(""),
+      connection: table.connection,
+      path: table.path,
+    });
+  }
+
   function project(span: Span): SyntaxNode {
+    const table = tables.get(span);
+    if (table) return table;
     const expression = scalarExpressions.get(span);
     if (expression && !span.children.length) {
       return {

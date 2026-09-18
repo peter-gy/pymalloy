@@ -8,7 +8,13 @@ export {
   type SymbolInfo,
 } from "./tools.js";
 export { ToolingError } from "./diagnostics.js";
-export { syntaxSource, type SyntaxNode, type ConcreteSyntax, type ScalarSyntax } from "./syntax.js";
+export {
+  syntaxSource,
+  type SyntaxNode,
+  type ConcreteSyntax,
+  type ScalarSyntax,
+  type TableSyntax,
+} from "./syntax.js";
 export type {
   Scalar,
   ScalarField,
