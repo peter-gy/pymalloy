@@ -299,7 +299,17 @@ test("source-only models stay idle until a query is added", async () => {
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
 });
 
-test("compiler diagnostics retain their locations and clear after source recovery", async () => {
+test("model revisions publish warnings, located errors, and recovered results", async () => {
+  const warning: Diagnostic = {
+    code: "deprecated-syntax",
+    severity: "warning",
+    message: "Use the current source syntax",
+    location: null,
+    replacement: "source: orders",
+    data: null,
+    errorTag: null,
+  };
+
   const diagnostic = {
     code: "source-or-query-not-found",
     severity: "error" as const,
@@ -314,31 +324,31 @@ test("compiler diagnostics retain their locations and clear after source recover
   };
   const error = new ToolingError(diagnostic.message, [diagnostic]);
   const runtime = session();
-  runtime.model.mockRejectedValueOnce(error).mockResolvedValueOnce(model());
+  runtime.model
+    .mockResolvedValueOnce(model(["run:0"], [warning]))
+    .mockRejectedValueOnce(error)
+    .mockResolvedValueOnce(model());
   create.mockResolvedValue(runtime);
-  const widget = new Widget({ source: "run: missing_source" });
-  await initialize(widget);
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("error"));
-  expect(widget.get("_state")?.diagnostics).toEqual([diagnostic]);
-  widget.update({ source: "run: recovered" });
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
-  expect(widget.get("_state")?.diagnostics).toEqual([]);
-});
-
-test("successful model diagnostics accompany the query result", async () => {
-  const warning: Diagnostic = {
-    code: "deprecated-syntax",
-    severity: "warning",
-    message: "Use the current source syntax",
-    location: null,
-    replacement: "source: orders",
-    data: null,
-    errorTag: null,
-  };
-  create.mockResolvedValue(session(model(["run:0"], [warning])));
   const widget = new Widget();
   await initialize(widget);
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
-  expect(widget.get("_state")?.diagnostics).toEqual([warning]);
-  expect(widget.get("_state")?.error).toBeNull();
+  expect(widget.get("_state")).toMatchObject({
+    diagnostics: [warning],
+    error: null,
+    result: { sql: "SELECT 1" },
+  });
+  widget.update({ source: "run: missing_source" });
+  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("error"));
+  expect(widget.get("_state")).toMatchObject({
+    diagnostics: [diagnostic],
+    error: diagnostic.message,
+    result: null,
+  });
+  widget.update({ source: "run: recovered" });
+  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  expect(widget.get("_state")).toMatchObject({
+    diagnostics: [],
+    error: null,
+    result: { sql: "SELECT 1" },
+  });
 });
