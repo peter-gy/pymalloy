@@ -70,7 +70,7 @@ def validate(
         results = []
         for name, query in selected:
             try:
-                result = model.query(malloy="run: " + query.text).preview(
+                result = model.query(query).preview(
                     limit=1, givens=givens, timeout=remaining()
                 )
                 results.append(

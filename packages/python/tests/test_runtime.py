@@ -390,7 +390,7 @@ def test_one_shot_failure_preserves_the_borrowed_connection():
 
 def test_model_rejects_ambiguous_query_selection():
     model = pm.model(ONE)
-    with pytest.raises(ValueError, match="query name or Malloy text"):
+    with pytest.raises(ValueError, match="query selection or Malloy text"):
         model.query("run:0", malloy=ONE).run().polars()
     with pytest.raises(ValueError, match="Choose a query"):
         model.query("missing").run().polars()

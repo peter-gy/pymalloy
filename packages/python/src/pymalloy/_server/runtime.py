@@ -24,6 +24,7 @@ from pymalloy._records import (
 )
 from pymalloy._selection import query_names
 from pymalloy._source import ModelSource, resolve_source
+from pymalloy._syntax import Fragment
 from pymalloy.analysis import (
     CheckReport,
     Inspection,
@@ -253,20 +254,28 @@ class Model:
                 request, response_type, deadline=deadline, imports=self._imports
             )
 
-    def query(self, name: str | None = None, *, malloy: str | None = None) -> Query:
+    def query(
+        self, selection: str | Fragment | None = None, *, malloy: str | None = None
+    ) -> Query:
         self._owner._check_open()
-        if name is not None and not isinstance(name, str):
-            raise TypeError("Query name must be a string")
+        if selection is not None and not isinstance(selection, (str, Fragment)):
+            raise TypeError("Query selection must be a name or source/query fragment")
         if malloy is not None and not isinstance(malloy, str):
             raise TypeError("malloy must be query text")
-        if name is not None and malloy is not None:
-            raise ValueError("Choose a query name or Malloy text")
+        if selection is not None and malloy is not None:
+            raise ValueError("Choose a query selection or Malloy text")
+        if isinstance(selection, Fragment):
+            if selection.kind != "expression":
+                raise TypeError("Query selection requires a source/query expression")
+            malloy = "run: " + selection.text
+            selection = None
         if malloy is not None:
             return Query(
                 self,
                 QueryDescriptor(name="query", kind="run", location=None),
                 {"malloy": malloy},
             )
+        name = selection
         if name is None:
             runs = [q for q in self.queries if q.kind == "run"]
             name = (
