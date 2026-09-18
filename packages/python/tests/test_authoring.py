@@ -72,6 +72,10 @@ def test_composable_model_joins_parameters_and_reusable_query_clauses():
         assert runtime.query("report").run(givens={"minimum": 10}).rows() == [
             {"id": 2, "doubled": 40, "region_name": None}
         ]
+        assert (
+            runtime.query(pm.ref("orders").pipe(grouped)).run().rows()
+            == runtime.query("totals").run().rows()
+        )
         assert runtime.query("totals").run().rows() == [
             {"region": "S", "revenue": 20},
             {"region": "N", "revenue": 10},
@@ -538,3 +542,43 @@ source: orders is duckdb.sql('SELECT 1 id, 12 amount') extend {
     assert "Mean line amount in USD." in revised.text
     assert not revised.check().diagnostics
 
+
+def test_python_emission_uses_composable_constructors_and_keeps_opaque_trivia(tmp_path):
+    reusable = pm.query(pm.group_by(pm.col("region")), pm.aggregate(pm.col("revenue")))
+    candidate = (
+        pm.draft()
+        .define(orders=orders())
+        .define(north=pm.ref("orders").extend(pm.where(pm.col("region") == "N")))
+        .queries(summary=pm.ref("north").pipe(reusable))
+    )
+    generated = candidate.to_python()
+    assert ".define(" in generated and ".queries(" in generated
+    assert "pm.measure(" in generated and "pm.query(" in generated
+    for draft in [
+        candidate,
+        pm.draft("\n").append(*candidate.syntax.parts),
+        pm.read_model("// authored trivia\r\n" + candidate.text),
+    ]:
+        emitted = tmp_path / "model.py"
+        emitted.write_text(draft.to_python())
+        restored = runpy.run_path(str(emitted))["model"]
+        # Canonical scalar spelling is allowed, but every surrounding token must stay.
+        assert restored.text == draft.text
+        restored = restored.define(
+            north=pm.ref("orders").extend(pm.where(pm.col("region") == "S"))
+        )
+        runtime = restored.compile()
+        try:
+            assert runtime.query("summary").run().rows() == [
+                {"region": "S", "revenue": 20}
+            ]
+        finally:
+            runtime.close()
+
+
+def test_python_emission_preserves_authored_string_escape_spelling(tmp_path):
+    source = r"""source: values is duckdb.sql("SELECT '\u0041' AS value")"""
+    candidate = pm.read_model(source)
+    path = tmp_path / "literal.py"
+    path.write_text(candidate.to_python())
+    assert runpy.run_path(str(path))["model"].text == source
