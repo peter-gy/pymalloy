@@ -1,3 +1,4 @@
+import { connection } from "./schema";
 import { API, sourceDefToSourceInfo } from "@malloydata/malloy";
 import type {
   Result as MalloyResult,
@@ -13,6 +14,7 @@ export function stableResult(
   columns: Column[],
   rows: Row[],
   template?: MalloyResult,
+  connectionName = connection.name,
 ): MalloyResult {
   const schema: Schema =
     template?.schema ??
@@ -20,8 +22,8 @@ export function stableResult(
       type: "table",
       name: "result",
       tablePath: "result",
-      connection: "duckdb",
-      dialect: "duckdb",
+      connection: connectionName,
+      dialect: connection.dialect,
       fields: fields(columns),
     }).schema;
   // Patch the owned cell tree in place to retain exact text without duplicating every row.
@@ -70,5 +72,11 @@ export function stableResult(
       }
     }
   }
-  return { ...template, connection_name: template?.connection_name ?? "duckdb", schema, sql, data };
+  return {
+    ...template,
+    connection_name: template?.connection_name ?? connectionName,
+    schema,
+    sql,
+    data,
+  };
 }

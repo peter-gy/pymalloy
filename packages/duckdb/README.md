@@ -4,7 +4,8 @@ Shared DuckDB type conversion, native search-path statements, Arrow materializat
 and Malloy stable result serialization for the Node, browser and Python hosts.
 
 `drive(job, host)` fulfils compiler needs with `host.readURL(url)` and
-`host.describe(sql)`. `fields(columns)` converts DuckDB column types to Malloy
+`host.describe(sql)`. The helper builds DuckDB DESCRIBE statements from table or
+SQL schema needs. `fields(columns)` converts DuckDB column types to Malloy
 field definitions. Runtime hosts own connections and execute queries.
 
 Arrow consumers import `materialize` from `@malloy-runtime/duckdb/arrow` and
