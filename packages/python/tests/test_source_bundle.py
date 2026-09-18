@@ -1,4 +1,6 @@
+import hashlib
 import json
+import runpy
 import shutil
 
 import duckdb
@@ -21,7 +23,7 @@ def test_validated_bundle_relocates_imports_and_data_and_replays_exact_parameter
         )
     base_url = "https://example.test/models/base?revision=7"
     main_url = "https://example.test/models/reports/report"
-    base = pm.draft().define(
+    base = pm.draft("// 🌈 source identity\r\n").define(
         orders=pm.table(data).extend(pm.measure(revenue=pm.col("amount").sum()))
     )
     source = pm.ModelSource(
@@ -34,18 +36,22 @@ query: total is items -> {where: amount > $cutoff aggregate: revenue}
 """,
         {base_url: base.text},
     )
-    report = pm.read_model(source).validate()
+    report = pm.read_model(source).validate(givens={"cutoff": 15})
     report.require_valid()
     written = bundle(
-        report.source,
+        report,
         tmp_path / "export",
         files={data: data},
         query="total",
-        givens={"cutoff": 15},
     )
     manifest = json.loads(written.manifest.read_text())
-    assert manifest["files"][0]["sha256"]
-    assert "items is orders" in written.model.read_text()
+    copied = manifest["files"][0]
+    assert (
+        copied["sha256"]
+        == hashlib.sha256(
+            (written.model.parent / copied["path"]).read_bytes()
+        ).hexdigest()
+    )
     assert "🌈 preserved attribution" in written.model.read_text()
     shutil.rmtree(originals)
     relocated = tmp_path / "relocated"
@@ -60,7 +66,19 @@ query: total is items -> {where: amount > $cutoff aggregate: revenue}
         assert model.query(manifest["query"]).run(givens=manifest["givens"]).rows() == [
             {"revenue": 20}
         ]
-        assert all(url.startswith(relocated.as_uri()) for url in model.source().imports)
+        assert set(model.source().imports) == {
+            (relocated / record["path"]).as_uri()
+            for record in manifest["sources"]
+            if record["path"] != "model.malloy"
+        }
+    finally:
+        model.close()
+    restored = runpy.run_path(str(relocated / "model.py"))["model"]
+    model = restored.compile(data_root=relocated / manifest["data_root"])
+    try:
+        assert model.query("total").run(givens=manifest["givens"]).rows() == [
+            {"revenue": 20}
+        ]
     finally:
         model.close()
 

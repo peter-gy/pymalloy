@@ -17,11 +17,15 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
+from pymalloy._draft import Draft
 from pymalloy._errors import CompilationError
 from pymalloy._givens import encode_givens, given_values
-from pymalloy._records import FormatReady
+from pymalloy._records import FormatReady, SyntaxReady
 from pymalloy._source import ModelSource
-from pymalloy.authoring import _table_path, table
+from pymalloy._syntax import Fragment, from_wire
+from pymalloy._table import table_path
+from pymalloy.authoring import table
+from pymalloy.validation import Validation
 
 
 @dataclass(frozen=True)
@@ -39,7 +43,7 @@ def _hash(path: Path) -> str:
 
 
 def bundle(
-    source: ModelSource,
+    source: ModelSource | Validation,
     directory: str | Path,
     *,
     files: Mapping[str | Path, str | Path] | None = None,
@@ -48,7 +52,7 @@ def bundle(
     format: bool = True,
     timeout: float = 120,
 ) -> SourceBundle:
-    """Write a closed Malloy source graph and explicit file bindings to a new directory.
+    """Write a validated program or closed source graph to a new directory.
 
     Binding keys match table paths (use a Path key for a table created from a Path).
     Relative string keys also expose files to SQL readers through file_search_path.
@@ -57,8 +61,36 @@ def bundle(
     """
     from pymalloy._server.compiler import Compiler
 
+    accepted = source if isinstance(source, Validation) else None
+    managed = []
+    declared_files = dict(files or {})
+    explicit_references = {table_path(key) for key in declared_files}
+    if accepted is not None:
+        accepted.require_valid()
+        if query is not None and query not in accepted.queries:
+            raise ValueError(f"Query {query!r} is not in the validated model")
+        if givens is not None and encode_givens(givens) != encode_givens(
+            accepted.givens
+        ):
+            raise ValueError(
+                "Export parameters differ from validation; validate the requested bindings first"
+            )
+        givens = accepted.givens
+        source = accepted.source
+        for captured in accepted.draft.inputs:
+            artifact = captured.materialize()
+            if _hash(artifact.path) != artifact.sha256:
+                raise ValueError(
+                    f"Captured input {captured.name!r} changed after materialization"
+                )
+            if table_path(artifact.path) in explicit_references:
+                raise ValueError(
+                    "Explicit files cannot replace captured dataframe inputs"
+                )
+            declared_files[artifact.path] = artifact.path
+            managed.append((captured, artifact))
     if not isinstance(source, ModelSource):
-        raise TypeError("bundle requires a closed ModelSource snapshot")
+        raise TypeError("bundle requires a Validation or closed ModelSource snapshot")
     if type(format) is not bool:
         raise TypeError("format must be a boolean")
     if not math.isfinite(timeout) or timeout <= 0:
@@ -85,17 +117,23 @@ def bundle(
     }
     inputs = []
     bindings: dict[str, str] = {}
-    aliases = set()
-    for key, value in (files or {}).items():
+    managed_hashes = {
+        table_path(artifact.path): artifact.sha256 for _, artifact in managed
+    }
+    aliases: dict[str, str | None] = {}
+    for key, value in declared_files.items():
         if not isinstance(key, (str, Path)) or not str(key):
             raise TypeError("File bindings require string or Path keys")
         path = Path(value).resolve(strict=True)
         if not path.is_file():
             raise ValueError(f"File binding is not a regular file: {path}")
         # Reuse the authoring API's distinction between file Paths and catalog strings.
-        reference = _table_path(key)
+        reference = table_path(key)
         alias = PurePosixPath(str(key))
-        if (
+        digest = managed_hashes.get(reference)
+        if digest is not None:
+            alias = PurePosixPath("inputs") / (digest + ".parquet")
+        elif (
             not isinstance(key, str)
             or alias.is_absolute()
             or ".." in alias.parts
@@ -106,9 +144,12 @@ def bundle(
             alias = PurePosixPath("__files__") / (
                 hashlib.sha256(reference.encode()).hexdigest() + path.suffix
             )
-        if str(alias) in {"", "."} or str(alias).casefold() in aliases:
+        key_alias = str(alias).casefold()
+        if str(alias) in {"", "."} or (
+            key_alias in aliases and (digest is None or aliases[key_alias] != digest)
+        ):
             raise ValueError(f"File bindings have a colliding destination: {key}")
-        aliases.add(str(alias).casefold())
+        aliases[key_alias] = digest
         if reference in bindings:
             raise ValueError(f"Duplicate table binding: {reference}")
         bindings[reference] = str(alias)
@@ -180,11 +221,34 @@ def bundle(
             pieces.append(text[cursor:])
             text = "".join(pieces)
             documents.append((url, original, destination, text))
+        syntax = from_wire(
+            compiler.request(
+                {
+                    "op": "syntax",
+                    "source": documents[0][3],
+                    "url": "memory://bundle/model.malloy",
+                },
+                SyntaxReady,
+                describe=lambda sql: [],
+                deadline=deadline,
+            ).syntax
+        )
+        if not isinstance(syntax, Fragment):
+            raise TypeError("Compiler returned a scalar for a model document")
+        python_model = Draft(
+            syntax,
+            "memory://bundle/model.malloy",
+            {
+                f"memory://bundle/{destination}": text
+                for _, _, destination, text in documents[1:]
+            },
+        ).to_python()
 
     with tempfile.TemporaryDirectory(prefix=".pymalloy-", dir=target.parent) as staging:
         staged = Path(staging) / "bundle"
         staged.mkdir()
         (staged / "data").mkdir()
+        (staged / "model.py").write_text(python_model)
         model_records = []
         for url, original, destination, text in documents:
             output = staged / destination
@@ -200,19 +264,41 @@ def bundle(
                 }
             )
         file_records = []
+        copied_hashes = {}
+        files_by_reference = {}
         for path, alias, reference in inputs:
             output = staged / "data" / alias
             output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, output)
-            file_records.append(
+            if alias not in copied_hashes:
+                shutil.copyfile(path, output)
+                copied_hashes[alias] = _hash(output)
+            record = {
+                "reference": reference,
+                "path": str(PurePosixPath("data") / alias),
+                "sha256": copied_hashes[alias],
+            }
+            file_records.append(record)
+            files_by_reference[reference] = record
+        input_records = []
+        for captured, artifact in managed:
+            reference = table_path(artifact.path)
+            copied = files_by_reference[reference]
+            if copied["sha256"] != artifact.sha256:
+                raise ValueError(f"Input {captured.name!r} changed during export")
+            input_records.append(
                 {
-                    "reference": reference,
-                    "path": str(PurePosixPath("data") / alias),
-                    "sha256": _hash(output),
+                    "id": captured.id,
+                    "name": captured.name,
+                    "rows": captured.rows,
+                    "schema": artifact.schema,
+                    "arrow_schema": artifact.arrow_schema,
+                    "snapshot_sha256": captured.fingerprint,
+                    "path": copied["path"],
+                    "sha256": artifact.sha256,
                 }
             )
         manifest = {
-            "format_version": 1,
+            "format_version": 2,
             "compiler_version": parsed.compiler_version,
             "model": "model.malloy",
             "data_root": "data",
@@ -220,7 +306,31 @@ def bundle(
             "givens": parameters,
             "sources": model_records,
             "files": file_records,
+            "inputs": input_records,
+            "validation": {
+                "ok": True,
+                "checks": [
+                    {
+                        "name": check.name,
+                        "status": check.status,
+                        "sql": check.result.sql if check.result else None,
+                    }
+                    for check in accepted.checks
+                ],
+            }
+            if accepted is not None
+            else None,
         }
+        (staged / "replay.py").write_text(
+            '"""Replay the selected query against frozen inputs."""\n'
+            "import json\nfrom pathlib import Path\nimport pymalloy as pm\n\n"
+            "root = Path(__file__).resolve().parent\n"
+            'manifest = json.loads((root / "bundle.json").read_text())\n'
+            'model = pm.model(root / manifest["model"], data_root=root / manifest["data_root"])\n'
+            "try:\n"
+            '    result = model.query(manifest["query"]).run(givens=manifest["givens"])\n'
+            "finally:\n    model.close()\n"
+        )
         (staged / "bundle.json").write_text(
             json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
         )
