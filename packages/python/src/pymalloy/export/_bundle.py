@@ -12,13 +12,14 @@ import time
 from collections.abc import Mapping
 from contextlib import closing
 from dataclasses import dataclass
+from itertools import accumulate
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
 from pymalloy._errors import CompilationError
 from pymalloy._givens import encode_givens, given_values
-from pymalloy._records import FormatReady, SourceRange
+from pymalloy._records import FormatReady
 from pymalloy._source import ModelSource
 from pymalloy.authoring import _table_path, table
 
@@ -35,14 +36,6 @@ class SourceBundle:
 def _hash(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
-
-
-def _offsets(source: str, span: SourceRange) -> tuple[int, int]:
-    lines = source.splitlines(keepends=True)
-    return (
-        sum(len(line) for line in lines[: span.start.line]) + span.start.character,
-        sum(len(line) for line in lines[: span.end.line]) + span.end.character,
-    )
 
 
 def bundle(
@@ -164,20 +157,28 @@ def bundle(
                         json.dumps(relative),
                     )
                 )
+            offsets = list(
+                accumulate((len(line) + 1 for line in text.split("\n")), initial=0)
+            )
             for reference in parsed.tables:
                 if reference.connection == "duckdb" and reference.path in bindings:
-                    start, end = _offsets(text, reference.range)
+                    span = reference.range
+                    start = offsets[span.start.line] + span.start.character
+                    end = offsets[span.end.line] + span.end.character
                     edits.append(
                         (start, end, table(Path(bindings[reference.path])).text)
                     )
-            last = len(text)
-            for start, end, replacement in sorted(edits, reverse=True):
-                if end > last or start < 0 or end < start:
+            cursor = 0
+            pieces = []
+            for start, end, replacement in sorted(edits):
+                if start < cursor or end > len(text) or end < start:
                     raise ValueError(
                         "Compiler source references overlap or are out of range"
                     )
-                text = text[:start] + replacement + text[end:]
-                last = start
+                pieces.extend((text[cursor:start], replacement))
+                cursor = end
+            pieces.append(text[cursor:])
+            text = "".join(pieces)
             documents.append((url, original, destination, text))
 
     with tempfile.TemporaryDirectory(prefix=".pymalloy-", dir=target.parent) as staging:
@@ -188,12 +189,13 @@ def bundle(
         for url, original, destination, text in documents:
             output = staged / destination
             output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_bytes(text.encode())
+            encoded = text.encode()
+            output.write_bytes(encoded)
             model_records.append(
                 {
                     "url": url,
                     "path": str(destination),
-                    "sha256": _hash(output),
+                    "sha256": hashlib.sha256(encoded).hexdigest(),
                     "original_sha256": hashlib.sha256(original.encode()).hexdigest(),
                 }
             )
