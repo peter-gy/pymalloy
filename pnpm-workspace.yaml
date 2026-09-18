@@ -36,3 +36,5 @@ publicHoistPattern:
 peerDependencyRules:
   allowedVersions:
     vite: 0.3.0
+patchedDependencies:
+  "@malloydata/malloy@0.0.433": patches/@malloydata__malloy@0.0.433.patch

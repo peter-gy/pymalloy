@@ -1,6 +1,6 @@
 import { ParseUtil } from "@malloydata/malloy-tag";
 import type { ParserRuleContext } from "antlr4ts";
-import type { TerminalNode } from "antlr4ts/tree/TerminalNode.js";
+import type { NativeContext, NativeListener } from "./upstream";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
 
 /** Symbolic scalar syntax; Malloy remains responsible for typing and semantics. */
@@ -79,33 +79,14 @@ export interface ScalarRaw {
   code: string;
 }
 
-// Pinned upstream listener shapes, intentionally restricted to syntax we model.
-// Unsupported contexts stay opaque, even when they contain supported children.
-interface PathContext extends ParserRuleContext {
-  fieldName(): Array<ParserRuleContext & { id(): ParserRuleContext }>;
-}
-interface UnaryContext extends ParserRuleContext {
-  fieldExpr(): ParserRuleContext;
-}
-interface BinaryContext extends ParserRuleContext {
-  fieldExpr(): ParserRuleContext[];
-}
-interface CallContext extends ParserRuleContext {
-  id(): ParserRuleContext | undefined;
-  timeframe(): ParserRuleContext | undefined;
-  argumentList(): (ParserRuleContext & { fieldExpr(): ParserRuleContext[] }) | undefined;
-  EXCLAM(): TerminalNode | undefined;
-}
-interface AggregateContext extends ParserRuleContext {
-  aggregate(): ParserRuleContext;
-  fieldExpr(): ParserRuleContext | undefined;
-}
-interface CastContext extends UnaryContext {
-  malloyOrSQLType(): ParserRuleContext & {
-    malloyType(): ParserRuleContext | undefined;
-    string(): (ParserRuleContext & { shortString(): ParserRuleContext | undefined }) | undefined;
-  };
-}
+type PathContext = NativeContext<"enterFieldPath">;
+type UnaryContext = ParserRuleContext & Pick<NativeContext<"enterExprMinus">, "fieldExpr">;
+type BinaryContext = ParserRuleContext & Pick<NativeContext<"enterExprAddSub">, "fieldExpr">;
+type CastContext = NativeContext<"enterExprCast"> | NativeContext<"enterExprSafeCast">;
+type AggregateContext =
+  | NativeContext<"enterExprAggregate">
+  | NativeContext<"enterExprPathlessAggregate">;
+
 const malloyTypes = new Set(["number", "string", "boolean", "date", "timestamp", "timestamptz"]);
 
 export function identifierText(context: ParserRuleContext): string {
@@ -194,139 +175,117 @@ export function scalarExpression(root: ParserRuleContext, characters: readonly s
     });
   }
 
-  ParseTreeWalker.DEFAULT.walk(
-    {
-      exitExprFieldPath: (context: ParserRuleContext & { fieldPath(): PathContext }) => {
-        values.set(context, { kind: "field", path: path(context.fieldPath()) });
-      },
-      exitExprGivenRef: (context: ParserRuleContext & { GIVEN_REF(): TerminalNode }) => {
-        values.set(context, { kind: "given", name: context.GIVEN_REF().text.slice(1) });
-      },
-      exitExprString: (
-        context: ParserRuleContext & {
-          string(): ParserRuleContext & { shortString(): ParserRuleContext | undefined };
-        },
-      ) => {
-        const string = context.string().shortString();
-        if (string) {
-          values.set(context, {
-            kind: "literal",
-            type: "string",
-            value: ParseUtil.parseString(string.text, string.text[0]),
-          });
-        }
-      },
-      exitExprNumber: (context: ParserRuleContext & { numericLiteral(): ParserRuleContext }) => {
-        values.set(context, {
-          kind: "literal",
-          type: "number",
-          value: context.numericLiteral().text,
-        });
-      },
-      exitExprBool: (context: ParserRuleContext & { TRUE(): TerminalNode | undefined }) => {
-        values.set(context, {
-          kind: "literal",
-          type: "boolean",
-          value: context.TRUE() ? "true" : "false",
-        });
-      },
-      exitExprNULL: (context: ParserRuleContext) => {
-        values.set(context, { kind: "literal", type: "null", value: "null" });
-      },
-      exitLiteralDay: (context: ParserRuleContext) => {
-        const date = context.text.slice(1);
-        const instant = new Date(`${date}T00:00:00Z`);
-        if (
-          date.startsWith("0000-") ||
-          !Number.isFinite(instant.getTime()) ||
-          instant.toISOString().slice(0, 10) !== date
-        )
-          return;
-        values.set(context, { kind: "literal", type: "date", value: date });
-      },
-      exitExprTime: (context: ParserRuleContext & { dateLiteral(): ParserRuleContext }) => {
-        values.set(context, value(context.dateLiteral()));
-      },
-      exitExprLiteral: (context: ParserRuleContext & { literal(): ParserRuleContext }) => {
-        values.set(context, value(context.literal()));
-      },
-      exitExprExpr: (context: UnaryContext) => {
-        const inner = value(context.fieldExpr());
-        if (inner.kind === "literal" && (inner.type === "date" || inner.type === "timestamp"))
-          return;
-        values.set(context, inner);
-      },
-      exitExprMinus: (context: UnaryContext) => unary(context, "-"),
-      exitExprNot: (context: UnaryContext) => unary(context, "not"),
-      exitExprAddSub: (context: BinaryContext & { PLUS(): TerminalNode | undefined }) =>
-        binary(context, context.PLUS() ? "+" : "-"),
-      exitExprMulDiv: (
-        context: BinaryContext & {
-          STAR(): TerminalNode | undefined;
-          SLASH(): TerminalNode | undefined;
-        },
-      ) => binary(context, context.STAR() ? "*" : context.SLASH() ? "/" : "%"),
-      exitExprCompare: (context: BinaryContext & { compareOp(): ParserRuleContext }) =>
-        binary(context, context.compareOp().text),
-      exitExprLogicalAnd: (context: BinaryContext) => binary(context, "and"),
-      exitExprLogicalOr: (context: BinaryContext) => binary(context, "or"),
-      exitExprCoalesce: (context: BinaryContext) => binary(context, "??"),
-      exitExprCast: (context: CastContext) => cast(context, false),
-      exitExprSafeCast: (context: CastContext) => cast(context, true),
-      exitExprNullCheck: (context: UnaryContext & { NOT(): TerminalNode | undefined }) => {
-        values.set(context, {
-          kind: "null_test",
-          value: value(context.fieldExpr()),
-          negated: Boolean(context.NOT()),
-        });
-      },
-      exitExprTimeTrunc: (context: UnaryContext & { timeframe(): ParserRuleContext }) => {
-        const unit = context.timeframe().text.toLowerCase();
-        values.set(context, {
-          kind: "truncate",
-          value: value(context.fieldExpr()),
-          unit: unit.endsWith("s") ? unit.slice(0, -1) : unit,
-        });
-      },
-      exitExprFunc: (context: CallContext) => {
-        if (context.EXCLAM()) return;
-        const name = context.id();
-        if (name?.text.startsWith("`")) return;
-        values.set(context, {
-          kind: "call",
-          name: name ? identifierText(name) : context.timeframe()!.text,
-          args: (context.argumentList()?.fieldExpr() ?? []).map(value),
-          receiver: null,
-        });
-      },
-      exitExprPathlessAggregate: (
-        context: AggregateContext & { SOURCE_KW(): TerminalNode | undefined },
-      ) => {
-        if (!context.SOURCE_KW()) aggregate(context, null);
-      },
-      exitExprAggregate: (context: AggregateContext & { fieldPath(): PathContext }) =>
-        aggregate(context, path(context.fieldPath())),
-      exitExprAggFunc: (
-        context: ParserRuleContext & {
-          fieldPath(): PathContext;
-          id(): ParserRuleContext;
-          argumentList(): (ParserRuleContext & { fieldExpr(): ParserRuleContext[] }) | undefined;
-        },
-      ) => {
-        if (context.id().text.startsWith("`")) return;
-        values.set(context, {
-          kind: "call",
-          name: identifierText(context.id()),
-          args: (context.argumentList()?.fieldExpr() ?? []).map(value),
-          receiver: path(context.fieldPath()),
-        });
-      },
-      exitEveryRule: (context: ParserRuleContext) => {
-        if (context === root && !values.has(root)) values.set(root, raw(root));
-      },
+  const listener: NativeListener = {
+    exitExprFieldPath: (context) => {
+      values.set(context, { kind: "field", path: path(context.fieldPath()) });
     },
-    root,
-  );
+    exitExprGivenRef: (context) => {
+      values.set(context, { kind: "given", name: context.GIVEN_REF().text.slice(1) });
+    },
+    exitExprString: (context) => {
+      const string = context.string().shortString();
+      if (string) {
+        values.set(context, {
+          kind: "literal",
+          type: "string",
+          value: ParseUtil.parseString(string.text, string.text[0]),
+        });
+      }
+    },
+    exitExprNumber: (context) => {
+      values.set(context, {
+        kind: "literal",
+        type: "number",
+        value: context.numericLiteral().text,
+      });
+    },
+    exitExprBool: (context) => {
+      values.set(context, {
+        kind: "literal",
+        type: "boolean",
+        value: context.TRUE() ? "true" : "false",
+      });
+    },
+    exitExprNULL: (context) => {
+      values.set(context, { kind: "literal", type: "null", value: "null" });
+    },
+    exitLiteralDay: (context) => {
+      const date = context.text.slice(1);
+      const instant = new Date(`${date}T00:00:00Z`);
+      if (
+        date.startsWith("0000-") ||
+        !Number.isFinite(instant.getTime()) ||
+        instant.toISOString().slice(0, 10) !== date
+      )
+        return;
+      values.set(context, { kind: "literal", type: "date", value: date });
+    },
+    exitExprTime: (context) => {
+      values.set(context, value(context.dateLiteral()));
+    },
+    exitExprLiteral: (context) => {
+      values.set(context, value(context.literal()));
+    },
+    exitExprExpr: (context) => {
+      const inner = value(context.fieldExpr());
+      if (inner.kind === "literal" && (inner.type === "date" || inner.type === "timestamp")) return;
+      values.set(context, inner);
+    },
+    exitExprMinus: (context) => unary(context, "-"),
+    exitExprNot: (context) => unary(context, "not"),
+    exitExprAddSub: (context) => binary(context, context.PLUS() ? "+" : "-"),
+    exitExprMulDiv: (context) =>
+      binary(context, context.STAR() ? "*" : context.SLASH() ? "/" : "%"),
+    exitExprCompare: (context) => binary(context, context.compareOp().text),
+    exitExprLogicalAnd: (context) => binary(context, "and"),
+    exitExprLogicalOr: (context) => binary(context, "or"),
+    exitExprCoalesce: (context) => binary(context, "??"),
+    exitExprCast: (context) => cast(context, false),
+    exitExprSafeCast: (context) => cast(context, true),
+    exitExprNullCheck: (context) => {
+      values.set(context, {
+        kind: "null_test",
+        value: value(context.fieldExpr()),
+        negated: Boolean(context.NOT()),
+      });
+    },
+    exitExprTimeTrunc: (context) => {
+      const unit = context.timeframe().text.toLowerCase();
+      values.set(context, {
+        kind: "truncate",
+        value: value(context.fieldExpr()),
+        unit: unit.endsWith("s") ? unit.slice(0, -1) : unit,
+      });
+    },
+    exitExprFunc: (context) => {
+      if (context.EXCLAM()) return;
+      const name = context.id();
+      if (name?.text.startsWith("`")) return;
+      values.set(context, {
+        kind: "call",
+        name: name ? identifierText(name) : context.timeframe()!.text,
+        args: (context.argumentList()?.fieldExpr() ?? []).map(value),
+        receiver: null,
+      });
+    },
+    exitExprPathlessAggregate: (context) => {
+      if (!context.SOURCE_KW()) aggregate(context, null);
+    },
+    exitExprAggregate: (context) => aggregate(context, path(context.fieldPath())),
+    exitExprAggFunc: (context) => {
+      if (context.id().text.startsWith("`")) return;
+      values.set(context, {
+        kind: "call",
+        name: identifierText(context.id()),
+        args: (context.argumentList()?.fieldExpr() ?? []).map(value),
+        receiver: path(context.fieldPath()),
+      });
+    },
+    exitEveryRule: (context) => {
+      if (context === root && !values.has(root)) values.set(root, raw(root));
+    },
+  };
+  ParseTreeWalker.DEFAULT.walk(listener, root);
   const projected = values.get(root)!;
   // Temporal ranges and other opaque syntax depend on their original expression
   // context; regrouping just an unsupported child can change query semantics.

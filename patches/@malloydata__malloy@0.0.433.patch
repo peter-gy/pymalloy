@@ -1,0 +1,9 @@
+diff --git a/dist/internal.d.ts b/dist/internal.d.ts
+index 2c25e5e89aa7bc3790c817d120cc46cb083398de..6cefa3b9dd63af23ebee41d10c4b9bb230c1a037 100644
+--- a/dist/internal.d.ts
++++ b/dist/internal.d.ts
+@@ -3,3 +3,4 @@ export { TinyParseError, TinyParser } from './dialect/tiny_parser';
+ export type { TinyToken } from './dialect/tiny_parser';
+ export { prettify } from './lang/prettify';
+ export type { PrettifyResult, PrettifyError } from './lang/prettify';
++export type { MalloyParserListener } from './lang/lib/Malloy/MalloyParserListener';
