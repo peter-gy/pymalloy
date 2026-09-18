@@ -43,6 +43,11 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Build runtime packages
         run: pnpm --filter '!@pymalloy/docs' -r --if-present build
+      - name: Verify generated protocol records
+        run: |
+          uv sync --frozen --all-packages --all-extras
+          pnpm records
+          git diff --exit-code -- packages/python/schema/protocol.json packages/python/src/pymalloy/_records.py
       - name: Build Python distributions
         run: uv build --package pymalloy
       - name: Check distribution metadata
@@ -52,6 +57,7 @@ jobs:
           name: javascript-packages
           path: |
             packages/core/dist/
+            packages/duckdb/dist/
             packages/browser/dist/
             packages/node/dist/
           if-no-files-found: error
@@ -132,11 +138,10 @@ jobs:
         run: |
           uv build --wheel dist/pymalloy-*.tar.gz --out-dir dist/from-sdist
           for wheel in dist/pymalloy-*.whl dist/from-sdist/pymalloy-*.whl; do
-            uv run --no-project --isolated --with "$wheel" python -c 'from pymalloy import Malloy; Malloy("").close()'
+            uv run --no-project --isolated --with "$wheel" python -c 'from pymalloy import MalloyWidget; MalloyWidget("").close()'
             uv run --no-project --isolated --with "${wheel}[server]" python - <<'PY'
-          from pymalloy.server import Session
-          with Session() as session:
-              assert session.run("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }").item() == 42
+          import pymalloy as pm
+          assert pm.run("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }").rows() == [{"answer": 42}]
           PY
           done
   e2e:
