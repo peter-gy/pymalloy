@@ -1,7 +1,12 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
   "ignoreBinaries": ["uv"],
+  "ignoreDependencies": ["ts-json-schema-generator"],
   "workspaces": {
+    "packages/duckdb": { "entry": ["src/index.ts", "src/arrow.ts"] },
+    "packages/core": { "entry": ["src/index.ts", "src/tooling.ts", "src/types.ts"] },
+    "packages/widget": { "ignoreDependencies": ["process"] },
+    "packages/protocol": { "entry": ["src/records.ts"] },
     "apps/e2e": {
       "vite": { "config": "standalone/vite.config.ts" },
     },
@@ -11,7 +16,7 @@
     },
     "packages/python": {
       // These build dependencies produce the files copied by build.mjs.
-      "ignoreDependencies": ["@pymalloy/python-bridge", "@pymalloy/widget"],
+      "ignoreDependencies": ["@pymalloy/server", "@pymalloy/widget"],
     },
   },
 }

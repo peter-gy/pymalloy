@@ -6,17 +6,19 @@
     "build": "pnpm -r --if-present build",
     "check": "vp check && pnpm -r run typecheck && pnpm check:knip",
     "check:knip": "knip --treat-config-hints-as-errors",
-    "test": "pnpm --filter @pymalloy/core --filter @pymalloy/node --filter @pymalloy/browser --filter @pymalloy/widget test",
+    "test": "pnpm --filter @malloy-runtime/compiler --filter @malloy-runtime/node --filter @malloy-runtime/duckdb --filter @pymalloy/widget --filter @pymalloy/server test",
     "docs:dev": "pnpm --filter @pymalloy/docs dev",
     "docs:build": "pnpm --filter @pymalloy/docs build",
     "docs:preview": "pnpm --filter @pymalloy/docs preview",
     "format": "vp fmt",
-    "e2e": "pnpm --filter @pymalloy/e2e test"
+    "e2e": "pnpm --filter @pymalloy/e2e test",
+    "records": "uv run python tools/generate-records.py"
   },
   "devDependencies": {
     "@oxlint/plugins": "catalog:",
     "@types/node": "catalog:",
     "knip": "catalog:",
+    "ts-json-schema-generator": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

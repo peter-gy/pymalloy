@@ -46,6 +46,7 @@ export default defineConfig({
       {
         files: [
           "packages/node/src/duckdb.ts",
+          "packages/core/src/selection.ts",
           "packages/node/src/session.ts",
           "packages/browser/src/session.ts",
         ],
@@ -54,7 +55,7 @@ export default defineConfig({
         },
       },
       {
-        files: ["packages/browser/src/arrow.ts"],
+        files: ["packages/duckdb/src/arrow.ts"],
         // Arrow cells enter through their schema, which determines their runtime representation.
         rules: {
           "anti-slop/no-runtime-typeof": "off",
@@ -62,8 +63,8 @@ export default defineConfig({
         },
       },
       {
-        files: ["packages/widget/src/protocol.ts"],
-        // The JSON codec dispatches concrete recursive wire values and tags bigint/non-finite numbers.
+        files: ["packages/duckdb/src/result.ts"],
+        // Stable result serialization preserves exact scalars from the materialized Value union.
         rules: { "anti-slop/no-runtime-typeof": "off" },
       },
     ],

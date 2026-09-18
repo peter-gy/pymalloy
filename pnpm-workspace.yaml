@@ -2,6 +2,10 @@ packages:
   - packages/*
   - apps/*
 catalog:
+  "@malloydata/malloy-interfaces": 0.0.433
+  "@malloydata/render": 0.0.433
+  "process": 0.11.10
+  "ts-json-schema-generator": 2.9.0
   "@oxlint/plugins": 1.76.0
   knip: 6.32.2
   portless: 0.15.6
