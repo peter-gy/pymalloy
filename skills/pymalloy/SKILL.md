@@ -80,7 +80,7 @@ else:
    with `.define(**sources)` or `.queries(**queries)`. For an existing field, use
    `draft.define(orders=draft["orders"].replace(revenue=pm.col("amount").sum()))`.
    Pass `pm.col("amount").sum().doc("revised description")` to replace the binding's directly
-   attached `#(doc)` text. Shared statement tags and block annotations stay intact.
+   attached `#"` text. Shared statement tags and block annotations stay intact.
    Review `.diff()` and update affected assertions.
 2. Call `.check(**connection_options)` for compiler diagnostics, metadata, and
    advisory documentation warnings. Fix errors using their authored locations.
@@ -131,3 +131,8 @@ Keep business decisions in documentation and accompanying evidence. Reuse choice
 the user already settled. Clarify unresolved definitions when the alternatives
 materially change the answer. Do not invent thresholds or require approval for
 every edit. Documentation checks are mechanical evidence, not business review.
+
+`.doc()` emits native `#"` descriptions. `DocumentationPolicy` in
+`pymalloy.validation` selects accepted annotation routes, object kinds and severity.
+`draft.check(documentation=None)` disables documentation lint while retaining
+compiler diagnostics. Keep case-specific user situations in accompanying records.

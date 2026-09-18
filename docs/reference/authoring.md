@@ -91,7 +91,7 @@ Construction uses base dependencies and performs no compilation.
 | `.doc(text)`              | Add a Malloy documentation annotation        |
 
 Operations return new fragments. When replacing a binding, `.doc(text)` replaces
-its directly attached single-line `#(doc)` annotations. Shared statement tags and
+its directly attached single-line `#"` annotations. Shared statement tags and
 block annotations retain their original text. Omitting `.doc` preserves existing
 documentation. Lookup stops at named scope boundaries. Missing
 names raise `KeyError`, and duplicates in the same scope raise `ValueError`.
@@ -123,21 +123,21 @@ Strings mean Malloy text, `Path` means a local file, and `ModelSource` carries
 captured imports. Requires `pymalloy[server]`. Parsing establishes named editing
 slots but does not resolve schemas or validate business meaning.
 
-| Member                                              | Behavior                                                                     |
-| --------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `.text`, `.url`, `.imports`, `.names`               | Source text, identity, captured imports, and root declaration names          |
-| `[name]`                                            | Named source or query expression                                             |
-| `.define(**sources)`                                | Add or replace named source expressions                                      |
-| `.queries(**queries)`                               | Add or replace named query expressions                                       |
-| `.append(*parts)`                                   | Append literal text or syntax verbatim                                       |
-| `.include(url: str \| Path)`                        | Add an import to a live draft                                                |
-| `.diff(previous=None)`                              | Unified diff against another draft or the originally loaded file             |
-| `.format()`                                         | Format with Malloy and rebuild editable syntax                               |
-| `.to_python(name="model")`                          | Executable Python reconstructing scalar operations, syntax, URL, and imports |
-| `.check(**options)`                                 | `CheckReport` with compiler diagnostics and documentation warnings           |
-| `.compile(**options)`                               | Retained runtime `Model`, explicitly closable                                |
-| `.validate(checks=None, *, givens=None, **options)` | Revision-bound `Validation`                                                  |
-| `.save(path=None, *, overwrite=False)`              | Write root text and return its `Path`                                        |
+| Member                                                                                   | Behavior                                                                     |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `.text`, `.url`, `.imports`, `.names`                                                    | Source text, identity, captured imports, and root declaration names          |
+| `[name]`                                                                                 | Named source or query expression                                             |
+| `.define(**sources)`                                                                     | Add or replace named source expressions                                      |
+| `.queries(**queries)`                                                                    | Add or replace named query expressions                                       |
+| `.append(*parts)`                                                                        | Append literal text or syntax verbatim                                       |
+| `.include(url: str \| Path)`                                                             | Add an import to a live draft                                                |
+| `.diff(previous=None)`                                                                   | Unified diff against another draft or the originally loaded file             |
+| `.format()`                                                                              | Format with Malloy and rebuild editable syntax                               |
+| `.to_python(name="model")`                                                               | Executable Python reconstructing scalar operations, syntax, URL, and imports |
+| `.check(documentation=DocumentationPolicy(), **options)`                                 | `CheckReport` with compiler diagnostics and documentation warnings           |
+| `.compile(**options)`                                                                    | Retained runtime `Model`, explicitly closable                                |
+| `.validate(checks=None, *, givens=None, documentation=DocumentationPolicy(), **options)` | Revision-bound `Validation`                                                  |
+| `.save(path=None, *, overwrite=False)`                                                   | Write root text and return its `Path`                                        |
 
 `define` and `queries` preserve surrounding text when replacing an existing
 right-hand side. Replacing a declaration of the wrong kind fails. New declarations
@@ -179,3 +179,20 @@ file atomically. Reload after saving before editing again.
 A validated snapshot with imports must be saved in its original root directory,
 and imported files must still match their captured text. Saving writes the root
 text. Relocate through `Draft.save()` and validate again at the destination.
+
+## Documentation policy
+
+`.doc(text)` emits Malloy's native `#"` description route. Other authored routes
+remain intact. `DocumentationPolicy` is imported from `pymalloy.validation`:
+
+```python
+from pymalloy.validation import DocumentationPolicy
+
+policy = DocumentationPolicy(routes=('"', 'business'), kinds=("source", "measure"), severity="error")
+report = candidate.check(documentation=policy)
+```
+
+The default policy checks sources, measures and views for a nonempty native
+description and reports warnings. Pass `documentation=None` to disable this lint.
+Compiler diagnostics remain enabled. Error-severity findings make `report.ok`
+false. `validate` accepts the same policy.

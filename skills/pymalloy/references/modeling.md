@@ -21,7 +21,7 @@ finding together so the agent can explain what was tested.
 
 ## Define business meaning
 
-Record grain, units, exclusions, and null handling in `#(doc)` descriptions.
+Record grain, units, exclusions, and null handling in `#"` descriptions.
 Distinguish an observed fact from an assumed convention. Source-wide `where`
 clauses affect every consumer. Confirm material scope and metric choices before
 making them shared defaults, unless the user has already authorized the decision.

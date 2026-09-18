@@ -62,7 +62,7 @@ print(candidate.diff())
 Review whether refunds belong in revenue before adopting that definition, and
 update its description and assertions. `.replace` edits named right-hand sides
 within the selected scope. Supplying `.doc` also replaces directly attached
-single-line `#(doc)` text. Omitting `.doc` retains the description. Shared statement
+single-line `#"` text. Omitting `.doc` retains the description. Shared statement
 tags and block annotations stay intact. A nested view or join
 owns its own field names. Missing and ambiguous names fail explicitly.
 

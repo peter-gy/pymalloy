@@ -125,7 +125,7 @@ print(candidate.diff())
 print(candidate.check().diagnostics)
 ```
 
-The edit replaces `revenue` and its directly attached `#(doc)` description. It
+The edit replaces `revenue` and its directly attached `#"` description. It
 preserves the surrounding text and leaves `original` unchanged. A replacement
 without `.doc(...)` retains the existing description. Shared statement tags and
 block annotations remain unchanged. Names belong to their containing

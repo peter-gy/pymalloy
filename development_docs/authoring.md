@@ -31,7 +31,7 @@ The compiler projects named source, query, field, and explicit join bindings fro
 Malloy's parser. Unrepresented grammar remains literal text between those
 bindings. This keeps new Malloy syntax usable without a Python grammar change.
 Schema validation remains a separate compiler operation. The parser identifies
-single-line `#(doc)` tags owned by a binding. Supplying `.doc(...)` in a replacement
+single-line `#"` tags owned by a binding. Supplying `.doc(...)` in a replacement
 replaces those leaves. Shared statement tags and block annotations remain opaque
 text, so the editor cannot accidentally claim or erase another declaration's
 documentation.
@@ -141,3 +141,9 @@ Parentheses in Malloy can change temporal range comparisons into point compariso
 so partially reconstructing an unsupported literal is unsafe. Supported operations
 use generated scalar records. Numeric token spelling is retained with `number`
 when ordinary Python numeric construction would change its inferred type.
+
+`NativeMetadata.annotations` projects stable source and field annotations through
+Malloy's exported `routeOf` and `payloadOf` helpers. Python documentation policy
+selects routes and severity from that projection. It does not parse annotations.
+The syntax editor replaces directly owned native descriptions and preserves
+other routes and shared annotation ownership.
