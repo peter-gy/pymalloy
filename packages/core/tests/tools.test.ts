@@ -152,9 +152,9 @@ test("ad-hoc query errors identify the query text separately from its model", as
     ],
   });
 });
-test("document checks map embedded Malloy errors to their original lines", async () => {
+test("document diagnostics preserve authored lines and Unicode codepoint columns", async () => {
   const document =
-    ">>>markdown\n# Values\n>>>malloy\nsource: values is duckdb.sql('SELECT 42 AS value')\n>>>sql connection:duckdb\nSELECT * FROM %{ values -> {select: missing} }%";
+    ">>>markdown\n# Values\n>>>malloy\nsource: values is duckdb.sql('SELECT 42 AS value')\n>>>sql connection:duckdb\nSELECT '😀', * FROM %{ values -> {select: missing} }%";
   const documentURL = new URL("memory://project/report.malloynb");
   expect(parseSource(document, { url: documentURL }).diagnostics).toEqual([]);
   const checked = await check({ ...options(document), url: documentURL });
@@ -163,7 +163,7 @@ test("document checks map embedded Malloy errors to their original lines", async
     code: "field-not-found",
     location: {
       url: documentURL.href,
-      range: { start: { line: 5, character: 36 }, end: { line: 5, character: 43 } },
+      range: { start: { line: 5, character: 41 }, end: { line: 5, character: 48 } },
     },
   });
   const syntax = parseSource(document.replace("select: missing", "select:"), { url: documentURL });
@@ -223,18 +223,6 @@ test("semantic errors inside imports retain the imported file URL", async () => 
   expect(report.diagnostics[0]).toMatchObject({
     code: "field-not-found",
     location: { url: "memory://project/base.malloy" },
-  });
-});
-test("embedded document diagnostics use codepoint columns after astral text", async () => {
-  const text =
-    ">>>malloy\nsource: s is duckdb.sql('SELECT 42 AS value')\n>>>sql connection:duckdb\nSELECT '😀', * FROM %{ s -> {select: missing} }%";
-  const checked = await check({
-    ...options(text),
-    url: new URL("memory://project/unicode.malloynb"),
-  });
-  expect(checked.diagnostics[0].location?.range).toEqual({
-    start: { line: 3, character: 36 },
-    end: { line: 3, character: 43 },
   });
 });
 test("connection failures retain compiler locations and the missing connection name", async () => {
