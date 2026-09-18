@@ -1,38 +1,41 @@
-import { Malloy } from "@malloydata/malloy";
-import { formatMalloy, parseProblems } from "./upstream.js";
-import type { Position, Range, ImportInfo } from "./metadata.js";
+import { Malloy, MalloyTranslator, Parse } from "@malloydata/malloy";
+import { formatMalloy } from "./upstream.js";
+import type { SourcePosition, SourceRange, ImportInfo } from "./metadata.js";
 import { diagnostics, ToolingError, offsetDiagnostics, type Diagnostic } from "./diagnostics.js";
 
 import { documentSource } from "./document.js";
 
 export const compilerVersion = Malloy.version;
-export type { Position } from "./metadata.js";
+export type { SourcePosition } from "./metadata.js";
 const sourceURL = new URL("memory://pymalloy/model.malloy");
 
+/** @title ParseOptions */
 export interface ParseOptions {
   url?: URL;
-  position?: Position;
+  position?: SourcePosition;
 }
 
+/** @title SymbolInfo */
 export interface SymbolInfo {
   name: string;
   type: string;
-  range: Range;
-  lens_range: Range;
+  range: SourceRange;
+  lensRange: SourceRange;
   children: SymbolInfo[];
 }
 
+/** @title ParseReport */
 export interface ParseReport {
   url: string;
   diagnostics: Diagnostic[];
   symbols: SymbolInfo[];
-  tables: Array<{ connection: string; path: string; range: Range }>;
+  tables: Array<{ connection: string; path: string; range: SourceRange }>;
   imports: ImportInfo[];
   completions: Array<{ type: string; text: string }>;
   help: { type: string; token: string | null } | null;
 }
 
-export function validatePosition(position: Position): void {
+export function validatePosition(position: SourcePosition): void {
   if (
     !Number.isInteger(position.line) ||
     position.line < 0 ||
@@ -61,12 +64,15 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
       help: null,
     };
   }
-  const parsed = Malloy.parse({ source: document.source, url });
+  const translator = new MalloyTranslator(url.href, url.href, {
+    urls: { [url.href]: document.source },
+  });
+  const parsed = new Parse(translator);
   const symbol = (value: (typeof parsed.symbols)[number]): SymbolInfo => ({
     name: value.name,
     type: value.type,
     range: value.range.toJSON(),
-    lens_range: value.lensRange.toJSON(),
+    lensRange: value.lensRange.toJSON(),
     children: value.children.map(symbol),
   });
   const symbols = parsed.symbols.map(symbol);
@@ -83,15 +89,18 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
     : [];
   const context = options.position ? parsed.helpContext(options.position) : undefined;
   const help = context ? { type: context.type, token: context.token ?? null } : null;
-  const problems = diagnostics(parseProblems(parsed));
+  const problems = diagnostics(translator.problems());
   for (const statement of document.statements ?? []) {
     if (statement.type !== "sql") continue;
     for (const embedded of statement.embeddedMalloyQueries) {
-      const query = Malloy.parse({ source: `run: ${embedded.query}`, url });
+      const child = new MalloyTranslator(url.href, url.href, {
+        urls: { [url.href]: `run: ${embedded.query}` },
+      });
+      const query = new Parse(child);
       void query.symbols;
       problems.push(
         ...offsetDiagnostics(
-          diagnostics(parseProblems(query)),
+          diagnostics(child.problems()),
           { url: url.href, range: embedded.malloyRange },
           5,
         ),
@@ -128,7 +137,7 @@ export function formatSource(source: string) {
       },
     },
     replacement: null,
-    error_tag: null,
+    errorTag: null,
     data: null,
   }));
   return { source: problems.length ? source : formatted.result, diagnostics: problems };
