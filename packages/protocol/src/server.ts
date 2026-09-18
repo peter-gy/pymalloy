@@ -13,6 +13,7 @@ import type {
   Column,
 } from "@malloy-runtime/compiler";
 import type { Given } from "./givens.js";
+import type { SyntaxNode } from "@malloy-runtime/compiler/tooling";
 
 type SchemaAnswer = { value: Column[] } | { error: string };
 export interface HostAnswers {
@@ -28,7 +29,8 @@ export type Request =
   | { op: "source" }
   | { op: "check"; url: string; source: string; syntaxOnly?: boolean; position?: SourcePosition }
   | { op: "format"; source: string }
-  | { op: "parse"; source: string; url: string };
+  | { op: "parse"; source: string; url: string }
+  | { op: "syntax"; source: string; url: string };
 
 export interface CompilerReady {
   kind: "ready";
@@ -77,6 +79,10 @@ export interface FormatReady {
   source: string;
   diagnostics: Diagnostic[];
 }
+export interface SyntaxReady {
+  kind: "syntax";
+  syntax: SyntaxNode;
+}
 export type Response =
   | CompilerReady
   | CompileNeeds
@@ -88,5 +94,6 @@ export type Response =
   | SourceReady
   | CheckReady
   | ParseReady
-  | FormatReady;
+  | FormatReady
+  | SyntaxReady;
 export type Output = Exclude<Response, CompilerReady | CompileNeeds | CompileError>;

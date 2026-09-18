@@ -1,4 +1,9 @@
-import { checkSource, formatSource, parseSource } from "@malloy-runtime/compiler/tooling";
+import {
+  checkSource,
+  formatSource,
+  parseSource,
+  syntaxSource,
+} from "@malloy-runtime/compiler/tooling";
 import { CompiledModel, ToolingError, type Job, type Fulfilled } from "@malloy-runtime/compiler";
 import { connection, fields } from "@malloy-runtime/duckdb";
 import {
@@ -68,6 +73,8 @@ export class CompilerService {
           return { kind: "format", ...formatSource(input.source) };
         case "parse":
           return { kind: "parse", report: parseSource(input.source, { url: new URL(input.url) }) };
+        case "syntax":
+          return { kind: "syntax", syntax: syntaxSource(input.source, new URL(input.url)) };
         case "source":
           return { kind: "source", source: this.current().source() };
         case "inspect": {
