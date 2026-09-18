@@ -1,8 +1,10 @@
-import type { ModelInfo, SourceInfo } from "@malloydata/malloy-interfaces";
+import type { Annotation, ModelInfo, SourceInfo, FieldInfo } from "@malloydata/malloy-interfaces";
 import {
   Model,
   modelDefToModelInfo,
   sourceDefToSourceInfo,
+  routeOf,
+  payloadOf,
   type SourceDef,
   type MalloyTranslator,
   type ModelDef,
@@ -19,6 +21,47 @@ export const formatMalloy = prettify;
 export interface NativeMetadata {
   model: ModelInfo | null;
   sources: SourceInfo[];
+  annotations: AnnotatedObject[];
+}
+
+/** Native annotation routes and payloads alongside the untouched stable annotation. */
+export interface RoutedAnnotation {
+  route: string | null;
+  content: string;
+  text: string;
+}
+
+export interface AnnotatedObject {
+  path: string[];
+  kind: string;
+  annotations: RoutedAnnotation[];
+}
+
+function objectAnnotations(sources: SourceInfo[]): AnnotatedObject[] {
+  const objects: AnnotatedObject[] = [];
+  function add(path: string[], kind: string, notes: Annotation[] = []): void {
+    objects.push({
+      path,
+      kind,
+      annotations: notes.map((note) => ({
+        route: routeOf(note) ?? null,
+        content: payloadOf(note),
+        text: note.value,
+      })),
+    });
+  }
+  function fields(values: FieldInfo[], parent: string[]): void {
+    for (const field of values) {
+      const path = [...parent, field.name];
+      add(path, field.kind, field.annotations);
+      if (field.kind === "join" || field.kind === "view") fields(field.schema.fields, path);
+    }
+  }
+  for (const source of sources) {
+    add([source.name], "source", source.annotations);
+    fields(source.schema.fields, [source.name]);
+  }
+  return objects;
 }
 
 export function nativeMetadata(model: Model, definition: ModelDef): NativeMetadata {
@@ -30,12 +73,14 @@ export function nativeMetadata(model: Model, definition: ModelDef): NativeMetada
   const required = queries.some((query) =>
     [...query.givens.values()].some((given) => given.default === undefined),
   );
+  const sources = model.exportedExplores.map((explore) =>
+    // SAFETY: Malloy builds exportedExplores from source definitions in model contents.
+    sourceDefToSourceInfo(model.getContent(explore.name) as SourceDef),
+  );
   return {
     model: required ? null : modelDefToModelInfo(definition),
-    sources: model.exportedExplores.map((explore) =>
-      // SAFETY: Malloy builds exportedExplores from source definitions in model contents.
-      sourceDefToSourceInfo(model.getContent(explore.name) as SourceDef),
-    ),
+    sources,
+    annotations: objectAnnotations(sources),
   };
 }
 

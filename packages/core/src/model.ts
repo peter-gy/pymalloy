@@ -281,7 +281,7 @@ function* checkTask(options: CheckOptions): Task<CheckReport> {
     ...parsed,
     ok: !parsed.diagnostics.some((problem) => problem.severity === "error"),
     compilerVersion: compilerVersion,
-    model: { model: null, sources: [] },
+    model: { model: null, sources: [], annotations: [] },
     queries: [],
   };
   if (options.syntaxOnly || !report.ok) return report;

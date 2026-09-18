@@ -21,7 +21,14 @@ export type {
 } from "./types.js";
 export { Job, type Needs, type Fulfilled, type Step, type Task } from "./job.js";
 export type { GivenValue } from "@malloydata/malloy";
-export type { SourcePosition, SymbolInfo, ParseReport, ParseOptions } from "./tools.js";
+export type {
+  SourcePosition,
+  SymbolInfo,
+  ParseReport,
+  ParseOptions,
+  ParsedImport,
+  SourceSpan,
+} from "./tools.js";
 export { ToolingError, type Diagnostic } from "./diagnostics.js";
 export type { LoadOptions } from "./compile.js";
 export type { Inspection, ReferenceInfo } from "./inspect.js";
@@ -32,6 +39,6 @@ export type {
   SourceLocation,
   SourceRange,
 } from "./metadata.js";
-export type { NativeMetadata } from "./upstream.js";
+export type { NativeMetadata, AnnotatedObject, RoutedAnnotation } from "./upstream.js";
 export { Model, Query, type ModelDriver } from "./runtime.js";
 export { Operations } from "./operations.js";

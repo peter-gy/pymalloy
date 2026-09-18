@@ -299,3 +299,18 @@ given:
     { name: "tenant_filter", type: "filter<string>" },
   ]);
 });
+
+test("incomplete imports return native diagnostics instead of failing metadata extraction", () => {
+  const parsed = parseSource(source + "\nimport", { url });
+  expect(parsed.diagnostics).toContainEqual(
+    expect.objectContaining({ code: "syntax-error", severity: "error" }),
+  );
+});
+
+test("import literal spans address authored Unicode and CRLF notebook text", () => {
+  const authored = '>>>markdown\r\n😀 Source notes\r\n>>>malloy\r\nimport "base.malloy"\r\n';
+  const parsed = parseSource(authored, { url: new URL("memory://project/model.malloynb") });
+  expect(parsed.diagnostics).toEqual([]);
+  const span = parsed.imports[0].reference;
+  expect(Array.from(authored).slice(span.start, span.end).join("")).toBe('"base.malloy"');
+});

@@ -1,4 +1,7 @@
 import { Malloy, MalloyTranslator, Parse } from "@malloydata/malloy";
+import type { ParserRuleContext } from "antlr4ts";
+import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
+import type { ParseTreeListener } from "antlr4ts/tree/ParseTreeListener.js";
 import { formatMalloy } from "./upstream.js";
 import type { SourcePosition, SourceRange, ImportInfo } from "./metadata.js";
 import { diagnostics, ToolingError, offsetDiagnostics, type Diagnostic } from "./diagnostics.js";
@@ -27,12 +30,25 @@ export interface SymbolInfo {
 /** @title ParseReport */
 export interface ParseReport {
   url: string;
+  compilerVersion: string;
   diagnostics: Diagnostic[];
   symbols: SymbolInfo[];
   tables: Array<{ connection: string; path: string; range: SourceRange }>;
-  imports: ImportInfo[];
+  imports: ParsedImport[];
   completions: Array<{ type: string; text: string }>;
   help: { type: string; token: string | null } | null;
+}
+
+/** The compiler-selected string literal, including delimiters, in Unicode codepoints. */
+export interface ParsedImport extends ImportInfo {
+  reference: SourceSpan;
+}
+
+export interface SourceSpan {
+  /** @asType integer @minimum 0 */
+  start: number;
+  /** @asType integer @minimum 0 */
+  end: number;
 }
 
 export function validatePosition(position: SourcePosition): void {
@@ -56,6 +72,7 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
     if (!(error instanceof ToolingError)) throw error;
     return {
       url: url.href,
+      compilerVersion,
       diagnostics: error.diagnostics,
       symbols: [],
       tables: [],
@@ -90,6 +107,40 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
   const context = options.position ? parsed.helpContext(options.position) : undefined;
   const help = context ? { type: context.type, token: context.token ?? null } : null;
   const problems = diagnostics(translator.problems());
+  const imports = symbols.filter((value) => value.type === "import");
+  const importStarts = new Set(
+    imports.map((value) => `${value.range.start.line}:${value.range.start.character}`),
+  );
+  const importReferences = new Map<string, ParsedImport["reference"]>();
+  const syntax = translator.parseStep.step(translator).parse;
+  if (syntax && imports.length) {
+    const authoredOffsets = [0];
+    let offset = 0;
+    for (const character of source) {
+      offset += 1;
+      if (character === "\n") authoredOffsets.push(offset);
+    }
+    const listener: ParseTreeListener & {
+      enterImportStatement(context: ParserRuleContext & { importURL(): ParserRuleContext }): void;
+    } = {
+      enterImportStatement: (context: ParserRuleContext & { importURL(): ParserRuleContext }) => {
+        const start = `${context.start.line - 1}:${context.start.charPositionInLine}`;
+        if (!importStarts.has(start)) return;
+        const target = context.importURL();
+        const last = target.stop!;
+        const endLines = (last.text ?? "").split("\n");
+        const endLine = last.line - 1 + endLines.length - 1;
+        const endColumn =
+          (endLines.length === 1 ? last.charPositionInLine : 0) +
+          Array.from(endLines[endLines.length - 1]).length;
+        importReferences.set(start, {
+          start: authoredOffsets[target.start.line - 1] + target.start.charPositionInLine,
+          end: authoredOffsets[endLine] + endColumn,
+        });
+      },
+    };
+    ParseTreeWalker.DEFAULT.walk(listener, syntax.root);
+  }
   for (const statement of document.statements ?? []) {
     if (statement.type !== "sql") continue;
     for (const embedded of statement.embeddedMalloyQueries) {
@@ -109,15 +160,21 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
   }
   return {
     url: url.href,
+    compilerVersion,
     diagnostics: problems,
     symbols,
     tables,
-    imports: symbols
-      .filter((value) => value.type === "import")
-      .map((value) => ({
+    imports: imports.map((value) => {
+      const reference = importReferences.get(
+        `${value.range.start.line}:${value.range.start.character}`,
+      );
+      if (!reference) throw new Error("Malloy import has no source reference");
+      return {
         url: new URL(value.name, url).href,
         location: { url: url.href, range: value.range },
-      })),
+        reference,
+      };
+    }),
     completions,
     help,
   };
