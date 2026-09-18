@@ -114,6 +114,28 @@ Validated saves with captured imports require the original root directory and
 unchanged imported text. Save a draft and revalidate at its destination to relocate
 it. Data and external files may change after validation.
 
+## Agent workflow and distribution
+
+The loop is discovery, composition, static diagnostics, data assertions, revision,
+and persistence. Publisher's `malloy-discover`, `malloy-model`,
+`malloy-model-as-you-go`, and `malloy-review` skills inform schema grounding,
+verified grain, documented definitions, measured thresholds, and join checks.
+
+`pymalloy.agent` introduces the public API and locates the installed
+`skills/pymalloy` tree through `agent-plugins`. The Marimo capability entry point
+loads this module. It contains discovery and documentation, with execution owned
+by the ordinary Python API.
+
+The root plugin and selected skill files ship through wheel, editable, and source
+builds using `[tool.agent-plugins] root = "../.."`. Agent discovery and syntax
+construction work with base dependencies. Parser-backed reading, compilation,
+and execution require the server extra.
+
+Verify semantic Python roundtrips and unchanged-file preservation on upstream
+models, scoped edits, source/query behavior, closed imports, stale writes, failed assertions, and installed skill discovery.
+Run base-only construction and generated-Python reconstruction with Deno and
+DuckDB absent. Test the installed artifacts as well as the source checkout.
+
 Opaque scalar subtrees make their entire enclosing imported expression opaque.
 Parentheses in Malloy can change temporal range comparisons into point comparisons,
 so partially reconstructing an unsupported literal is unsafe. Supported operations

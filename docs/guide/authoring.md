@@ -191,3 +191,16 @@ Validated saves with captured imports require the original root directory and
 unchanged imported files. To relocate a model, save the draft and revalidate at
 its destination. Saving writes the root file. Data may change after validation,
 so retain and rerun the assertions.
+
+## Agent instructions
+
+```python
+import pymalloy.agent as agent
+
+print(agent.agent_skill().body)
+print(agent.agent_skill().file("references/modeling.md").read_text())
+```
+
+Installed instructions match the package version. Marimo discovers
+`pymalloy.agent` through its capability entry point. See the
+[authoring reference](../reference/authoring.md) for all constructors and methods.

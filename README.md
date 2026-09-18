@@ -30,3 +30,5 @@ on first use.
 
 [Documentation](https://peter-gy.github.io/pymalloy/guide/overview) ·
 [Examples](examples) · [Contributing](development_docs/README.md)
+
+Agents can import `pymalloy.agent` and start with `help(pymalloy.agent)`.
