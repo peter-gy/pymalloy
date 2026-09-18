@@ -1,14 +1,14 @@
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { Session } from "../src/session.js";
-
 const sessions: Session[] = [];
 const directories: string[] = [];
-async function session(options: Parameters<typeof Session.create>[0] = {}) {
-  const value = await Session.create(options);
+async function session(options: Parameters<typeof Session.open>[0] = {}) {
+  const value = await Session.open(options);
   sessions.push(value);
   return value;
 }
@@ -18,14 +18,12 @@ async function directory() {
   return value;
 }
 const examples = resolve(import.meta.dirname, "../../../examples");
-
 afterEach(async () => {
   await Promise.all(sessions.splice(0).map((value) => value.close()));
   await Promise.all(
     directories.splice(0).map((value) => rm(value, { recursive: true, force: true })),
   );
 });
-
 describe("Node Session", () => {
   test("checks drafts, formats source, and inspects SQL without executing it", async () => {
     const runtime = await session({ dataRoot: examples });
@@ -36,43 +34,57 @@ describe("Node Session", () => {
       syntaxOnly: true,
     });
     expect(syntax.ok).toBe(true);
-    expect(syntax.native.model).toBeNull();
-    expect((await runtime.checkFile(resolve(examples, "orders.malloy"))).ok).toBe(true);
+    expect(syntax.model.model).toBeNull();
+    expect(
+      (
+        await runtime.check(await readFile(resolve(examples, "orders.malloy"), "utf8"), {
+          path: resolve(examples, "orders.malloy"),
+        })
+      ).ok,
+    ).toBe(true);
     const source = "run: duckdb.sql('SELECT 42 AS value')->{select:value}";
-    const formatted = await runtime.format(source);
+    const formatted = runtime.format(source);
     expect((await runtime.check(formatted)).ok).toBe(true);
-    const model = await runtime.model(formatted);
-    const sql = await model.sql();
+    const model = await runtime.model({
+      text: formatted,
+    });
+    const sql = await model.query().sql();
     expect((await runtime.connection.runAndReadAll(sql)).getRowObjectsJS()).toEqual([
       { value: 42 },
     ]);
-    expect(model.inspect().native.model).not.toBeNull();
+    expect(model.inspect().model.model).not.toBeNull();
     expect(model.inspect({ position: { line: 0, character: 0 } })).toHaveProperty("reference");
   });
-
   test("cancels queued work without invalidating its session", async () => {
     const runtime = await session();
     const source = "run: duckdb.sql('SELECT 42 AS value') -> { select: value }";
-    const first = runtime.run(source);
+    const first = runtime.run(source).then((result) => result.rows);
     const controller = new AbortController();
-    const cancelled = runtime.run(source, { signal: controller.signal });
+    const cancelled = runtime
+      .run(source, { signal: controller.signal })
+      .then((result) => result.rows);
     controller.abort();
     await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
     expect(await first).toEqual([{ value: 42 }]);
-    expect(await runtime.run(source)).toEqual([{ value: 42 }]);
+    expect(await runtime.run(source).then((result) => result.rows)).toEqual([{ value: 42 }]);
     expect(runtime.closed).toBe(false);
   });
-
   test("bounds active work and preserves ownership of an interrupted borrowed connection", async () => {
     const instance = await DuckDBInstance.create();
     const connection = await instance.connect();
     try {
       const runtime = await session({ connection });
-      const model = await runtime.model(
-        "run: duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> { aggregate: total is value.sum() }",
-      );
-      const running = model.run({ timeout: 20 });
-      const queued = model.run();
+      const model = await runtime.model({
+        text: "run: duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> { aggregate: total is value.sum() }",
+      });
+      const running = model
+        .query()
+        .run({ signal: AbortSignal.timeout(20) })
+        .then((result) => result.rows);
+      const queued = model
+        .query()
+        .run()
+        .then((result) => result.rows);
       const failures = await Promise.allSettled([running, queued]);
       expect(failures.map((result) => result.status)).toEqual(["rejected", "rejected"]);
       expect(failures[0]).toMatchObject({ reason: { name: "TimeoutError" } });
@@ -87,20 +99,33 @@ describe("Node Session", () => {
       instance.closeSync();
     }
   });
-
   test("executes exported views and preserves nested result values", async () => {
-    const runtime = await session();
-    const model = await runtime.load(resolve(examples, "orders.malloy"));
-    expect(model.queries).toEqual([
+    const runtime = await session({ dataRoot: examples });
+    const model = await runtime.model({
+      path: resolve(examples, "orders.malloy"),
+    });
+    expect(model.queries.map((query) => query.name)).toEqual([
       "orders.by_region",
       "orders.monthly_revenue",
       "orders.region_detail",
     ]);
-    expect(await model.run({ query: "orders.by_region" })).toEqual([
+    expect(
+      await model
+        .query("orders.by_region")
+        .run({})
+        .then((result) => result.rows),
+    ).toEqual([
       { region: "North", revenue: 105n, order_count: 3n },
       { region: "South", revenue: 95n, order_count: 3n },
     ]);
-    expect(await model.run("run: orders -> region_detail")).toEqual([
+    expect(
+      await model
+        .query({
+          malloy: "run: orders -> region_detail",
+        })
+        .run()
+        .then((result) => result.rows),
+    ).toEqual([
       {
         region: "North",
         revenue: 105n,
@@ -119,8 +144,7 @@ describe("Node Session", () => {
       },
     ]);
   });
-
-  test("binds dataRoot before same-named files in the process directory", async () => {
+  test("uses DuckDB current-directory precedence before file_search_path", async () => {
     const root = await directory();
     const name = `pymalloy-${Date.now()}.csv`;
     const conflict = resolve(process.cwd(), name);
@@ -129,23 +153,26 @@ describe("Node Session", () => {
       await writeFile(resolve(root, name), "amount\n900\n");
       const runtime = await session({ dataRoot: root });
       const source = `run: duckdb.table('${name}') -> { aggregate: total is amount.sum() }`;
-      expect(await runtime.run(source)).toEqual([{ total: 900n }]);
+      expect(await runtime.run(source).then((result) => result.rows)).toEqual([{ total: 1n }]);
     } finally {
       await rm(conflict);
     }
   });
-
   test("separates inline imports from relative data paths", async () => {
     const models = await directory();
     await writeFile(resolve(models, "base.malloy"), "source: orders is duckdb.table('orders.csv')");
     const runtime = await session({ dataRoot: examples });
-    const model = await runtime.model(
-      "import 'base.malloy'\nrun: orders -> { aggregate: total is amount.sum() }",
-      { baseDir: models },
-    );
-    expect(await model.run()).toEqual([{ total: 200n }]);
+    const model = await runtime.model({
+      text: "import 'base.malloy'\nrun: orders -> { aggregate: total is amount.sum() }",
+      url: pathToFileURL(resolve(models, "model.malloy")).href,
+    });
+    expect(
+      await model
+        .query()
+        .run()
+        .then((result) => result.rows),
+    ).toEqual([{ total: 200n }]);
   });
-
   test("defaults inline imports to dataRoot", async () => {
     const root = await directory();
     await writeFile(
@@ -154,11 +181,19 @@ describe("Node Session", () => {
     );
     const runtime = await session({ dataRoot: root });
     const source = "import 'base.malloy'\nrun: numbers -> { select: value }";
-    expect(await runtime.run(source)).toEqual([{ value: 42 }]);
-    expect(await (await runtime.model(source)).run()).toEqual([{ value: 42 }]);
+    expect(await runtime.run(source).then((result) => result.rows)).toEqual([{ value: 42 }]);
+    expect(
+      await (
+        await runtime.model({
+          text: source,
+        })
+      )
+        .query()
+        .run()
+        .then((result) => result.rows),
+    ).toEqual([{ value: 42 }]);
   });
-
-  test("captures a loaded model's data directory before queued work begins", async () => {
+  test("captures the model path while data follows native DuckDB resolution", async () => {
     const root = await directory();
     const other = await directory();
     await writeFile(resolve(root, "values.csv"), "value\n42\n");
@@ -171,35 +206,47 @@ describe("Node Session", () => {
     const previous = process.cwd();
     try {
       process.chdir(root);
-      const loading = runtime.load("model.malloy");
+      const loading = runtime.model({
+        path: "model.malloy",
+      });
       process.chdir(other);
-      expect(await (await loading).run()).toEqual([{ value: 42n }]);
+      expect(
+        await (
+          await loading
+        )
+          .query()
+          .run()
+          .then((result) => result.rows),
+      ).toEqual([{ value: 99n }]);
     } finally {
       process.chdir(previous);
     }
   });
-
   test("resolves filename-shaped tables through DuckDB search paths", async () => {
     const runtime = await session({ dataRoot: examples });
     await runtime.connection.run(
       'CREATE SCHEMA "other.space"; CREATE TABLE "other.space"."ORDERS.CSV" AS SELECT 42 AS amount',
     );
     const file = `run: duckdb.table('orders.csv') -> { aggregate: total is amount.sum() }`;
-    expect(await runtime.run(file)).toEqual([{ total: 200n }]);
+    expect(await runtime.run(file).then((result) => result.rows)).toEqual([{ total: 200n }]);
     await runtime.connection.run(`SET search_path='"other.space"'`);
-    expect(await runtime.run(`run: duckdb.table('"orders.csv"') -> { select: amount }`)).toEqual([
-      { amount: 42 },
-    ]);
     expect(
-      await runtime.run(`run: duckdb.table('"other.space"."orders.csv"') -> { select: amount }`),
+      await runtime
+        .run(`run: duckdb.table('"orders.csv"') -> { select: amount }`)
+        .then((result) => result.rows),
+    ).toEqual([{ amount: 42 }]);
+    expect(
+      await runtime
+        .run(`run: duckdb.table('"other.space"."orders.csv"') -> { select: amount }`)
+        .then((result) => result.rows),
     ).toEqual([{ amount: 42 }]);
     await runtime.connection.run("SET search_path='main'");
-    expect(await runtime.run(file)).toEqual([{ total: 200n }]);
+    expect(await runtime.run(file).then((result) => result.rows)).toEqual([{ total: 200n }]);
   });
-
   test("applies per-call givens and serializes concurrent queries", async () => {
     const runtime = await session({ dataRoot: examples });
-    const model = await runtime.model(`
+    const model = await runtime.model({
+      text: `
       ##! experimental.givens
       given: region_filter :: string is 'North'
       source: orders is duckdb.table('orders.csv')
@@ -207,25 +254,33 @@ describe("Node Session", () => {
         where: region = $region_filter
         aggregate: revenue is amount.sum()
       }
-    `);
+    `,
+    });
     expect(
       await Promise.all([
-        model.run(),
-        model.run({ givens: { region_filter: "South" } }),
-        model.run(),
+        model
+          .query()
+          .run()
+          .then((result) => result.rows),
+        model
+          .query()
+          .run({ givens: { region_filter: "South" } })
+          .then((result) => result.rows),
+        model
+          .query()
+          .run()
+          .then((result) => result.rows),
       ]),
     ).toEqual([[{ revenue: 105n }], [{ revenue: 95n }], [{ revenue: 105n }]]);
   });
-
-  test("preserves exact integer literals through SQL path binding", async () => {
+  test("preserves exact integer literals during native execution", async () => {
     const runtime = await session();
     expect(
-      await runtime.run(
-        `run: duckdb.sql("SELECT 9007199254740993::BIGINT AS value") -> { select: value }`,
-      ),
+      await runtime
+        .run(`run: duckdb.sql("SELECT 9007199254740993::BIGINT AS value") -> { select: value }`)
+        .then((result) => result.rows),
     ).toEqual([{ value: 9007199254740993n }]);
   });
-
   test("captures query options and nested givens when work is submitted", async () => {
     const runtime = await session();
     const source = `
@@ -235,20 +290,33 @@ describe("Node Session", () => {
       query: selected is numbers -> { select: value where: value > $threshold }
       query: other is numbers -> { select: doubled is value * 2 }
     `;
-    const model = await runtime.model(source);
+    const model = await runtime.model({
+      text: source,
+    });
     const options = { query: "selected", givens: { threshold: 1 } };
-    const first = model.run(options);
-    const second = runtime.run(source, options);
+    const first = model
+      .query(options.query)
+      .run({ givens: options.givens })
+      .then((result) => result.rows);
+    const second = model
+      .query(options.query)
+      .run({ givens: options.givens })
+      .then((result) => result.rows);
     options.query = "other";
     options.givens.threshold = 100;
     expect(await first).toEqual([{ value: 42 }]);
     expect(await second).toEqual([{ value: 42 }]);
-    expect(await model.run(options)).toEqual([{ doubled: 84 }]);
+    expect(
+      await model
+        .query(options.query)
+        .run({ givens: options.givens })
+        .then((result) => result.rows),
+    ).toEqual([{ doubled: 84 }]);
   });
-
   test("materializes dates, timestamps, nulls, and nested lists", async () => {
     const runtime = await session();
-    const result = await runtime.run(`
+    const result = await runtime
+      .run(`
       source: values is duckdb.sql("""
         SELECT DATE '2026-09-10' AS day_value,
           TIMESTAMPTZ '2026-09-10 12:34:56+00' AS instant,
@@ -256,7 +324,8 @@ describe("Node Session", () => {
           [{'label': 'a', 'values': [1, NULL, 3]}] AS nested
       """)
       run: values -> { select: * }
-    `);
+    `)
+      .then((result) => result.rows);
     await runtime.close();
     expect(result).toEqual([
       {
@@ -267,44 +336,49 @@ describe("Node Session", () => {
       },
     ]);
   });
-
-  test("binds reader lists while preserving CTE table identities", async () => {
+  test("resolves reader lists while preserving CTE table identities", async () => {
     const root = await directory();
     await writeFile(resolve(root, "a.csv"), "value\n40\n");
     await writeFile(resolve(root, "b.csv"), "value\n2\n");
     const runtime = await session({ dataRoot: root });
     expect(
-      await runtime.run(`
+      await runtime
+        .run(`
       run: duckdb.sql("SELECT * FROM read_csv(['a.csv', 'b.csv'])") -> {
         aggregate: total is value.sum()
       }
-    `),
+    `)
+        .then((result) => result.rows),
     ).toEqual([{ total: 42n }]);
     expect(
-      await runtime.run(`
+      await runtime
+        .run(`
       run: duckdb.sql("""WITH "a.csv" AS (SELECT 3 AS value) SELECT * FROM "a.csv" """) -> { select: value }
-    `),
+    `)
+        .then((result) => result.rows),
     ).toEqual([{ value: 3 }]);
   });
-
   test("matches CTE names with DuckDB's ASCII identifier rules", async () => {
     const root = await directory();
     await writeFile(resolve(root, "ä.csv"), "value\n42\n");
     const runtime = await session({ dataRoot: root });
     expect(
-      await runtime.run(`
+      await runtime
+        .run(`
         run: duckdb.sql("""WITH "VALUES.CSV" AS (SELECT 3 AS value)
           SELECT * FROM "values.csv" """) -> { select: value }
-      `),
+      `)
+        .then((result) => result.rows),
     ).toEqual([{ value: 3 }]);
     expect(
-      await runtime.run(`
+      await runtime
+        .run(`
         run: duckdb.sql("""WITH "Ä.csv" AS (SELECT 3 AS value)
           SELECT * FROM 'ä.csv' """) -> { select: value }
-      `),
+      `)
+        .then((result) => result.rows),
     ).toEqual([{ value: 42n }]);
   });
-
   test("binds files using the CTE scope of each query and recursive term", async () => {
     const root = await directory();
     await writeFile(resolve(root, "orders.csv"), "value\n42\n");
@@ -334,12 +408,13 @@ describe("Node Session", () => {
       ],
     ];
     for (const [sql, expected] of cases) {
-      const rows = await runtime.run(`source: numbers is duckdb.sql("""${sql}\n""")
-run: numbers -> {select: value order_by: value}`);
+      const rows = await runtime
+        .run(`source: numbers is duckdb.sql("""${sql}\n""")
+run: numbers -> {select: value order_by: value}`)
+        .then((result) => result.rows);
       expect(rows.map((row) => Number(row.value))).toEqual(expected);
     }
   });
-
   test("retains temporary tables and transactions on borrowed connections", async () => {
     const instance = await DuckDBInstance.create();
     const connection = await instance.connect();
@@ -349,12 +424,22 @@ run: numbers -> {select: value order_by: value}`);
         "CREATE TEMP TABLE numbers(value BIGINT); INSERT INTO numbers VALUES (40), (2); BEGIN",
       );
       const runtime = await session({ connection });
-      const model = await runtime.model(
-        "run: duckdb.table('numbers') -> { aggregate: total is value.sum() }",
-      );
-      expect(await model.run()).toEqual([{ total: 42n }]);
+      const model = await runtime.model({
+        text: "run: duckdb.table('numbers') -> { aggregate: total is value.sum() }",
+      });
+      expect(
+        await model
+          .query()
+          .run()
+          .then((result) => result.rows),
+      ).toEqual([{ total: 42n }]);
       await connection.run("INSERT INTO numbers VALUES (10)");
-      expect(await model.run()).toEqual([{ total: 52n }]);
+      expect(
+        await model
+          .query()
+          .run()
+          .then((result) => result.rows),
+      ).toEqual([{ total: 52n }]);
       await runtime.close();
       await connection.run("ROLLBACK");
       expect(
@@ -369,51 +454,91 @@ run: numbers -> {select: value order_by: value}`);
       instance.closeSync();
     }
   });
-
   test("keeps filename-shaped database tables addressable", async () => {
     const runtime = await session({ dataRoot: await directory() });
     await runtime.connection.run('CREATE TABLE "ITEMS.CSV" AS SELECT 42 AS value');
-    expect(await runtime.run(`run: duckdb.table('"items.csv"') -> { select: value }`)).toEqual([
-      { value: 42 },
-    ]);
+    expect(
+      await runtime
+        .run(`run: duckdb.table('"items.csv"') -> { select: value }`)
+        .then((result) => result.rows),
+    ).toEqual([{ value: 42 }]);
   });
-
   test("recovers after model and query errors and invalidates closed models", async () => {
     const runtime = await session({ dataRoot: examples });
-    await expect(runtime.model("source: broken is")).rejects.toThrow();
-    const model = await runtime.model(
-      "run: duckdb.table('orders.csv') -> { aggregate: total is amount.sum() }",
-    );
-    await expect(model.run({ query: "missing" })).rejects.toThrow("Unknown query");
-    expect(await model.run()).toEqual([{ total: 200n }]);
+    await expect(
+      runtime.model({
+        text: "source: broken is",
+      }),
+    ).rejects.toThrow();
+    const model = await runtime.model({
+      text: "run: duckdb.table('orders.csv') -> { aggregate: total is amount.sum() }",
+    });
+    expect(() => model.query("missing")).toThrow("Choose a query");
+    expect(
+      await model
+        .query()
+        .run()
+        .then((result) => result.rows),
+    ).toEqual([{ total: 200n }]);
+    const queuedDocument = model.document();
     model.close();
     model.close();
-    await expect(model.run()).rejects.toThrow("Model is closed");
-    const retained = await runtime.model(
-      "run: duckdb.sql('SELECT 42 AS value') -> { select: value }",
-    );
-    const running = retained.run();
+    await expect(queuedDocument).rejects.toThrow("Model is closed");
+    expect(() => model.query()).toThrow("Model is closed");
+    const retained = await runtime.model({
+      text: "run: duckdb.sql('SELECT 42 AS value') -> { select: value }",
+    });
+    const running = retained
+      .query()
+      .run()
+      .then((result) => result.rows);
     const closing = runtime.close();
     expect(await running).toEqual([{ value: 42 }]);
     await closing;
     await runtime.close();
-    await expect(retained.run()).rejects.toThrow("Model is closed");
-    await expect(runtime.run("run: broken")).rejects.toThrow("Session is closed");
+    expect(() => retained.query()).toThrow("Model is closed");
+    await expect(runtime.run("run: broken").then((result) => result.rows)).rejects.toThrow(
+      "Session is closed",
+    );
   });
-
   test("executes document COPY into the configured data directory", async () => {
     const root = await directory();
     await writeFile(resolve(root, "source.csv"), "value\n40\n2\n");
     const path = resolve(root, "copy.malloynb");
     await writeFile(
       path,
-      `>>>sql connection: duckdb\nCOPY (SELECT * FROM 'source.csv') TO 'result.csv' (FORMAT CSV, HEADER)\n`,
+      `>>>sql connection: duckdb\nCOPY (SELECT * FROM 'source.csv') TO '${resolve(root, "result.csv")}' (FORMAT CSV, HEADER)\n`,
     );
     const runtime = await session({ dataRoot: root });
-    const model = await runtime.load(path);
-    expect(await model.sql({ query: "sql:1" })).toContain("COPY");
+    const model = await runtime.model({
+      path: path,
+    });
+    expect(await model.query("sql:0").sql({})).toContain("COPY");
     await expect(readFile(resolve(root, "result.csv"))).rejects.toMatchObject({ code: "ENOENT" });
-    expect(await model.run({ query: "sql:1" })).toEqual([]);
+    expect(
+      await model
+        .query("sql:0")
+        .run({})
+        .then((result) => result.rows),
+    ).toEqual([]);
     expect(await readFile(resolve(root, "result.csv"), "utf8")).toBe("value\n40\n2\n");
   });
+});
+
+test("retained source views bind each call and read current data", async () => {
+  const runtime = await session();
+  await runtime.connection.run("CREATE TABLE numbers AS SELECT 42 AS value");
+  const model = await runtime.model({
+    text: `##! experimental.givens
+    given: cutoff :: number is 0
+    source: numbers is duckdb.table('numbers') extend {
+      view: filtered is {where:value > $cutoff select:value}
+    }`,
+  });
+  const query = model.query("numbers.filtered");
+  expect(await query.sql({ givens: { cutoff: 50 } })).toContain(">50");
+  expect((await query.run({ givens: { cutoff: 50 } })).rows).toEqual([]);
+  await runtime.connection.run("INSERT INTO numbers VALUES (99)");
+  expect((await query.run({ givens: { cutoff: 50 } })).rows).toEqual([{ value: 99 }]);
+  expect((await query.run({ givens: { cutoff: 0 } })).rows).toHaveLength(2);
 });
