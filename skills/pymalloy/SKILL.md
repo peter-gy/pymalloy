@@ -14,9 +14,10 @@ import pymalloy.agent as agent
 print(agent.agent_skill().file("references/modeling.md").read_text())
 ```
 
-Syntax construction and agent discovery use the base package. Reading existing
-models, checking, previews, and validation need `pymalloy[server]`. Polars and
-Arrow conversion use `pymalloy[dataframes]`.
+Syntax construction uses the base package. Guidance access needs
+`pymalloy[agent]`. Reading existing models, checking, previews, validation, and
+Arrow-native results need `pymalloy[server]`. `pymalloy[dataframes]` adds Polars
+and standalone Arrow input capture. Browser widgets use `pymalloy[widget]`.
 
 ## Ground the model
 
@@ -80,13 +81,15 @@ else:
    with `.define(**sources)` or `.queries(**queries)`. For an existing field, use
    `draft.define(orders=draft["orders"].replace(revenue=pm.col("amount").sum()))`.
    Pass `pm.col("amount").sum().doc("revised description")` to replace the binding's directly
-   attached `#"` text. Shared statement tags and block annotations stay intact.
+   attached documentation route. Use `.annotate(text, route=...)` for other
+   owned routes. Shared statement tags stay intact.
    Review `.diff()` and update affected assertions.
-2. Call `.check(**connection_options)` for compiler diagnostics, metadata, and
-   advisory documentation warnings. Fix errors using their authored locations.
+2. Call `.check(**connection_options)` for compiler diagnostics and metadata. Supply `documentation=DocumentationPolicy()` when
+   documentation completeness is part of the acceptance criteria. Fix errors
+   using their authored locations.
 3. Call `.validate(checks, **connection_options)` for named business assertions.
-   Each check is a source/query fragment returning counterexamples. Zero rows passes. A failed check retains one
-   example in `check.result.rows()`. Query errors also fail validation.
+   Each check is a source/query fragment returning counterexamples. Zero rows
+   passes. A failed check retains one example in `check.result.rows()`. Query errors also fail validation.
 4. Inspect diagnostics and checks, then revise the candidate. Compiler success
    alone does not establish correct grain, cardinality, or metric meaning.
 5. Save the accepted revision with `report.save(path)`. Failed validation blocks
@@ -117,7 +120,8 @@ references, arithmetic, predicates, or aggregates.
 ## Import and roundtrip deliberately
 
 `pm.read_model` preserves source text while exposing named expressions for scoped
-edits. `draft.to_python()` emits editable scalar constructors and model syntax.
+edits. `draft.to_python()` emits source/query constructors for supported parser
+structure and editable scalar operations. Other syntax remains literal.
 Supported scalar expressions are rendered canonically, preserving semantics while
 allowing their spelling to change. Comments and surrounding syntax stay verbatim.
 Read and save an unchanged draft for exact file preservation. After editing the
@@ -138,5 +142,5 @@ engine, or assertion failures, use [failure triage](references/triage.md).
 
 `.doc()` emits native `#"` descriptions. `DocumentationPolicy` in
 `pymalloy.validation` selects accepted annotation routes, object kinds and severity.
-`draft.check(documentation=None)` disables documentation lint while retaining
-compiler diagnostics. Keep case-specific user situations in accompanying records.
+Pass `documentation=DocumentationPolicy()` to `check` or `validate` to enable
+documentation lint. Keep case-specific user situations in accompanying records.

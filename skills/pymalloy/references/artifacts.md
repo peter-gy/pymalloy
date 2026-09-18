@@ -83,8 +83,15 @@ leaves SQL text intact. Registered tables, database state, remote readers and
 computed reader paths require their own replay setup. Review those dependencies
 before calling an artifact self-contained.
 
+Explicit files are copied at export time. Keep them stable between validation
+and export, or revalidate the copied data. Managed `pm.data` inputs retain their
+captured values and are checked for Parquet integrity during export.
+
 After export, execute the emitted Malloy from the new directory with the recorded
-parameters. Compare SQL structure as well as typed results when checking Python
+parameters. The generated `replay.py` executes with the installed runtime. It does
+not verify manifest hashes, enforce versions, compare output, or rerun assertions.
+Retain environment specifications and expected results in the producing project.
+Compare SQL structure as well as typed results when checking Python
 reconstruction. Matching rows on one snapshot is insufficient evidence of general
 semantic equivalence. Nested ordering, nulls, large integers and denominators are
 part of the comparison.

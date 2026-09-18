@@ -7,6 +7,7 @@ Identify the stage before changing the model:
 | Python construction | `TypeError` or `ValueError` before compilation. Check constructor arguments and use `raw_expr` or native syntax for grammar outside the API.                                         |
 | Malloy compilation  | `CompilationError.diagnostics` carries source locations. Inspect the installed compiler version, source and imports. Fix the original Malloy, then reconstruct Python if needed.     |
 | Schema discovery    | A `CompilationError` caused by `SchemaError` retains the failing DESCRIBE SQL and original engine cause. Verify connection, file bindings and the source SQL.                        |
+| Compiler service    | `CompilerError` identifies an internal compiler or transport failure. Retain the cause and restart the model. A deadline raises `TimeoutError`, not a model diagnostic.              |
 | Engine execution    | `ExecutionError.context` retains the closed model, selected query or ad hoc text, parameters, SQL, compiler version and preview limit. `__cause__` is the original DuckDB exception. |
 | Semantic validation | A failed data assertion retains a counterexample. Inspect grain, keys, population, denominator, time reference and join relationships rather than changing syntax to silence it.     |
 
@@ -35,7 +36,7 @@ finally:
     model.close()
 
 # Replay after the original runtime has closed.
-replay = pm.model(context.source)
+replay = pm.model(context.source, connection_name=context.connection_name)
 try:
     try:
         replay.query(context.query.name).run(givens=context.givens)
@@ -46,9 +47,11 @@ finally:
 ```
 
 For an ad hoc query, replay `model.query(malloy=context.malloy)`. For a preview,
-use the recorded `preview_limit`. The context captures model text and imports,
-not a database transaction or input bytes. Supply the same data and connection
-settings. `bundle(context.source, ...)` can materialize its source graph with
+use the recorded `preview_limit`. The context retains model text, imports, and
+managed input owners. Its `source` property contains text only. Supply the same
+external data and connection settings when replaying that source. A context does
+not capture a database transaction. `bundle(context.source, ...)` can materialize
+its source graph with
 explicit file bindings, while `context.sql` can be executed directly in DuckDB.
 
 Inspect `model.inspect().givens` before passing parameters. An import-based
