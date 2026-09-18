@@ -7,7 +7,7 @@ its result or requests source text and field schemas. Hosts own I/O and executio
 import { CompiledModel } from "@malloy-runtime/compiler";
 import { drive, connection } from "@malloy-runtime/duckdb";
 
-// host supplies readURL(URL) and describe(sql).
+// host supplies readURL(URL) and describe(sql), returning native column types.
 const model = await drive(
   CompiledModel.begin({
     url: new URL("file:///project/orders.malloy"),
@@ -19,19 +19,25 @@ const prepared = await drive(model.prepare("orders.by_region"), host);
 console.log(prepared.sql);
 ```
 
-`CompiledModel.begin({url,source?,connection:{name,dialect}})` returns a `Job`.
+`CompiledModel.begin({url,source?,documentKind?,connection:{name,dialect}})` returns a `Job`.
 `job.step(fulfilled?)` returns `{needs}` or `{result}`. Needs contain `urls` and
 `schemas`. Every requested key must receive `{value}` or `{error}`. Schema values
-are Malloy field definitions. A completed job rejects further steps. `close()`
+are Malloy field definitions. Table needs carry `{kind:"table", tablePath}` and
+SQL needs carry `{kind:"sql", sql}`, both with a key and connection name. Hosts
+construct any engine-specific schema probes. `documentKind` is `"model"` by default
+or `"notebook"` for ordered notebook cells. A completed job rejects further steps. `close()`
 releases an abandoned job.
 
 Compiled models expose typed `queries`, `source()`, `inspect()`, `reference()`,
 `prepare(selection?, {givens?})`, `defaultQueries()`, and
 `document({queries?,all?,givens?})`. Preparation and document compilation return
-jobs. Query names and source coordinates use zero-based ordinals.
+jobs. `run:N` and `sql:N` use zero-based ordinals. Named queries retain their
+authored names. Source positions use zero-based lines and Unicode code-point
+columns. Parsed import spans use absolute code-point offsets.
 
 `@malloy-runtime/compiler/tooling` exposes `parseSource`, `checkSource`,
-`formatSource`, and `compilerVersion`. Checking returns a job. Parsing and
+`formatSource`, `syntaxSource`, and `compilerVersion`. `syntaxSource` projects
+editable source bindings and scalar operations from Malloy's parser. Checking returns a job. Parsing and
 formatting are synchronous. Public records are available from
 `@malloy-runtime/compiler/types`.
 

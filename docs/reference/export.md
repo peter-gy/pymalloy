@@ -1,80 +1,118 @@
 # Export API
 
 ```python
-from pymalloy.export import compile, jupyter
+from pymalloy.export import prepare, jupyter
 
-book = compile("examples/orders.malloy", all=True)
+book = prepare("examples/orders.malloy", all=True)
 notebook = jupyter.render(book, output_path="orders.ipynb")
 ```
 
-`compile(model, *, profile="precompiled", queries=None, all=False, givens=None,
-data_root=None, database=None, title=None, timeout=120, files=None)` returns a
+`prepare(model, *, profile="precompiled", queries=None, all=False, givens=None,
+data_root=None, database=None, connection_name="duckdb", title=None, timeout=120,
+files=None, remote_files=(), extensions=())` returns a
 `Document`. `model` is a local path. The data root defaults to its parent.
-`database` opens read-only. `title` defaults to the filename stem.
+`database` opens read-only. `title` defaults to the title-cased filename stem
+with underscores replaced by spaces.
 `queries` and `all` are mutually exclusive. `queries=None` uses the default
 selection and `queries=[]` selects no query cells. The timeout covers the complete
 preparation, including imports, compilation, source capture, and SQL classification.
 
-`files` maps widget aliases to local paths for SQL readers. Malloy table syntax
-supplies discoverable file references. `Profile` defines `PRECOMPILED`, `SERVER`,
-and `WIDGET`.
+`files` maps source file names to local paths for SQL readers. Malloy table syntax
+supplies discoverable file references. Native profiles restrict external file
+access to discovered and declared paths, plus inferred COPY destinations. This
+restriction applies during preparation and generated execution. Native file aliases must resolve to their
+declared location relative to `data_root`, or use an absolute path. `Profile`
+defines `PRECOMPILED`, `SERVER`, and `WIDGET`.
 
-A `Document` holds title, ordered `Markdown`/`Query` cells, data root, database,
-profile, captured source, givens, and files. Query cells contain `name`, `sql`, and
-`kind` (`select` or `copy`). Renderers preserve cell order and COPY dependencies.
+`remote_files` declares absolute HTTP(S) URLs used inside SQL readers. Direct
+Malloy table URLs are discovered automatically. Remote-enabled native profiles
+install and load `httpfs` and allow HTTP(S) access, including redirects. These
+URLs identify live inputs, not frozen response bytes. Preparation and execution
+need network access.
 
-`marimo.render(document, *, output_path)` returns Python source and requires
-`pymalloy[marimo]`. `jupyter.render(document, *, output_path)` returns notebook JSON.
+`extensions` names DuckDB extensions to install and load before restricting file
+access, both during preparation and in generated native notebooks. The widget
+profile rejects this option; its execution uses DuckDB WebAssembly's extension
+support.
+
+A `Document` holds title, ordered `Markdown`/`QueryCell` cells, data root, database,
+profile, captured source, givens, local files, remote URLs, extensions, and connection name. Query cells contain `name`, `sql`, and
+`kind` (`select` or `copy`). These `pymalloy.export.QueryCell` records describe notebook cells. Renderers preserve cell order and COPY dependencies.
+
+`marimo.render(document, *, output_path)` returns Python source. Running that
+notebook requires `pymalloy[marimo]`. `jupyter.render(document, *, output_path)` returns notebook JSON.
 The output path determines portable relative data paths. Rendering returns text
 and does not write the output file or execute queries.
 
 ## Source bundles
 
-`bundle(source: Validation | ModelSource, directory, *, files=None, query=None, givens=None,
-format=True, timeout=120) -> SourceBundle` materializes a closed source graph into
-a new directory. Its parent must exist. Existing destinations are rejected.
-Requires the server compiler for native parsing and formatting.
+`bundle(source: Validation | ModelSource, directory, *, files=None, query=None,
+givens=None, connection_name=None, format=True, timeout=120) -> SourceBundle`
 
-```python
-from pymalloy.export import bundle
+Write plain `.malloy` sources, captured imports, copied inputs, `model.py`,
+`replay.py`, and `bundle.json` into a new directory. The parent must exist.
+Existing destinations and notebook document sources are rejected. Native parsing
+and optional formatting require the server compiler. Publication occurs after
+source and file preparation succeeds.
 
-parameters = {"minimum": 10}
-accepted = candidate.validate(checks, givens=parameters).require_valid()
-artifact = bundle(
-    accepted,
-    "orders-export",
-    files={"orders.parquet": "data/orders.parquet"},
-    query="by_region",
-)
-```
+See [bundle models and inputs](../guide/bundles.md) for a complete validation and
+replay workflow.
 
-`SourceBundle.model`, `.data_root`, and `.manifest` are paths. `bundle.json` records
-the selected query, parameter bindings, compiler version, source identities and
-SHA-256 hashes of emitted source and copied data. Load `.model` with
-`data_root=artifact.data_root`, then select the manifest's query and pass its givens.
+### Source and bindings
 
-Every import is rewritten using Malloy's parsed string-literal span. Selective
-imports keep their selected names. Source files may originate at different URLs,
-and an inline root may share its identity with an imported physical file.
-Missing imports and malformed source fail before publishing the destination.
-`format=False` retains authored formatting around the rewritten references.
+- `Validation` must be successful. It supplies captured imports, managed inputs,
+  and the exact givens used during validation. A supplied `query` must name a
+  query in that model. Different explicit givens or a conflicting connection
+  name are rejected.
+- `ModelSource` supplies source and imports only. The caller supplies any data
+  bindings and givens. `connection_name` defaults to `"duckdb"`. Bundling checks
+  syntax and import closure, without semantic compilation or query execution.
+- `query=None` leaves replay to the model's default selection. A `ModelSource`
+  query name is recorded without checking that it exists.
+- `format=False` keeps authored formatting around rewritten references.
+- `files` maps `str | Path` table references to local regular files. String keys
+  match exact Malloy table paths. Use a `Path` key for `pm.table(Path(...))`.
 
-`files` maps table references to local input files. String keys match the exact
-Malloy table path. Use a `Path` key for a reference constructed with `pm.table(Path)`.
-Bound `duckdb.table` calls reference the copied data. Relative string keys also
-provide aliases for SQL readers through `file_search_path`. SQL text is retained.
-Database state and undeclared reader dependencies remain the caller's responsibility.
+Malloy's parsed spans identify import literals and bound table calls to rewrite.
+Selective imports retain their selected names. Source files can originate
+at different URLs. SQL text remains unchanged. Relative string file bindings also
+provide aliases for SQL readers through `file_search_path`.
 
-Materialization checks source syntax and closure. It does not execute a query or
-establish that the selected parameters and data produce the intended result.
-Revalidate and replay from the exported directory. See the executable artifact
-recipe distributed with `pymalloy.agent.agent_skill()` at
-`references/artifacts.md`.
+Explicit files are copied at export time, independently of the data seen during
+validation. Managed dataframe inputs are checked against their materialized
+Parquet hashes and cannot be replaced through `files`. Database state and
+undeclared reader dependencies remain requirements of the exported model.
 
-An accepted `Validation` retains managed dataframe inputs and its bound givens.
-Export rejects failed validation, changed bindings, and changed captured files.
-Its manifest adds Arrow schemas, row counts, input identities, and assertion SQL.
-The bundle includes editable Python grammar in `model.py` and a `replay.py` script
-for frozen inputs. Keep preparation logic in the producing notebook or script.
-See [Python dataframe inputs](../guide/dataframes.md). A code-only `ModelSource`
-remains available for explicit source and file packaging.
+### Return value and manifest
+
+`SourceBundle.model`, `.data_root`, and `.manifest` are filesystem paths.
+Manifest paths are relative to the bundle directory. The current
+`bundle.json` uses `format_version: 3`:
+
+| Field                | Contents                                                                                       |
+| -------------------- | ---------------------------------------------------------------------------------------------- |
+| `compiler_version`   | Version used to parse and format the export                                                    |
+| `model`, `data_root` | Relative root model and data directory paths                                                   |
+| `connection_name`    | Malloy connection name used by replay                                                          |
+| `query`, `givens`    | Selected query or `null`, and exact JSON-compatible parameter bindings                         |
+| `sources`            | Source URLs, emitted paths, original-text SHA-256 and emitted-file SHA-256                     |
+| `files`              | Bound references, data-root-relative aliases, copied paths, and copied-file SHA-256            |
+| `inputs`             | Managed input IDs, names, row counts, schemas, Arrow snapshot hashes, and Parquet paths/hashes |
+| `validation`         | `null` for `ModelSource`, otherwise success and each check's name, status, and SQL             |
+
+Capture IDs distinguish separate `pm.data` calls. They are not content hashes.
+The manifest has no whole-bundle identity, output dataset, expected result hash,
+or environment lock. Assertion definitions, diagnostics, and human review remain
+outside the manifest.
+
+### Replay
+
+`replay.py` reads the manifest, loads the emitted Malloy with its data root, and
+runs the selected query using the recorded givens and connection name. It rejects
+a copied input alias shadowed by a different file in the current directory. It exposes `result` when loaded
+with `runpy.run_path` and closes its model before returning. It uses the installed
+runtime and does not check recorded hashes, enforce versions, or rerun assertions.
+
+`model.py` reconstructs editable grammar against the bundled files. It does not
+recover the Python code that prepared an input dataframe. Retain that notebook or
+producer script separately, and verify results after relocation or environment changes.

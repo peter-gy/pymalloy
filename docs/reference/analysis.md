@@ -10,8 +10,9 @@ report = pm.check("run: missing", position=SourcePosition(line=0, character=5))
 print(report.ok, to_dict(report.diagnostics))
 ```
 
-`ParseReport` contains syntax metadata: `url`, `diagnostics`, `symbols`, `tables`,
-`imports`, `completions`, and `help`. `pm.parse(source, url=...)` returns this record.
+`ParseReport` contains syntax metadata: `url`, `compiler_version`, `diagnostics`,
+`symbols`, `tables`, `imports`, `completions`, and `help`. `pm.parse(source, url=..., document_kind=None)` returns this record. The optional
+kind selects `"model"` or `"notebook"`, with URL-based inference when omitted.
 
 `MarkdownCell(text=...)` and `QueryCell(name=..., sql=...)` form the `DocumentCell`
 union returned by `model.document()`. Use `isinstance` to distinguish the cell
@@ -33,5 +34,9 @@ diagnostics and upstream model schemas. Positional inspection also includes
 and `.sources` retain upstream Malloy schema records. Required givens may defer
 the whole-model schema while source schemas remain available.
 
-Records are immutable. `to_dict(record)` returns detached Python field names,
-including tagged schema variants. Authored dictionary keys retain their spelling.
+Records are immutable. `to_dict(value)` converts records, mappings, and sequences
+into detached dictionaries and lists. Record fields use Python names, including
+tagged schema variants. Authored dictionary keys retain their spelling. Use the
+same function to convert a widget's read-only state into editable containers.
+Scalar values, including exact integers and decimals, retain their Python types.
+JSON encoding may require a serializer for those scalar types.

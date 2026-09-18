@@ -41,6 +41,7 @@ Python truth testing and iteration. `.equals(other)` compares operation trees.
 | `.dt.hour()`, `.dt.minute()`, `.dt.second()`                                 | Time components                                           |
 | `.dt.date()`, `.dt.truncate(unit)`                                           | Date conversion or time bucketing                         |
 | `.doc(text)`                                                                 | Return an `Expr` with documentation for its field binding |
+| `.annotate(text, *, route="")`                                               | Attach a renderer or app annotation to its field binding  |
 
 `case((condition, value), ..., otherwise=value)` chooses values with symbolic
 predicates. For example, `case((col("amount") > 100, "large"), otherwise="small")`
@@ -59,15 +60,15 @@ expressions so temporal range and partial-filter semantics are preserved.
 
 Source constructors return immutable `Fragment` values. Scalar clause arguments
 require `Expr` values, including documented expressions. Bare strings are rejected.
-Construction performs no compilation. `data(frame, *, name=None)` additionally
+Construction performs no compilation. `data(frame, *, name=None, connection="duckdb")` additionally
 requires PyArrow and captures a detached Arrow snapshot. Other constructors use
 base dependencies. See [dataframe inputs](../guide/dataframes.md).
 
 | Constructor                                                                             | Meaning                                                                                   |
 | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `table(path: str \| Path)`                                                              | DuckDB table expression. `Path` explicitly denotes a file                                 |
-| `data(frame, *, name=None)`                                                             | Capture a materialized dataframe-like input through Arrow                                 |
-| `sql(text: str)`                                                                        | DuckDB SQL source expression                                                              |
+| `table(path: str \| Path, *, connection="duckdb")`                                      | DuckDB table expression. `Path` explicitly denotes a file                                 |
+| `data(frame, *, name=None, connection="duckdb")`                                        | Capture a materialized dataframe-like input through Arrow                                 |
+| `sql(text: str, *, connection="duckdb")`                                                | DuckDB SQL source expression                                                              |
 | `ref(name: str)`                                                                        | Quoted reference to one source or query name                                              |
 | `dimension(**fields)`, `measure(**fields)`                                              | Named scalar expressions                                                                  |
 | `view(**queries)`, `nest(**queries)`                                                    | Named query fragments                                                                     |
@@ -83,20 +84,22 @@ base dependencies. See [dataframe inputs](../guide/dataframes.md).
 
 ## Fragment
 
-| Member                    | Behavior                                     |
-| ------------------------- | -------------------------------------------- |
-| `.text`                   | Rendered Malloy text                         |
-| `.names`                  | Named expressions in this scope              |
-| `[name]`                  | One named expression's right-hand side       |
-| `.replace(**expressions)` | Replace named right-hand sides in this scope |
-| `.extend(*clauses)`       | Append a source extension block              |
-| `.pipe(*queries)`         | Append query pipeline stages                 |
-| `.doc(text)`              | Add a Malloy documentation annotation        |
+| Member                         | Behavior                                     |
+| ------------------------------ | -------------------------------------------- |
+| `.text`                        | Rendered Malloy text                         |
+| `.names`                       | Named expressions in this scope              |
+| `[name]`                       | One named expression's right-hand side       |
+| `.replace(**expressions)`      | Replace named right-hand sides in this scope |
+| `.extend(*clauses)`            | Append a source extension block              |
+| `.pipe(*queries)`              | Append query pipeline stages                 |
+| `.doc(text)`                   | Add a Malloy documentation annotation        |
+| `.annotate(text, *, route="")` | Add a routed Malloy annotation               |
 
-Operations return new fragments. When replacing a binding, `.doc(text)` replaces
-its directly attached single-line `#"` annotations. Shared statement tags and
-block annotations retain their original text. Omitting `.doc` preserves existing
-documentation. Lookup stops at named scope boundaries. Missing
+Operations return new fragments. `.doc(text)` uses the native `"` route, and
+`.annotate(text, route="research")` uses an app annotation route. When replacing a
+binding, supplied annotations replace its directly attached annotations for those
+routes. Other routes and shared statement annotations remain intact. Omitting
+annotations preserves the binding's existing annotations. Lookup stops at named scope boundaries. Missing
 names raise `KeyError`, and duplicates in the same scope raise `ValueError`.
 
 Pipeline stages inside one named query share an editing scope. If stages define
@@ -106,10 +109,10 @@ Python representation.
 
 `syntax(*parts, kind="expression", name=None)` composes literal strings, nested
 fragments, and scalar `Expr` leaves. Use it for source or query grammar outside the constructors.
-`Draft.to_python()` emits this structure around native scalar operations. Named `source`, `query`, and `field`
-bindings contain one expression child, optional documentation leaves, and clause
-containers for syntax such as a join condition. Their surrounding strings retain names, other tags, comments, and
-punctuation.
+Named `source`, `query`, and `field` bindings contain one expression child,
+optional annotation leaves, and clause containers for syntax such as a join
+condition. `Draft.to_python()` emits readable constructors for supported structure
+and uses `syntax(...)` for comments and grammar outside those constructors.
 
 ## Draft
 
@@ -126,32 +129,37 @@ Strings mean Malloy text, `Path` means a local file, and `ModelSource` carries
 captured imports. Requires `pymalloy[server]`. Parsing establishes named editing
 slots but does not resolve schemas or validate business meaning.
 
-| Member                                                                                   | Behavior                                                                     |
-| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `.text`, `.url`, `.imports`, `.names`                                                    | Source text, identity, captured imports, and root declaration names          |
-| `[name]`                                                                                 | Named source or query expression                                             |
-| `.define(**sources)`                                                                     | Add or replace named source expressions                                      |
-| `.queries(**queries)`                                                                    | Add or replace named query expressions                                       |
-| `.append(*parts)`                                                                        | Append literal text or syntax verbatim                                       |
-| `.include(url: str \| Path)`                                                             | Add an import to a live draft                                                |
-| `.diff(previous=None)`                                                                   | Unified diff against another draft or the originally loaded file             |
-| `.format()`                                                                              | Format with Malloy and rebuild editable syntax                               |
-| `.to_python(name="model", inputs=None)`                                                  | Executable Python reconstructing scalar operations, syntax, URL, and imports |
-| `.check(documentation=DocumentationPolicy(), **options)`                                 | `CheckReport` with compiler diagnostics and documentation warnings           |
-| `.compile(**options)`                                                                    | Retained runtime `Model`, explicitly closable                                |
-| `.validate(checks=None, *, givens=None, documentation=DocumentationPolicy(), **options)` | Revision-bound `Validation`                                                  |
-| `.save(path=None, *, overwrite=False)`                                                   | Write root text and return its `Path`                                        |
+| Member                                                                  | Behavior                                                                                 |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `.text`, `.url`, `.imports`, `.names`                                   | Source text, identity, captured imports, and root declaration names                      |
+| `.inputs`                                                               | Captured input resources with names, row counts, fingerprints, and detached Arrow access |
+| `[name]`                                                                | Named source or query expression                                                         |
+| `.define(**sources)`                                                    | Add or replace named source expressions                                                  |
+| `.queries(**queries)`                                                   | Add or replace named query expressions                                                   |
+| `.append(*parts)`                                                       | Append literal text or syntax verbatim                                                   |
+| `.include(url: str \| Path)`                                            | Add an import to a live draft                                                            |
+| `.diff(previous=None)`                                                  | Unified diff against another draft or the originally loaded file                         |
+| `.format()`                                                             | Format with Malloy and rebuild editable syntax                                           |
+| `.to_python(name="model", inputs=None)`                                 | Executable Python reconstructing scalar operations, syntax, URL, and imports             |
+| `.check(documentation=None, **options)`                                 | `CheckReport` with compiler diagnostics and optional documentation lint                  |
+| `.compile(**options)`                                                   | Retained runtime `Model`, closable directly or through a context manager                 |
+| `.validate(checks=None, *, givens=None, documentation=None, **options)` | Revision-bound `Validation`                                                              |
+| `.save(path=None, *, overwrite=False)`                                  | Write root text and return its `Path`                                                    |
 
 `define` and `queries` preserve surrounding text when replacing an existing
 right-hand side. Replacing a declaration of the wrong kind fails. New declarations
 are appended in keyword order. Imports and dependencies must precede consumers.
 
-Check, compile, and validate accept the data connection options of `pm.model`.
-`format` and `to_python` preserve the draft's source identity. Generated Python
-reconstructs syntax and import snapshots. Supported scalar operations render
-canonically, so their spelling may change while their semantics remain equivalent.
-Other syntax and comments stay verbatim. The reconstructed draft has no ownership
-of the originally loaded file.
+Check, compile, and validate accept the data connection options of `pm.model`,
+including `connection_name` and `document_kind`. A draft contains plain Malloy
+model syntax, so it defaults to `document_kind="model"` independently of its URL.
+`format` and `to_python` preserve the draft's source identity. `to_python` uses
+Malloy's parsed structure to emit constructors for handwritten and generated
+models. Supported clauses and expressions render canonically, which can change
+whitespace, quoting, and numeric spelling while preserving meaning. Comments and
+unsupported grammar remain literal syntax fragments. The original draft retains
+its authored text until edited or formatted. The reconstructed draft has no
+ownership of the originally loaded file.
 
 ## Validation
 
@@ -161,7 +169,11 @@ mapping of names to source/query `Fragment` values, such as
 check retains one row. The timeout budget covers compilation, metadata, and all
 assertions. Owned runtime resources are closed before the report returns.
 
-`Validation` exposes `draft`, `diagnostics`, `checks`, `error`, and `ok`.
+`Validation` exposes `draft`, `diagnostics`, `checks`, `error`, `ok`, `givens`,
+`connection_name`,
+and available query names in `queries`. A successful report's `source` property
+returns its accepted `ModelSource`. Invalid reports reject that access. Pass the
+report itself to `bundle` to retain managed input owners and validated bindings.
 Each `DataCheck` exposes `name`, `status`, `result`, `error`, `diagnostics`, and
 `execution`. Engine failures retain detached execution evidence in `execution`.
 Statuses are `passed`, `failed`, `error`, or `skipped`. Compiler errors, runtime
@@ -171,8 +183,10 @@ errors, and every nonpassed check make `ok` false.
 `ValueError`. `report.save(path=None, overwrite=False, warnings_as_errors=False)`
 requires validity and saves the captured revision.
 
-Documentation warnings concern public sources, measures, and views. They remain
-advisory by default. Assertions provide evidence about the data at check time.
+Documentation lint runs when a `DocumentationPolicy` is supplied. Its default
+severity is advisory. Assertions provide evidence about the data at check time.
+Operational failures, including timeouts and compiler crashes, raise exceptions
+rather than becoming validation findings.
 
 ## Persistence
 
@@ -182,13 +196,21 @@ file atomically. Reload after saving before editing again.
 
 A validated snapshot with imports must be saved in its original root directory,
 and imported files must still match their captured text. Saving writes the root
-text. Use [source bundles](export.md#source-bundles) to materialize the complete
-captured graph, then revalidate at the destination.
+text. Use [source bundles](export.md#source-bundles) to materialize the captured
+graph, then revalidate at the destination.
+
+Drafts with captured data require `bundle(draft.validate(), directory)` for
+persistence. `.save()` cannot write managed inputs. `.to_python(inputs=...)`
+maps input names to Python variable names and preserves shared source expressions.
+It reconstructs the model grammar, not the producer of the dataframe.
 
 ## Documentation policy
 
-`.doc(text)` emits Malloy's native `#"` description route. Other authored routes
-remain intact. `DocumentationPolicy` is imported from `pymalloy.validation`:
+`.doc(text)` emits Malloy's native `#"` description route. Use
+`.annotate("bar_chart")` for a renderer tag or
+`.annotate("unit=USD", route="business")` for an app annotation. Routed annotations
+remain editable in imported models. `DocumentationPolicy` is imported from
+`pymalloy.validation`:
 
 ```python
 from pymalloy.validation import DocumentationPolicy
@@ -197,22 +219,7 @@ policy = DocumentationPolicy(routes=('"', 'business'), kinds=("source", "measure
 report = candidate.check(documentation=policy)
 ```
 
-The default policy checks sources, measures and views for a nonempty native
-description and reports warnings. Pass `documentation=None` to disable this lint.
+Documentation lint is off by default. Passing `DocumentationPolicy()` checks
+sources, measures, and views for a nonempty native description and reports warnings.
 Compiler diagnostics remain enabled. Error-severity findings make `report.ok`
 false. `validate` accepts the same policy.
-
-After successful validation, `report.source` returns the accepted closed
-`ModelSource`, including imports. Invalid reports reject access. This snapshot
-is ready for `pymalloy.export.bundle` and remains independent of runtime lifetime.
-
-Python reconstruction emits familiar source and query constructors where their
-syntax is unambiguous. Other syntax remains explicit `pm.syntax` or `raw_expr`.
-It does not interpret language meaning or simplify expressions. Extend a named
-source with `pm.ref("orders").extend(...)`. Use `candidate["orders"].replace(...)`
-to edit the existing definition rather than copy it into a new source.
-
-Drafts carrying captured data use `bundle(draft.validate(), directory)` for
-persistence. `.save()` cannot write their managed inputs. `.to_python(inputs=...)`
-maps input names to Python variable names and reconstructs shared source
-expressions. `.inputs` exposes the captured resources.
