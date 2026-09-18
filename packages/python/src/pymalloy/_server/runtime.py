@@ -8,10 +8,11 @@ import weakref
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import duckdb
 
+from pymalloy._connection import DEFAULT_CONNECTION
 from pymalloy._draft import Draft
 from pymalloy._errors import ModelError
 from pymalloy._givens import encode_givens, given_values
@@ -26,7 +27,12 @@ from pymalloy._records import (
     SourceReady,
 )
 from pymalloy._selection import query_names
-from pymalloy._source import ModelSource, resolve_source
+from pymalloy._source import (
+    DocumentKind,
+    ModelSource,
+    resolve_document_kind,
+    resolve_source,
+)
 from pymalloy._syntax import Fragment
 from pymalloy.analysis import (
     CheckReport,
@@ -38,12 +44,14 @@ from pymalloy.execution import ExecutionContext, ExecutionError
 from pymalloy.result import Result
 
 from .compiler import Compiler
+from .deadline import interrupt_at
 from .engine import Engine
 
 
-def _close(compiler: Compiler, engine: Engine) -> None:
+def _close(compiler: Compiler | None, engine: Engine) -> None:
     try:
-        compiler.close()
+        if compiler is not None:
+            compiler.close()
     finally:
         engine.close()
 
@@ -57,25 +65,37 @@ class _Runtime:
         data_root: str | Path | None = None,
         database: str | Path | None = None,
         connection: duckdb.DuckDBPyConnection | None = None,
+        config: Mapping[str, Any] | None = None,
+        extensions: Sequence[str] = (),
+        connection_name: str = DEFAULT_CONNECTION,
         read_only: bool = False,
         timeout: float = 120,
         compiler_memory_mb: int = 256,
         deadline: float | None = None,
+        compiler: Compiler | None = None,
     ) -> None:
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("Model timeout must be finite and positive")
+        if not isinstance(connection_name, str) or not connection_name:
+            raise ValueError("connection_name must be a nonempty string")
+        self._connection = {"name": connection_name, "dialect": "duckdb"}
         deadline = deadline if deadline is not None else time.monotonic() + timeout
         self._engine = Engine(
             data_root=data_root,
             database=database,
             connection=connection,
+            config=config,
+            extensions=extensions,
             read_only=read_only,
+            deadline=deadline,
         )
         try:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("Model startup exceeded its deadline")
-            self._compiler = Compiler(memory_mb=compiler_memory_mb, timeout=remaining)
+            self._compiler = compiler or Compiler(
+                memory_mb=compiler_memory_mb, timeout=remaining
+            )
         except BaseException:
             self._engine.close()
             raise
@@ -83,7 +103,9 @@ class _Runtime:
         self._root = Path(data_root or Path.cwd()).resolve()
         self._lock = threading.RLock()
         self._closed = False
-        self._cleanup = weakref.finalize(self, _close, self._compiler, self._engine)
+        self._cleanup = weakref.finalize(
+            self, _close, self._compiler if compiler is None else None, self._engine
+        )
 
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
@@ -112,37 +134,19 @@ class _Runtime:
             if time.monotonic() >= deadline:
                 raise TimeoutError("Waiting for the model exceeded its deadline")
             self._check_open()
-            expired = threading.Event()
-
-            def interrupt() -> None:
-                expired.set()
-                try:
-                    self.connection.interrupt()
-                finally:
-                    self._compiler.close()
-
-            timer = threading.Timer(max(0, deadline - time.monotonic()), interrupt)
-            timer.start()
-            broken = False
             try:
-                yield deadline
-            except TimeoutError:
-                expired.set()
-                raise
+                with interrupt_at(
+                    self.connection,
+                    deadline,
+                    message=f"Malloy operation exceeded {budget:g} seconds",
+                ):
+                    yield deadline
             except (KeyboardInterrupt, SystemExit, ModelError):
-                broken = True
+                self.close()
                 raise
             finally:
-                timer.cancel()
-                timer.join()
-                if time.monotonic() >= deadline:
-                    expired.set()
-                if expired.is_set() or broken:
+                if self._compiler.closed:
                     self.close()
-                if expired.is_set():
-                    raise TimeoutError(
-                        f"Malloy operation exceeded {budget:g} seconds; model closed"
-                    )
         finally:
             self._lock.release()
 
@@ -167,20 +171,26 @@ class _Runtime:
         source: str | Path | ModelSource | Draft,
         *,
         url: str | None = None,
+        document_kind: DocumentKind | None = None,
         deadline: float,
-        tables: Mapping[str, Any] | None = None,
     ) -> Model:
         """Compile text, a Path, or a closed ModelSource snapshot."""
+        if document_kind is None and isinstance(source, (Draft, ModelSource)):
+            document_kind = source.document_kind
         inputs = source.inputs if isinstance(source, Draft) else ()
         if isinstance(source, Draft):
             url = url or source.url
             source = source._input()
         identity, text, imports = resolve_source(source, url=url, root=self._root)
         with self.operation(deadline=deadline):
-            for name, data in (tables or {}).items():
-                self.connection.register(name, data)
             result = self.request(
-                {"op": "begin", "url": identity, "source": text},
+                {
+                    "op": "begin",
+                    "url": identity,
+                    "source": text,
+                    "connection": self._connection,
+                    "documentKind": resolve_document_kind(identity, document_kind),
+                },
                 ModelReady,
                 deadline=deadline,
                 imports=imports,
@@ -190,7 +200,10 @@ class _Runtime:
                 tuple(result.queries),
                 imports,
                 ModelSource(
-                    result.source.url, result.source.text, result.source.imports
+                    result.source.url,
+                    result.source.text,
+                    result.source.imports,
+                    result.source.document_kind,
                 ),
                 result.compiler_version,
                 inputs,
@@ -202,7 +215,7 @@ class _Runtime:
         *,
         path: str | Path | None = None,
         url: str | None = None,
-        tables: Mapping[str, Any] | None = None,
+        document_kind: DocumentKind | None = None,
         syntax_only: bool = False,
         position: SourcePosition | None = None,
         deadline: float,
@@ -213,6 +226,8 @@ class _Runtime:
             raise TypeError("position must be a SourcePosition")
         if path is not None and url is not None:
             raise ValueError("Choose path or url")
+        if document_kind is None and isinstance(source, (Draft, ModelSource)):
+            document_kind = source.document_kind
         if isinstance(source, Draft):
             url = url or source.url
             source = source._input()
@@ -226,6 +241,8 @@ class _Runtime:
             "source": text,
             "url": identity,
             "syntaxOnly": syntax_only,
+            "connection": self._connection,
+            "documentKind": resolve_document_kind(identity, document_kind),
         }
         if position is not None:
             request["position"] = {
@@ -233,8 +250,6 @@ class _Runtime:
                 "character": position.character,
             }
         with self.operation(deadline=deadline):
-            for name, data in (tables or {}).items():
-                self.connection.register(name, data)
             return self.request(
                 request, CheckReady, deadline=deadline, imports=imports
             ).report
@@ -318,7 +333,9 @@ class Model:
 
     def source(self, *, timeout: float | None = None) -> ModelSource:
         source = self._request({"op": "source"}, SourceReady, timeout).source
-        return ModelSource(source.url, source.text, source.imports)
+        return ModelSource(
+            source.url, source.text, source.imports, source.document_kind
+        )
 
     def inspect(
         self,
@@ -381,6 +398,13 @@ class Model:
     ) -> Result:
         return self.query().run(givens=givens, timeout=timeout)
 
+    def __enter__(self) -> Self:
+        self._owner._check_open()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
     def close(self) -> None:
         self._owner.close()
 
@@ -441,6 +465,7 @@ class Query:
                         self._model._source.url,
                         self._model._source.text,
                         {**self._model._source.imports, **runtime._compiler.sources},
+                        self._model._source.document_kind,
                     ),
                     query=self._info,
                     malloy=self._selection.get("malloy")
@@ -448,6 +473,7 @@ class Query:
                     else None,
                     sql=sql,
                     compiler_version=self._model.compiler_version,
+                    connection_name=runtime._connection["name"],
                     preview_limit=limit,
                     _givens_json=json.dumps(encoded),
                     _inputs=self._inputs,

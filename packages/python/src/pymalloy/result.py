@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from functools import lru_cache
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
-from pymalloy._snapshot import snapshot
+if TYPE_CHECKING:
+    import polars as pl
+    import pyarrow as pa
 
 
 @dataclass(frozen=True)
@@ -15,51 +16,22 @@ class Column:
 
 @dataclass(frozen=True)
 class Result:
-    """A materialized query result. Conversion libraries are imported on demand."""
+    """An Arrow-backed query result that remains usable after its model closes."""
 
     sql: str
     columns: tuple[Column, ...]
-    _values: tuple[tuple[Any, ...], ...] = field(repr=False)
+    _table: pa.Table = field(repr=False)
 
     def rows(self) -> list[dict[str, Any]]:
-        names = tuple(column.name for column in self.columns)
-        return [dict(zip(names, row, strict=True)) for row in snapshot(self._values)]
+        """Materialize detached Python rows using Arrow's scalar representations."""
+        return self._table.to_pylist()
 
-    def arrow(self):
-        import pyarrow as pa
+    def arrow(self) -> pa.Table:
+        """Return the materialized Arrow table without copying its buffers."""
+        return self._table
 
-        schema = _arrow_schema(self.columns)
-        values = (
-            zip(*self._values, strict=True)
-            if self._values
-            else (() for _ in self.columns)
-        )
-        return pa.Table.from_arrays(
-            [
-                pa.array(column, type=field.type)
-                for column, field in zip(values, schema, strict=True)
-            ],
-            schema=schema,
-        )
-
-    def polars(self):
+    def polars(self) -> pl.DataFrame:
+        """View the Arrow result as a dataframe without consolidating its chunks."""
         import polars as pl
 
-        return pl.from_arrow(self.arrow())
-
-
-@lru_cache(maxsize=32)
-def _arrow_schema(columns: tuple[Column, ...]):
-    import duckdb
-    import pyarrow as pa
-
-    if not columns:
-        return pa.schema([])
-    select = ", ".join(
-        f'CAST(NULL AS {column.type}) AS "{column.name.replace(chr(34), chr(34) * 2)}"'
-        for column in columns
-    )
-    with duckdb.connect() as connection:
-        return (
-            connection.execute(f"SELECT {select} WHERE FALSE").to_arrow_table().schema
-        )
+        return cast("pl.DataFrame", pl.from_arrow(self._table, rechunk=False))

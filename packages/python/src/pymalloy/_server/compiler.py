@@ -6,9 +6,16 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
-from pymalloy._errors import CompilationError, ModelError, SchemaError
-from pymalloy._records import CompileError, CompileNeeds, ParseReady, ParseReport
-from pymalloy._source import read_text
+from pymalloy._errors import CompilationError, CompilerError, SchemaError
+from pymalloy._records import (
+    CompileError,
+    CompileNeeds,
+    CompilerFailure,
+    ParseReady,
+    ParseReport,
+    SchemaNeed,
+)
+from pymalloy._source import DocumentKind, read_text, resolve_document_kind
 
 from .process import Process
 
@@ -20,9 +27,25 @@ class Compiler:
         self._process = Process(memory_mb=memory_mb, timeout=timeout)
         self.sources: dict[str, str] = {}
 
-    def parse(self, source: str, *, url: str, deadline: float) -> ParseReport:
+    @property
+    def closed(self) -> bool:
+        return self._process.closed
+
+    def parse(
+        self,
+        source: str,
+        *,
+        url: str,
+        document_kind: DocumentKind | None = None,
+        deadline: float,
+    ) -> ParseReport:
         return self.request(
-            {"op": "parse", "source": source, "url": url},
+            {
+                "op": "parse",
+                "source": source,
+                "url": url,
+                "documentKind": resolve_document_kind(url, document_kind),
+            },
             ParseReady,
             describe=lambda sql: [],
             deadline=deadline,
@@ -33,7 +56,7 @@ class Compiler:
         request: dict[str, Any],
         response_type: type[T],
         *,
-        describe: Callable[[str], list[dict[str, str]]],
+        describe: Callable[[SchemaNeed], list[dict[str, str]]],
         deadline: float,
         imports: Mapping[str, str] | None = None,
     ) -> T:
@@ -58,6 +81,9 @@ class Compiler:
         while True:
             check_deadline()
             response = self._process.call(request, deadline)
+            if isinstance(response, CompilerFailure):
+                self.close()
+                raise CompilerError(response.message)
             if isinstance(response, CompileError):
                 raise CompilationError(
                     response.message, diagnostics=response.diagnostics
@@ -65,7 +91,7 @@ class Compiler:
             if not isinstance(response, CompileNeeds):
                 if not isinstance(response, response_type):
                     self.close()
-                    raise ModelError(
+                    raise CompilerError(
                         f"Unexpected compiler response: {type(response).__name__}"
                     )
                 return response
@@ -79,7 +105,7 @@ class Compiler:
             for need in response.needs.schemas:
                 check_deadline()
                 try:
-                    fulfilled["schemas"][need.key] = {"value": describe(need.sql)}
+                    fulfilled["schemas"][need.key] = {"value": describe(need)}
                 except SchemaError as error:
                     schema_error = error
                     fulfilled["schemas"][need.key] = {"error": str(error)}

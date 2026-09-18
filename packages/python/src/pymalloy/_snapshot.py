@@ -1,17 +1,12 @@
-from copy import deepcopy
-from datetime import date, datetime, time, timedelta
-from decimal import Decimal
-from uuid import UUID
-
-import msgspec
-
-_SCALARS = (bytes, Decimal, date, datetime, time, timedelta, UUID)
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Any
 
 
-def snapshot[T](value: T) -> T:
-    """Copy value containers while retaining immutable Python scalar types."""
-    try:
-        return msgspec.to_builtins(value, builtin_types=_SCALARS)
-    except TypeError:
-        # Trait validation also reads unvalidated inputs, including arbitrary objects.
-        return deepcopy(value)
+def freeze(value: Any) -> Any:
+    """Detach containers once and expose a recursively immutable snapshot."""
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: freeze(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(freeze(item) for item in value)
+    return value

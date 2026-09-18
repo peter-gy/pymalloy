@@ -2,8 +2,8 @@
 
 import os
 import stat
-import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 
 def write_text(
@@ -20,8 +20,8 @@ def write_text(
     between checking and replacing the file. Parent directories must exist.
     """
     target = path.resolve()
-    descriptor, name = tempfile.mkstemp(dir=target.parent, prefix=".malloy-")
-    temporary = Path(name)
+    temporary = target.parent / f".malloy-{uuid4().hex}"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(text.encode("utf-8"))

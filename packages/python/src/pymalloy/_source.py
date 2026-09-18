@@ -1,8 +1,24 @@
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
+from typing import Literal
 from urllib.parse import urlsplit
+
+DEFAULT_SOURCE_FILENAME = "model.malloy"
+type DocumentKind = Literal["model", "notebook"]
+
+
+def resolve_document_kind(url: str, kind: DocumentKind | None = None) -> DocumentKind:
+    if kind is not None:
+        if kind not in {"model", "notebook"}:
+            raise ValueError("document_kind must be 'model' or 'notebook'")
+        return kind
+    return (
+        "notebook"
+        if Path(urlsplit(url).path).suffix in {".malloynb", ".malloysql"}
+        else "model"
+    )
 
 
 def validate_url(url: str) -> None:
@@ -19,19 +35,33 @@ def freeze_imports(imports: Mapping[str, str]) -> Mapping[str, str]:
     return MappingProxyType(dict(imports))
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class ModelSource:
     """Original model text and captured imports, indexed by absolute URL."""
 
     url: str
     text: str
-    imports: Mapping[str, str] = field(default_factory=dict)
+    imports: Mapping[str, str]
+    document_kind: DocumentKind
 
-    def __post_init__(self) -> None:
-        validate_url(self.url)
-        if not isinstance(self.text, str):
+    def __init__(
+        self,
+        url: str,
+        text: str,
+        imports: Mapping[str, str] | None = None,
+        document_kind: DocumentKind | None = None,
+    ) -> None:
+        validate_url(url)
+        if not isinstance(text, str):
             raise TypeError("Model source text must be a string")
-        object.__setattr__(self, "imports", freeze_imports(self.imports))
+        object.__setattr__(self, "url", url)
+        object.__setattr__(self, "text", text)
+        object.__setattr__(
+            self, "imports", freeze_imports({} if imports is None else imports)
+        )
+        object.__setattr__(
+            self, "document_kind", resolve_document_kind(url, document_kind)
+        )
 
 
 def resolve_source(
@@ -42,7 +72,7 @@ def resolve_source(
     if isinstance(source, ModelSource):
         return source.url, source.text, source.imports
     if isinstance(source, str):
-        return url or (root / "inline.malloy").as_uri(), source, None
+        return url or (root / DEFAULT_SOURCE_FILENAME).as_uri(), source, None
     raise TypeError("source must be Malloy text, a Path, or ModelSource")
 
 

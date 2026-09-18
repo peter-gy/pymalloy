@@ -14,7 +14,7 @@ from typing import IO, Any
 
 import msgspec
 
-from pymalloy._errors import ModelError
+from pymalloy._errors import CompilerError
 from pymalloy._records import CompilerReady, Response
 
 _MAX_FRAME = 64 * 1024 * 1024
@@ -104,6 +104,10 @@ class Process:
             self.close()
             raise
 
+    @property
+    def closed(self) -> bool:
+        return self._closed or self._process.poll() is not None
+
     def _read_errors(self) -> None:
         stream = self._process.stderr
         assert stream is not None
@@ -132,7 +136,7 @@ class Process:
         except (OSError, EOFError, TypeError, ValueError, msgspec.DecodeError) as error:
             self._errors.join(timeout=0.1)
             detail = b"".join(self._stderr).decode(errors="replace").strip()
-            failure = ModelError(f"Compiler process stopped: {detail or error}")
+            failure = CompilerError(f"Compiler process stopped: {detail or error}")
             if not future.done():
                 future.set_exception(failure)
             self.close()
@@ -147,7 +151,7 @@ class Process:
         future: Future[Response] = Future()
         with self._lock:
             if self._closed:
-                raise ModelError("Compiler process is closed")
+                raise CompilerError("Compiler process is closed")
             self._last = future
             self._pending.put((struct.pack(">I", len(payload)) + payload, future))
         try:
@@ -181,7 +185,7 @@ class Process:
             while not self._pending.empty():
                 item = self._pending.get()
                 if item is not None:
-                    item[1].set_exception(ModelError("Compiler process is closed"))
+                    item[1].set_exception(CompilerError("Compiler process is closed"))
             for stream in (
                 self._process.stdin,
                 self._process.stdout,
