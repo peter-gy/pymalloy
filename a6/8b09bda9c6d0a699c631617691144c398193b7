@@ -1,0 +1,28 @@
+packages/python/tests/test_persistence.py
+  s_eb8331ad77ae5f::t_3a429b457ab97a 1-44,48-72,76-82,86-90
+  s_eb8331ad77ae5f::t_4464576a3f68cc 45-47,73-75,83-85
+packages/python/src/pymalloy/_persistence.py
+  s_eb8331ad77ae5f::t_3a429b457ab97a 1-54
+packages/python/src/pymalloy/_server/compiler.py
+  s_eb8331ad77ae5f::t_520e6ae76904b1 11,51
+packages/python/src/pymalloy/_source.py
+  s_eb8331ad77ae5f::t_520e6ae76904b1 41,47-52
+  s_eb8331ad77ae5f::t_9e99c641180e32 3,35-40,42-46
+  s_eb8331ad77ae5f::t_1e0b4c2f69d035 8-21,31,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a68b09bda9c6d0a699c631617691144c398193b7",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
