@@ -1,6 +1,7 @@
 """Typed language reports generated from the compiler contract."""
 
 from pymalloy._records import (
+    AnnotatedObject,
     AnnotationInfo,
     CheckReport,
     Diagnostic,
@@ -10,17 +11,21 @@ from pymalloy._records import (
     Inspection,
     MarkdownCell,
     NativeMetadata,
+    ParsedImport,
     ParseReport,
     QueryCell,
     QueryDescriptor,
+    RoutedAnnotation,
     SourceLocation,
     SourcePosition,
     SourceRange,
+    SourceSpan,
     SymbolInfo,
 )
 from pymalloy._wire import to_dict
 
 __all__ = [
+    "AnnotatedObject",
     "AnnotationInfo",
     "CheckReport",
     "Diagnostic",
@@ -31,11 +36,14 @@ __all__ = [
     "MarkdownCell",
     "NativeMetadata",
     "ParseReport",
+    "ParsedImport",
     "QueryCell",
     "QueryDescriptor",
+    "RoutedAnnotation",
     "SourceLocation",
     "SourcePosition",
     "SourceRange",
+    "SourceSpan",
     "SymbolInfo",
     "to_dict",
 ]

@@ -65,7 +65,10 @@ database=None, connection=None, read_only=False, timeout=120)` returns
 
 `pm.format(source)` returns formatted source using the compiler.
 `pm.parse(source, *, url)` returns a typed `ParseReport` with syntax metadata,
-imports, and table references.
+imports, and table references. It includes `compiler_version`. Each parsed import
+retains its statement location and a `reference` span locating its quoted URL
+in Unicode codepoints. `ParsedImport` and `SourceSpan` are available from
+`pymalloy.analysis`.
 Neither function opens a DuckDB connection.
 
 ## Result and errors
@@ -83,3 +86,8 @@ running. Heap exhaustion closes the model with `ModelError`.
 Author models with [immutable drafts and source builders](authoring.md).
 `pm.check` also accepts a `Path` or captured `ModelSource`, plus `url` and
 registered Python `tables`. `Query.preview(limit=20)` bounds returned rows.
+
+`Inspection.model.annotations` enumerates source and field paths with native
+annotation routes, payloads and original text. Malloy parses routes, including
+`#"` descriptions and application routes such as `#(research)`. The upstream
+stable model and source metadata remain available alongside this projection.
