@@ -8,6 +8,7 @@ from difflib import unified_diff
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Unpack
 
+from pymalloy._inputs import DataInput
 from pymalloy._persistence import write_text
 from pymalloy._source import ModelSource, freeze_imports, resolve_source, validate_url
 from pymalloy._syntax import Fragment, Kind, expression, from_wire, named_clause, syntax
@@ -104,16 +105,22 @@ class Draft:
     def format(self) -> Draft:
         from pymalloy._server.tooling import parse_syntax
 
-        formatted = from_wire(parse_syntax(self.text, url=self.url, format=True))
+        formatted = from_wire(
+            parse_syntax(self.text, url=self.url, format=True),
+            {value.reference: value for value in self.inputs},
+        )
         if not isinstance(formatted, Fragment):
             raise TypeError("Compiler returned a scalar for a model document")
         return replace(self, syntax=formatted)
 
+    @property
+    def inputs(self) -> tuple[DataInput, ...]:
+        return self.syntax.inputs
+
     def _input(self) -> str | ModelSource:
+        text = self.syntax.render(materialize=True)
         return (
-            self.text
-            if self.imports is None
-            else ModelSource(self.url, self.text, self.imports)
+            text if self.imports is None else ModelSource(self.url, text, self.imports)
         )
 
     def check(
@@ -126,14 +133,12 @@ class Draft:
         from pymalloy._server import load_api
         from pymalloy.validation import _checked
 
-        return _checked(
-            load_api().check(self._input(), url=self.url, **options), documentation
-        )
+        return _checked(load_api().check(self, url=self.url, **options), documentation)
 
     def compile(self, **options: Unpack[_RuntimeOptions]) -> Model:
         from pymalloy._server import load_api
 
-        return load_api().model(self._input(), url=self.url, **options)
+        return load_api().model(self, url=self.url, **options)
 
     def validate(
         self,
@@ -151,6 +156,10 @@ class Draft:
         )
 
     def save(self, path: str | Path | None = None, *, overwrite: bool = False) -> Path:
+        if self.inputs:
+            raise ValueError(
+                "Drafts with captured data require bundle(draft.validate(), directory)"
+            )
         target = Path(path).resolve() if path is not None else self.path
         if target is None:
             raise ValueError("Choose a destination for this draft")
@@ -161,13 +170,15 @@ class Draft:
             overwrite=overwrite,
         )
 
-    def to_python(self, *, name: str = "model") -> str:
+    def to_python(
+        self, *, name: str = "model", inputs: Mapping[str, str] | None = None
+    ) -> str:
         """Emit symbolic Python for equivalent Malloy, normalizing supported scalar spelling."""
         if not name.isidentifier() or keyword.iskeyword(name):
             raise ValueError("Choose a Python variable name")
         from pymalloy._python import python_source
 
-        return python_source(self, name)
+        return python_source(self, name, inputs=inputs)
 
 
 def draft(

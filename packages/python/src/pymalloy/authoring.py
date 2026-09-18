@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pymalloy._identifiers import identifier
+from pymalloy._inputs import snapshot_data
 from pymalloy._syntax import (
     Fragment,
     binding,
@@ -17,11 +18,13 @@ from pymalloy._syntax import (
 from pymalloy._syntax import (
     scalar_expression as _scalar,
 )
+from pymalloy._table import TableReference, table_path
 from pymalloy.expressions import Expr, Sort
 
 __all__ = [
     "Fragment",
     "aggregate",
+    "data",
     "dimension",
     "group_by",
     "having",
@@ -42,16 +45,14 @@ __all__ = [
 ]
 
 
-def _table_path(path: str | Path) -> str:
-    return (
-        "'" + path.as_posix().replace("'", "''") + "'"
-        if isinstance(path, Path)
-        else path
-    )
-
-
 def table(path: str | Path) -> Fragment:
-    return syntax(f"duckdb.table({json.dumps(_table_path(path), ensure_ascii=False)})")
+    return syntax(TableReference("duckdb", table_path(path)))
+
+
+def data(frame: Any, *, name: str | None = None) -> Fragment:
+    """Capture dataframe-like input as an immutable, composable Malloy source."""
+    captured = snapshot_data(frame, name=name)
+    return syntax(TableReference("duckdb", captured.reference, data=captured))
 
 
 def sql(text: str) -> Fragment:

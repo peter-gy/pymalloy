@@ -9,7 +9,9 @@ from typing import Literal
 
 from pymalloy._expression_ops import normalize
 from pymalloy._identifiers import identifier
-from pymalloy._records import ScalarSyntax, SyntaxNode
+from pymalloy._inputs import DataInput
+from pymalloy._records import ScalarSyntax, SyntaxNode, TableSyntax
+from pymalloy._table import TableReference
 from pymalloy.expressions import Expr
 
 Kind = Literal[
@@ -21,7 +23,7 @@ Kind = Literal[
 class Fragment:
     """Composable Malloy syntax. Named children delimit editing scopes."""
 
-    parts: tuple[str | Fragment | Expr, ...]
+    parts: tuple[str | Fragment | Expr | TableReference, ...]
     kind: Kind = "expression"
     name: str | None = None
 
@@ -37,7 +39,7 @@ class Fragment:
         }:
             raise ValueError(f"Unknown syntax kind: {self.kind}")
         if not isinstance(self.parts, tuple) or not all(
-            isinstance(p, (str, Fragment, Expr)) for p in self.parts
+            isinstance(p, (str, Fragment, Expr, TableReference)) for p in self.parts
         ):
             raise TypeError("Syntax parts must be a tuple of strings or fragments")
         if self.kind in {"source", "query", "field"}:
@@ -64,15 +66,38 @@ class Fragment:
 
     @cached_property
     def text(self) -> str:
+        return self.render()
+
+    def render(self, *, materialize: bool = False) -> str:
         parts = []
-        pending: list[str | Fragment | Expr] = [self]
+        pending: list[str | Fragment | Expr | TableReference] = [self]
         while pending:
             part = pending.pop()
             if isinstance(part, Fragment):
                 pending.extend(reversed(part.parts))
+            elif isinstance(part, TableReference):
+                parts.append(part.render(materialize=materialize))
             else:
                 parts.append(part if isinstance(part, str) else part.text)
         return "".join(parts)
+
+    @cached_property
+    def inputs(self) -> tuple[DataInput, ...]:
+        found: dict[str, DataInput] = {}
+        pending: list[Fragment] = [self]
+        while pending:
+            node = pending.pop()
+            for part in node.parts:
+                if isinstance(part, Fragment):
+                    pending.append(part)
+                elif isinstance(part, TableReference) and part.data is not None:
+                    previous = found.get(part.data.name)
+                    if previous is not None and previous is not part.data:
+                        raise ValueError(
+                            f"Distinct captured inputs share the name {part.data.name!r}"
+                        )
+                    found[part.data.name] = part.data
+        return tuple(sorted(found.values(), key=lambda value: value.name))
 
     @property
     def _line_break(self) -> str:
@@ -171,7 +196,9 @@ class Fragment:
     def extend(self, *clauses: Fragment) -> Fragment:
         return self._suffix((" extend ", block(clauses)))
 
-    def _suffix(self, parts: tuple[str | Fragment | Expr, ...]) -> Fragment:
+    def _suffix(
+        self, parts: tuple[str | Fragment | Expr | TableReference, ...]
+    ) -> Fragment:
         if self.kind != "expression":
             raise TypeError("Compose an expression, not a declaration")
         notes, value = _notes(self)
@@ -198,7 +225,9 @@ class Fragment:
 
 
 def syntax(
-    *parts: str | Fragment | Expr, kind: Kind = "expression", name: str | None = None
+    *parts: str | Fragment | Expr | TableReference,
+    kind: Kind = "expression",
+    name: str | None = None,
 ) -> Fragment:
     """Compose literal syntax and nested editable bindings without parsing or I/O."""
     return Fragment(tuple(parts), kind, name)
@@ -282,8 +311,13 @@ def named_clause(
     return syntax(*parts)
 
 
-def from_wire(node: SyntaxNode) -> Fragment | Expr:
+def from_wire(
+    node: SyntaxNode, inputs: Mapping[str, DataInput] | None = None
+) -> Fragment | Expr | TableReference:
+    if isinstance(node, TableSyntax):
+        data = (inputs or {}).get(node.path) if node.connection == "duckdb" else None
+        return TableReference(node.connection, node.path, node.source, data)
     if isinstance(node, ScalarSyntax):
         return Expr._from_node(normalize(node.scalar), source=node.source)
-    parts = tuple(p if isinstance(p, str) else from_wire(p) for p in node.parts)
+    parts = tuple(p if isinstance(p, str) else from_wire(p, inputs) for p in node.parts)
     return syntax(*parts, kind=node.kind, name=node.name)
