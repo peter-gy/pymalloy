@@ -196,3 +196,9 @@ The default policy checks sources, measures and views for a nonempty native
 description and reports warnings. Pass `documentation=None` to disable this lint.
 Compiler diagnostics remain enabled. Error-severity findings make `report.ok`
 false. `validate` accepts the same policy.
+
+Python reconstruction emits familiar source and query constructors where their
+syntax is unambiguous. Other syntax remains explicit `pm.syntax` or `raw_expr`.
+It does not interpret language meaning or simplify expressions. Extend a named
+source with `pm.ref("orders").extend(...)`. Use `candidate["orders"].replace(...)`
+to edit the existing definition rather than copy it into a new source.

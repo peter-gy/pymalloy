@@ -40,7 +40,8 @@ construction, compilation, and execution.
 ## Model and Query
 
 `model.queries` contains `QueryDescriptor(name, kind, location)` records.
-`model.query(name=None, *, malloy=None)` selects a query or an ad hoc Malloy query.
+`model.query(selection=None, *, malloy=None)` accepts a named query or a composed
+source/query `Fragment`. Use `malloy=` for native Malloy query text.
 Omit both to select the final run or single available query.
 
 `model.run(*, givens=None, timeout=None)` and `model.sql(*, givens=None,

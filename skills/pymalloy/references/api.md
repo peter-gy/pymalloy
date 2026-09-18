@@ -127,3 +127,13 @@ print(agent.agent_skill().body)
 Wheel, source, and editable installs carry the selected skill tree through
 `agent-plugins`. Marimo discovers `pymalloy.agent` through its capability entry
 point. `help(pymalloy.agent)` introduces the installed API.
+
+Pass a composed source/query directly to a retained model:
+
+```python
+expression = pm.ref("orders").pipe(pm.query(pm.aggregate(pm.col("revenue"))))
+result = model.query(expression).run()
+```
+
+This uses the same compiler path as `model.query(malloy="run: ...")`. A string
+selection names a saved query, while `malloy=` accepts complete native query text.
