@@ -76,8 +76,11 @@ def test_compiler_frames_preserve_large_unicode_source_and_replies():
         f'''run: duckdb.sql("""SELECT '{payload}' AS value""") -> {{ select: value }}'''
     )
     model = pm.model(source)
-    assert model.source().text == source
-    assert model.run().rows() == [{"value": payload}]
+    try:
+        assert model.source().text == source
+        assert model.run().rows() == [{"value": payload}]
+    finally:
+        model.close()
 
 
 def test_tooling_and_documents_return_typed_records_with_explicit_selection():
