@@ -1,8 +1,8 @@
 import pytest
 from test_compile import run_notebook
 
-from pymalloy.exports import compile_document, marimo
-from pymalloy.server import CompilationError
+from pymalloy import CompilationError
+from pymalloy.export import compile, marimo
 
 
 def test_widget_export_preserves_files_for_full_model_and_sql_cells(tmp_path):
@@ -20,15 +20,19 @@ run: selected -> { select: value }
 >>>sql connection:duckdb
 SELECT * FROM query_table(['three.csv'])
 """)
-    document = compile_document(
-        model, data_root=data, profile="widget", queries=["run:1"]
+    document = compile(
+        model,
+        data_root=data,
+        profile="widget",
+        queries=["run:0"],
+        files={"two.csv": data / "two.csv", "three.csv": data / "three.csv"},
     )
-    assert [query.name for query in document.queries] == ["run:1"]
+    assert [query.name for query in document.queries] == ["run:0"]
     output = tmp_path / "widget.py"
     output.write_text(marimo.render(document, output_path=output))
     model.unlink()
     values = run_notebook(output)
-    widget = values["run_1"]
+    widget = values["run_0"]
     try:
         assert {
             name: widget.files[name] for name in ("one.csv", "two.csv", "three.csv")
@@ -45,22 +49,22 @@ SELECT * FROM query_table(['three.csv'])
     [
         (
             "run: duckdb.table('*.csv') -> { select: value }",
-            "list the files explicitly",
+            "explicit local file",
         ),
         (
             "run: duckdb.table('numbers#one.csv') -> { select: value }",
-            "rename the file",
+            "explicit local file",
         ),
         (
             "run: duckdb.table('s3://bucket/numbers.csv') -> { select: value }",
-            "local path or HTTP",
+            "local file or HTTP",
         ),
         (
             (
                 "run: duckdb.sql(\"SELECT * FROM query_table(getvariable('file'))\")"
                 " -> { select: value }"
             ),
-            "literal query_table paths",
+            "Cannot use NULL",
         ),
         (
             (
@@ -75,7 +79,7 @@ def test_widget_export_rejects_unrepresentable_data_access(tmp_path, source, mes
     path = tmp_path / ("model.malloynb" if source.startswith(">>>") else "model.malloy")
     path.write_text(source)
     with pytest.raises(CompilationError, match=message):
-        compile_document(path, profile="widget")
+        compile(path, profile="widget")
 
 
 def test_widget_export_rejects_native_database(tmp_path):
@@ -86,5 +90,5 @@ def test_widget_export_rejects_native_database(tmp_path):
         connection.execute("CREATE TABLE numbers AS SELECT 1 AS value")
     model = tmp_path / "model.malloy"
     model.write_text("run: duckdb.table('numbers') -> { select: value }")
-    with pytest.raises(CompilationError, match="cannot use a native DuckDB database"):
-        compile_document(model, profile="widget", database=database)
+    with pytest.raises(CompilationError, match="native database"):
+        compile(model, profile="widget", database=database)

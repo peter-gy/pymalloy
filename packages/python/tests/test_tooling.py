@@ -1,11 +1,13 @@
 import json
 import subprocess
 import sys
+from contextlib import closing
 
 import pytest
 
-from pymalloy.analysis import Position
-from pymalloy.server import CompilationError, Session
+import pymalloy as pm
+from pymalloy import CompilationError
+from pymalloy.analysis import SourcePosition, to_dict
 
 ONE = "run: duckdb.sql('SELECT 42 AS value') -> { select: value }"
 
@@ -28,23 +30,26 @@ def cli(*arguments):
 def test_semantic_diagnostics_preserve_codepoint_ranges_and_repair(tmp_path):
     source = "run: duckdb.sql(\"SELECT '😀' AS label\") -> { select: missing }"
     path = tmp_path / "unicode.malloy"
-    with Session() as session:
-        report = session.check(source, path=path)
-        assert not report.ok
-        diagnostic = next(
-            item for item in report.diagnostics if item.code == "field-not-found"
-        )
-        assert diagnostic.severity == "error"
-        assert diagnostic.location.url == path.as_uri()
-        assert diagnostic.location.range.start == Position(0, source.index("missing"))
-        assert diagnostic.location.range.end == Position(0, source.index("missing") + 7)
-        repaired = source.replace("select: missing", "select: label")
-        assert session.check(repaired, path=path).ok
-        assert session.run(repaired).to_dicts() == [{"label": "😀"}]
-        with pytest.raises(CompilationError) as caught:
-            session.model(source)
-        assert caught.value.diagnostics[0].code == "field-not-found"
-        assert session.run(ONE).item() == 42
+    report = pm.check(source, path=path)
+    assert not report.ok
+    diagnostic = next(
+        item for item in report.diagnostics if item.code == "field-not-found"
+    )
+    assert diagnostic.severity == "error"
+    assert diagnostic.location.url == path.as_uri()
+    assert diagnostic.location.range.start == SourcePosition(
+        line=0, character=source.index("missing")
+    )
+    assert diagnostic.location.range.end == SourcePosition(
+        line=0, character=source.index("missing") + 7
+    )
+    repaired = source.replace("select: missing", "select: label")
+    assert pm.check(repaired, path=path).ok
+    assert pm.run(repaired).polars().to_dicts() == [{"label": "😀"}]
+    with pytest.raises(CompilationError) as caught:
+        pm.model(source)
+    assert caught.value.diagnostics[0].code == "field-not-found"
+    assert pm.run(ONE).polars().item() == 42
 
 
 def test_check_file_reports_diagnostics_in_imported_source(tmp_path):
@@ -54,30 +59,28 @@ def test_check_file_reports_diagnostics_in_imported_source(tmp_path):
     )
     root = tmp_path / "report.malloy"
     root.write_text("import 'base.malloy'\nrun: numbers -> { select: value }")
-    with Session() as session:
-        report = session.check_file(root)
+    report = pm.check(root.read_text(), path=root)
     assert not report.ok
     diagnostic = next(
         item for item in report.diagnostics if item.code == "field-not-found"
     )
     assert diagnostic.location.url == imported.as_uri()
     assert diagnostic.location.range.start.line == 0
-    assert report.imports[0]["url"] == imported.as_uri()
+    assert report.imports[0].url == imported.as_uri()
 
 
 def test_syntax_check_describes_missing_data_without_resolving_it(tmp_path):
     source = "import 'absent.malloy'\nsource: rows is duckdb.table('absent.csv')"
-    with Session(data_root=tmp_path) as session:
-        syntax = session.check(
-            source, path=tmp_path / "report.malloy", syntax_only=True
-        )
-        semantic = session.check(source, path=tmp_path / "report.malloy")
+    syntax = pm.check(
+        source, path=tmp_path / "report.malloy", syntax_only=True, data_root=tmp_path
+    )
+    semantic = pm.check(source, path=tmp_path / "report.malloy", data_root=tmp_path)
     assert syntax.ok
-    assert syntax.native.model is None
-    assert syntax.queries == ()
-    assert syntax.tables[0]["connection"] == "duckdb"
-    assert syntax.tables[0]["path"] == "absent.csv"
-    assert syntax.imports[0]["url"] == (tmp_path / "absent.malloy").as_uri()
+    assert syntax.model.model is None
+    assert syntax.queries == []
+    assert syntax.tables[0].connection == "duckdb"
+    assert syntax.tables[0].path == "absent.csv"
+    assert syntax.imports[0].url == (tmp_path / "absent.malloy").as_uri()
     assert not semantic.ok
 
 
@@ -92,46 +95,43 @@ SELECT * FROM %{
   missing_source -> { select: * }
 }%"""
     path.write_text(source)
-    with Session() as session:
-        report = session.check_file(path)
+    report = pm.check(path.read_text(), path=path)
     assert not report.ok
     diagnostic = next(
         item for item in report.diagnostics if item.code == "source-or-query-not-found"
     )
     assert diagnostic.location.url == path.as_uri()
-    assert diagnostic.location.range.start == Position(6, 2)
-    assert diagnostic.location.range.end == Position(6, 16)
+    assert diagnostic.location.range.start == SourcePosition(line=6, character=2)
+    assert diagnostic.location.range.end == SourcePosition(line=6, character=16)
 
 
-def test_native_warning_contains_a_source_replacement():
+def test_server_warning_contains_a_source_replacement():
     source = (
         "run: duckdb.sql('SELECT 1 AS value') -> { where: value = null select: value }"
     )
-    with Session() as session:
-        report = session.check(source)
-        assert report.ok
-        warning = next(
-            item for item in report.diagnostics if item.severity == "warning"
-        )
-        assert warning.replacement == "value is null"
-        at = warning.location.range
-        assert source[at.start.character : at.end.character] == "value = null"
-        repaired = (
-            source[: at.start.character]
-            + warning.replacement
-            + source[at.end.character :]
-        )
-        assert session.check(repaired).diagnostics == ()
+    report = pm.check(source)
+    assert report.ok
+    warning = next(item for item in report.diagnostics if item.severity == "warning")
+    assert warning.replacement == "value is null"
+    at = warning.location.range
+    assert source[at.start.character : at.end.character] == "value = null"
+    repaired = (
+        source[: at.start.character] + warning.replacement + source[at.end.character :]
+    )
+    assert pm.check(repaired).diagnostics == []
 
 
-def test_native_completions_and_help_have_source_context():
+def test_server_completions_and_help_have_source_context():
     source = "source: numbers is duckdb.table('absent.csv')\nrun: numbers -> {\n  group_by: value\n  \n}"
-    with Session() as session:
-        report = session.check(source, syntax_only=True, position=Position(3, 2))
-        context = session.check(source, syntax_only=True, position=Position(2, 3))
-    assert any(item["text"] == "group_by: " for item in report.completions)
-    assert context.help == {"type": "query_property", "token": "group_by:"}
-    assert report.symbols[0]["name"] == "numbers"
+    report = pm.check(
+        source, syntax_only=True, position=SourcePosition(line=3, character=2)
+    )
+    context = pm.check(
+        source, syntax_only=True, position=SourcePosition(line=2, character=3)
+    )
+    assert any(item.text == "group_by: " for item in report.completions)
+    assert to_dict(context.help) == {"type": "query_property", "token": "group_by:"}
+    assert report.symbols[0].name == "numbers"
 
 
 def test_model_inspection_exposes_givens_schemas_and_references(tmp_path):
@@ -144,12 +144,12 @@ run: numbers -> filtered
 """
     path = tmp_path / "numbers.malloy"
     path.write_text(source)
-    with Session() as session, session.load(path) as model:
-        inspection = model.inspect()
-        selected = model.inspect(position=Position(5, 6))
-        assert model.run().item() == 42
-    assert inspection["queries"] == ["run:1", "numbers.filtered"]
-    entry = inspection["native"]["model"]["entries"][0]
+    with closing(pm.model(path)) as model:
+        inspection = to_dict(model.inspect())
+        selected = to_dict(model.inspect(position=SourcePosition(line=5, character=6)))
+        assert model.query().run().polars().item() == 42
+    assert [q["name"] for q in inspection["queries"]] == ["run:0", "numbers.filtered"]
+    entry = inspection["model"]["model"]["entries"][0]
     assert entry["kind"] == "source"
     assert entry["name"] == "numbers"
     assert entry["schema"]["fields"][0] == {
@@ -175,15 +175,22 @@ run: numbers -> filtered
 def test_inspection_follows_import_targets_and_references(tmp_path):
     imported = tmp_path / "base.malloy"
     imported.write_text(
-        "source: numbers is duckdb.sql('SELECT 42 AS value')\nquery: total is numbers -> { aggregate: total is value.sum() }"
+        """source: numbers is duckdb.sql('SELECT 42 AS value')
+query: total is numbers -> { aggregate: total is value.sum() }"""
     )
     root = tmp_path / "report.malloy"
     root.write_text("import 'base.malloy'\nrun: total")
-    with Session() as session, session.load(root) as model:
-        imported_at = model.inspect(position=Position(0, 10))
-        reference = model.inspect(position=Position(1, 17), url=imported.as_uri())
+    with closing(pm.model(root)) as model:
+        imported_at = to_dict(
+            model.inspect(position=SourcePosition(line=0, character=10))
+        )
+        reference = to_dict(
+            model.inspect(
+                position=SourcePosition(line=1, character=17), url=imported.as_uri()
+            )
+        )
     assert imported.as_uri() in imported_at["dependencies"]
-    assert imported_at["import"]["url"] == imported.as_uri()
+    assert imported_at["import_"]["url"] == imported.as_uri()
     assert reference["reference"]["text"] == "numbers"
     assert reference["reference"]["definition_location"]["url"] == imported.as_uri()
     assert reference["reference"]["definition_location"]["range"]["start"]["line"] == 0
@@ -191,27 +198,27 @@ def test_inspection_follows_import_targets_and_references(tmp_path):
 
 def test_sql_resolves_file_bindings_and_leaves_execution_to_the_caller(tmp_path):
     model_path = tmp_path / "write.malloysql"
+    output = tmp_path / "values.csv"
     model_path.write_text(
-        ">>>sql connection:duckdb\nCOPY (SELECT 42 AS value) TO 'values.csv' (HEADER)\n"
+        f">>>sql connection:duckdb\nCOPY (SELECT 42 AS value) TO '{output.as_posix()}' (HEADER)\n"
     )
     output = tmp_path / "values.csv"
-    with Session(data_root=tmp_path) as session, session.load(model_path) as model:
-        sql = model.sql(query="sql:1")
+    with closing(pm.model(model_path, data_root=tmp_path)) as model:
+        sql = model.query("sql:0").sql()
         assert not output.exists()
-        session.connection.execute(sql)
+        model.connection.execute(sql)
     assert output.read_text() == "value\n42\n"
 
 
 def test_format_roundtrip_preserves_execution_and_reports_malformed_source():
-    with Session() as session:
-        formatted = session.format(ONE)
-        assert session.format(formatted) == formatted
-        assert session.check(formatted).ok
-        assert session.run(formatted).item() == 42
-        with pytest.raises(CompilationError) as caught:
-            session.format("run: ->")
-        assert caught.value.diagnostics[0].code == "syntax-error"
-        assert caught.value.diagnostics[0].location.range.start.line == 0
+    formatted = pm.format(ONE)
+    assert pm.format(formatted) == formatted
+    assert pm.check(formatted).ok
+    assert pm.run(formatted).polars().item() == 42
+    with pytest.raises(CompilationError) as caught:
+        pm.format("run: ->")
+    assert caught.value.diagnostics[0].code == "syntax-error"
+    assert caught.value.diagnostics[0].location.range.start.line == 0
 
 
 def test_cli_check_returns_json_diagnostics_and_preserves_source(tmp_path):
@@ -254,7 +261,10 @@ def test_cli_formatter_emits_source_and_checks_without_writing(tmp_path):
     assert checked.returncode == 0
     assert checked.stdout == ""
     assert path.read_text() == result.stdout
-    crlf = result.stdout.replace("\n", "\r\n").encode("utf-8")
+    crlf = result.stdout.replace(
+        "\n",
+        "\r\n",
+    ).encode("utf-8")
     path.write_bytes(crlf)
     assert cli("format", path, "--check").returncode == 1
     assert path.read_bytes() == crlf
@@ -267,19 +277,21 @@ def test_cli_formatter_emits_source_and_checks_without_writing(tmp_path):
     assert path.read_text() == "run: ->"
 
 
-def test_invalid_tool_arguments_leave_session_available():
-    with Session() as session, session.model(ONE) as model:
+def test_invalid_tool_arguments_leave_model_available():
+    with closing(pm.model(ONE)) as model:
         calls = [
-            lambda: session.check(ONE, syntax_only=1),
-            lambda: session.run(ONE, query={}),
-            lambda: model.run(query={}),
-            lambda: model.sql(query={}),
-            lambda: model.inspect(position=Position(0, 5), url={}),
+            lambda: pm.check(ONE, syntax_only=1),
+            lambda: pm.model(ONE).query({}).run().polars(),
+            lambda: model.query({}).run().polars(),
+            lambda: model.query({}).sql(),
+            lambda: to_dict(
+                model.inspect(position=SourcePosition(line=0, character=5), url={})
+            ),
         ]
         for call in calls:
             with pytest.raises(TypeError):
                 call()
-            assert session.run(ONE).item() == 42
+            assert model.run().polars().item() == 42
 
 
 def test_required_givens_leave_source_metadata_available_before_execution():
@@ -288,20 +300,19 @@ given: cutoff :: number
 source: numbers is duckdb.sql('SELECT 42 AS value')
 run: numbers -> { where: value > $cutoff select: value }
 """
-    with Session() as session:
-        report = session.check(source)
-        assert report.ok
-        assert report.native.model is None
-        assert report.queries == ("run:1",)
-        assert report.native.sources[0]["name"] == "numbers"
-        with session.model(source) as model:
-            inspection = model.inspect()
-            assert inspection["native"]["model"] is None
-            assert inspection["native"]["sources"][0]["name"] == "numbers"
-            assert inspection["givens"][0]["name"] == "cutoff"
-            assert inspection["givens"][0]["default_text"] is None
-            sql = model.sql(givens={"cutoff": 10})
-            assert session.connection.sql(sql).fetchone() == (42,)
+    report = pm.check(source)
+    assert report.ok
+    assert report.model.model is None
+    assert [q.name for q in report.queries] == ["run:0"]
+    assert report.model.sources[0].name == "numbers"
+    with closing(pm.model(source)) as model:
+        inspection = to_dict(model.inspect())
+        assert inspection["model"]["model"] is None
+        assert inspection["model"]["sources"][0]["name"] == "numbers"
+        assert inspection["givens"][0]["name"] == "cutoff"
+        assert inspection["givens"][0]["default_text"] is None
+        sql = model.query().sql(givens={"cutoff": 10})
+        assert model.connection.sql(sql).fetchone() == (42,)
 
 
 def test_cli_check_reports_database_setup_errors(tmp_path):

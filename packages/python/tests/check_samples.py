@@ -110,25 +110,22 @@ def worker(
     unordered: bool = False,
     float_precision: int | None = None,
 ) -> dict:
+    import re
+    from contextlib import closing
+
     import duckdb
     import polars as pl
-    import sqlglot
-    from sqlglot import exp
 
-    from pymalloy.exports import compile_document, jupyter, marimo
-    from pymalloy.exports._python import query_variables
-    from pymalloy.server import Session
+    import pymalloy as pm
+    from pymalloy.export import compile, jupyter, marimo
+    from pymalloy.export._python import query_variables
 
     policy = {"unordered": unordered, "float_precision": float_precision}
     record = {"status": "compile_failed", "queries": []}
     try:
-        selectors = ["*"] if model.suffix == ".malloy" else []
-        book = compile_document(
-            model, data_root=data_root, queries=selectors, timeout=45
-        )
-        second = compile_document(
-            model, data_root=data_root, queries=selectors, timeout=45
-        )
+        all_queries = model.suffix == ".malloy"
+        book = compile(model, data_root=data_root, all=all_queries, timeout=45)
+        second = compile(model, data_root=data_root, all=all_queries, timeout=45)
         notebooks = {
             "marimo": (marimo, output),
             "jupyter": (jupyter, output.with_suffix(".ipynb")),
@@ -158,8 +155,7 @@ def worker(
             duckdb.connect(
                 config={"memory_limit": "1GB", "threads": "1"}
             ) as connection,
-            Session(data_root=data_root) as session,
-            session.load(model) as loaded,
+            closing(pm.model(model, data_root=data_root)) as loaded,
         ):
             connection.execute("SET VARIABLE data_root = ?", [str(data_root)])
             connection.execute("SET file_search_path = ?", [str(data_root)])
@@ -167,34 +163,25 @@ def worker(
             for query in book.queries:
                 item = {"name": query.name, "status": "failed", "verified": []}
                 record["queries"].append(item)
-                raw = loaded.sql(query=query.name)
-                tree = sqlglot.parse_one(raw, read="duckdb")
+                raw = loaded.query(query.name).sql()
                 if query.kind == "copy":
-                    paths = [path.unnest() for path in tree.args.get("files", [])]
-                    if (
-                        not isinstance(tree, exp.Copy)
-                        or tree.args.get("kind")
-                        or not paths
-                        or any(
-                            not isinstance(path, exp.Literal)
-                            or not path.is_string
-                            or urlsplit(path.this).scheme
-                            for path in paths
-                        )
-                    ):
+                    match = re.search(r"\bTO\s+'((?:[^']|'')*)'", raw, re.IGNORECASE)
+                    if match is None or urlsplit(match[1]).scheme:
                         raise ValueError(
-                            "COPY validation requires local file destinations inside data_root"
+                            "COPY validation requires a literal local destination"
                         )
-                    destinations = [(data_root / path.this).resolve() for path in paths]
+                    destinations = [(data_root / match[1].replace("''", "'")).resolve()]
                     for destination in destinations:
                         destination.relative_to(data_root)
+                    raw = query.sql
                     item["outputs"] = [str(path) for path in destinations]
                     item["comparison"] = "write"
                 else:
-                    sampled = any(
-                        not sample.args.get("seed")
-                        for sample in tree.find_all(exp.TableSample)
-                    )
+                    sampled = bool(
+                        re.search(
+                            r"\b(?:TABLESAMPLE|USING\s+SAMPLE)\b", raw, re.IGNORECASE
+                        )
+                    ) and not re.search(r"\bREPEATABLE\b", raw, re.IGNORECASE)
                     if sampled:
                         sampled_queries.add(query.name)
                     item["comparison"] = "schema_only_sampling" if sampled else "values"
@@ -208,7 +195,9 @@ def worker(
                 item.update(expected)
                 item["verified"].append("reference")
                 if runtime:
-                    actual = summarize_result(loaded.run(query=query.name), **policy)
+                    actual = summarize_result(
+                        loaded.query(query.name).run().polars(), **policy
+                    )
                     compare_results(
                         expected, actual, sampled=query.name in sampled_queries
                     )
@@ -325,7 +314,6 @@ def main():
                 "pyarrow",
                 "marimo",
                 "deno",
-                "sqlglot",
                 "nbclient",
             ]
         },

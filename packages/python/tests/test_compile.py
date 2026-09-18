@@ -5,8 +5,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from pymalloy.exports import compile_document, marimo
-from pymalloy.server import CompilationError
+from pymalloy import CompilationError
+from pymalloy.export import compile, marimo
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "examples"
 
@@ -20,7 +20,7 @@ def run_notebook(path):
 
 
 def test_source_views_render_and_execute_from_another_directory(tmp_path, monkeypatch):
-    book = compile_document(EXAMPLES / "orders.malloy")
+    book = compile(EXAMPLES / "orders.malloy")
     assert [query.name for query in book.queries] == [
         "orders.by_region",
         "orders.monthly_revenue",
@@ -56,8 +56,8 @@ def test_source_views_render_and_execute_from_another_directory(tmp_path, monkey
 
 def test_compilation_is_byte_deterministic(tmp_path):
     output = tmp_path / "report.py"
-    first = compile_document(EXAMPLES / "orders.malloy")
-    second = compile_document(EXAMPLES / "orders.malloy")
+    first = compile(EXAMPLES / "orders.malloy")
+    second = compile(EXAMPLES / "orders.malloy")
     assert marimo.render(first, output_path=output) == marimo.render(
         second, output_path=output
     )
@@ -70,12 +70,12 @@ def test_imports_named_queries_and_ordered_runs(tmp_path):
         "run: orders -> monthly_revenue\n"
         "run: summary\n"
     )
-    book = compile_document(tmp_path / "model.malloy", data_root=EXAMPLES)
-    assert [q.name for q in book.queries] == ["run:1", "run:2"]
-    selected = compile_document(
-        tmp_path / "model.malloy", data_root=EXAMPLES, queries=["summary", "run:1"]
+    book = compile(tmp_path / "model.malloy", data_root=EXAMPLES)
+    assert [q.name for q in book.queries] == ["run:0", "run:1"]
+    selected = compile(
+        tmp_path / "model.malloy", data_root=EXAMPLES, queries=["summary", "run:0"]
     )
-    assert [q.name for q in selected.queries] == ["summary", "run:1"]
+    assert [q.name for q in selected.queries] == ["summary", "run:0"]
     assert selected.queries[0].sql == book.queries[1].sql
     assert selected.queries[1].sql == book.queries[0].sql
 
@@ -88,7 +88,7 @@ source: events is duckdb.sql("""
 """)
 run: events -> { group_by: items.label aggregate: total is items.value.sum() order_by: 1 }
 ''')
-    book = compile_document(model)
+    book = compile(model)
     with duckdb.connect() as connection:
         assert connection.execute(book.queries[0].sql).fetchall() == [
             ("a", 2),
@@ -115,7 +115,7 @@ query: totals is orders -> {
   aggregate: revenue is amount.sum(), budget is customers.budget.sum()
 }
 """)
-    book = compile_document(model, database=database)
+    book = compile(model, database=database)
     output = tmp_path / "report.py"
     output.write_text(marimo.render(book, output_path=output))
     definitions = run_notebook(output)
@@ -138,7 +138,7 @@ query: `a-b` is values -> { select: value }
 query: a_b is values -> { select: value }
 query: connection is values -> { select: value }
 """)
-    book = compile_document(model, title='A """ title with \\ and {braces}')
+    book = compile(model, title='A """ title with \\ and {braces}')
     output = tmp_path / "quotes.py"
     output.write_text(marimo.render(book, output_path=output))
     definitions = run_notebook(output)
@@ -158,12 +158,12 @@ def test_compilation_errors_report_the_input(tmp_path, source, message):
     model = tmp_path / "invalid.malloy"
     model.write_text(source)
     with pytest.raises(CompilationError, match=message):
-        compile_document(model)
+        compile(model)
 
 
 def test_unknown_query_lists_available_choices():
     with pytest.raises(CompilationError, match="orders.by_region"):
-        compile_document(EXAMPLES / "orders.malloy", queries=["missing"])
+        compile(EXAMPLES / "orders.malloy", queries=["missing"])
 
 
 def test_cli_failure_preserves_existing_output(tmp_path):
@@ -194,7 +194,7 @@ def test_cli_failure_preserves_existing_output(tmp_path):
 
 def test_compilation_timeout_is_bounded():
     with pytest.raises(CompilationError, match="exceeded"):
-        compile_document(EXAMPLES / "orders.malloy", timeout=0.001)
+        compile(EXAMPLES / "orders.malloy", timeout=0.001)
 
 
 @pytest.mark.parametrize(
@@ -206,20 +206,20 @@ def test_compilation_timeout_is_bounded():
         """duckdb.sql("SELECT * FROM query_table(['orders.csv'])")""",
     ],
 )
-def test_data_root_wins_over_conflicting_working_directory(
+def test_file_search_path_preserves_current_directory_precedence(
     tmp_path, monkeypatch, source
 ):
     root = tmp_path / "data's directory"
     root.mkdir()
     (root / "orders.csv").write_text("amount\n42\n")
-    (tmp_path / "orders.csv").write_text("wrong_column\n99\n")
+    (tmp_path / "orders.csv").write_text("amount\n99\n")
     model = root / "model.malloy"
     model.write_text(f"source: orders is {source}\nrun: orders -> {{ select: amount }}")
     monkeypatch.chdir(tmp_path)
-    book = compile_document(model)
+    book = compile(model)
     output = tmp_path / "report.py"
     output.write_text(marimo.render(book, output_path=output))
-    assert run_notebook(output)["run_1"].to_dicts() == [{"amount": 42}]
+    assert run_notebook(output)["run_0"].to_dicts() == [{"amount": 99}]
 
 
 def test_notebook_preserves_utc_timestamp_semantics(tmp_path):
@@ -228,10 +228,10 @@ def test_notebook_preserves_utc_timestamp_semantics(tmp_path):
 source: times is duckdb.sql("SELECT CAST(TIMESTAMPTZ '2026-01-01 23:30:00+00' AS DATE) AS day_value")
 run: times -> { select: day_value }
 """)
-    book = compile_document(model)
+    book = compile(model)
     output = tmp_path / "time.py"
     output.write_text(marimo.render(book, output_path=output))
-    assert str(run_notebook(output)["run_1"].to_dicts()[0]["day_value"]) == "2026-01-01"
+    assert str(run_notebook(output)["run_0"].to_dicts()[0]["day_value"]) == "2026-01-01"
 
 
 @pytest.mark.parametrize("table", ["main.csv", 'main."orders.csv"'])
@@ -241,15 +241,15 @@ def test_database_tables_with_file_like_names(tmp_path, table):
         connection.execute(f"CREATE TABLE {table} AS SELECT 42 AS amount")
     model = tmp_path / "tables.malloy"
     model.write_text(f"run: duckdb.table('{table}') -> {{ select: amount }}")
-    book = compile_document(model, database=database)
+    book = compile(model, database=database)
     output = tmp_path / "tables.py"
     output.write_text(marimo.render(book, output_path=output))
     definitions = run_notebook(output)
-    assert definitions["run_1"].to_dicts() == [{"amount": 42}]
+    assert definitions["run_0"].to_dicts() == [{"amount": 42}]
 
 
 def test_generated_connections_close_after_success_and_failure(tmp_path):
-    book = compile_document(EXAMPLES / "orders.malloy")
+    book = compile(EXAMPLES / "orders.malloy")
     output = tmp_path / "report.py"
     output.write_text(marimo.render(book, output_path=output))
     definitions = run_notebook(output)
@@ -294,7 +294,7 @@ run: numbers -> { where: value >= $minimum select: value }
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
-    assert run_notebook(output)["run_1"].to_dicts() == [{"value": 42}]
+    assert run_notebook(output)["run_0"].to_dicts() == [{"value": 42}]
 
 
 @pytest.mark.parametrize(
@@ -323,4 +323,38 @@ def test_cli_rejects_invalid_givens_before_replacing_output(tmp_path, values):
     assert result.returncode == 2
     assert result.stdout == ""
     assert "givens" in result.stderr.lower()
+    assert output.read_text() == "existing notebook\n"
+
+
+@pytest.mark.parametrize(
+    "arguments,message",
+    [
+        (["--files", '["orders.csv"]'], "files must be a JSON object"),
+        (["--files", '{"orders.csv": 42}'], "files must be a JSON object"),
+        (["--all", "--query", "run:0"], "not allowed with argument"),
+    ],
+)
+def test_cli_rejects_invalid_export_options_before_replacing_output(
+    tmp_path, arguments, message
+):
+    output = tmp_path / "report.ipynb"
+    output.write_text("existing notebook\n")
+    result = subprocess.run(
+        [
+            "pymalloy",
+            "export",
+            str(EXAMPLES / "orders.malloy"),
+            "--format",
+            "jupyter",
+            "--output",
+            str(output),
+            *arguments,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert message in result.stderr
     assert output.read_text() == "existing notebook\n"

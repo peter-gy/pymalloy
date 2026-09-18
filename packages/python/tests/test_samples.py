@@ -38,8 +38,8 @@ def test_notebook_results_keep_query_identity_nested_values_and_empty_columns(
 ):
     import polars as pl
 
-    from pymalloy.exports import Document, Query, jupyter, marimo
-    from pymalloy.exports._python import query_variables
+    from pymalloy.export import Document, Query, jupyter, marimo
+    from pymalloy.export._python import query_variables
 
     document = Document(
         title="Identity",
@@ -75,7 +75,7 @@ def test_notebook_results_keep_query_identity_nested_values_and_empty_columns(
 def test_sample_checker_detects_wrong_generated_notebook_values(
     tmp_path, monkeypatch, format
 ):
-    from pymalloy.exports import jupyter, marimo
+    from pymalloy.export import jupyter, marimo
 
     model = tmp_path / "answer.malloynb"
     model.write_text(">>>sql connection:duckdb\nSELECT 42 AS value\n")

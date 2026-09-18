@@ -7,7 +7,7 @@ import nbformat
 from nbclient import NotebookClient
 from test_compile import EXAMPLES
 
-from pymalloy.exports import Document, Markdown, Query, compile_document, jupyter
+from pymalloy.export import Document, Markdown, Query, compile, jupyter
 
 
 def execute_notebook(output: Path, assertions: str = "", *, pymalloy: bool = False):
@@ -32,7 +32,7 @@ def execute_notebook(output: Path, assertions: str = "", *, pymalloy: bool = Fal
 
 
 def test_jupyter_executes_exported_views_with_exact_nested_results(tmp_path):
-    document = compile_document(EXAMPLES / "orders.malloy")
+    document = compile(EXAMPLES / "orders.malloy")
     output = tmp_path / "orders.ipynb"
     output.write_text(jupyter.render(document, output_path=output))
     executed = execute_notebook(
@@ -103,13 +103,13 @@ COPY (SELECT 42 AS value) TO 'answer.parquet' (FORMAT PARQUET)
 >>>sql
 SELECT * FROM 'answer.parquet'
 """)
-    document = compile_document(model, data_root=data)
+    document = compile(model, data_root=data)
     assert not (data / "answer.parquet").exists()
     output = tmp_path / "copy.ipynb"
     output.write_text(jupyter.render(document, output_path=output))
     execute_notebook(
         output,
-        "assert sql_1.is_empty()\nassert sql_2.to_dicts() == [{'value': 42}]",
+        "assert sql_0.is_empty()\nassert sql_1.to_dicts() == [{'value': 42}]",
     )
     with duckdb.connect() as connection:
         assert connection.execute(
@@ -123,13 +123,13 @@ def test_jupyter_preserves_readonly_database_access(tmp_path):
         connection.execute("CREATE TABLE numbers AS SELECT 42 AS value")
     model = tmp_path / "numbers.malloy"
     model.write_text("run: duckdb.table('numbers') -> { select: value }")
-    document = compile_document(model, database=database)
+    document = compile(model, database=database)
     output = tmp_path / "numbers.ipynb"
     output.write_text(jupyter.render(document, output_path=output))
     execute_notebook(
         output,
         """
-assert run_1.to_dicts() == [{"value": 42}]
+assert run_0.to_dicts() == [{"value": 42}]
 with connect() as connection:
     try:
         connection.execute("DELETE FROM numbers")

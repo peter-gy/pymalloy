@@ -7,9 +7,9 @@ import pytest
 from test_compile import run_notebook
 from test_jupyter import execute_notebook
 
-from pymalloy import ModelSource
-from pymalloy.exports import compile_document, jupyter, marimo
-from pymalloy.server import CompilationError, Session
+import pymalloy as pm
+from pymalloy import CompilationError, ModelSource
+from pymalloy.export import compile, jupyter, marimo
 
 
 @pytest.mark.parametrize("renderer,suffix", [(marimo, ".py"), (jupyter, ".ipynb")])
@@ -24,10 +24,12 @@ def test_hydrated_notebook_preserves_full_model_after_sources_are_removed(
     (authored / "shared").mkdir()
     base = authored / "models" / "base.malloy"
     schema = authored / "shared" / "schema.malloy"
-    schema.write_text("""source: raw is duckdb.table('numbers.csv') extend {
+    schema.write_text(
+        """source: raw is duckdb.table('numbers.csv') extend {
   view: entries is { select: value order_by: value }
 }
-""")
+"""
+    )
     base.write_text("import '../shared/schema.malloy'\nsource: numbers is raw\n")
     root = authored / "analysis.malloynb"
     original = """>>>markdown
@@ -47,15 +49,14 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
 """
     root.write_text(original)
     inputs = {"minimum": 20}
-    document = compile_document(root, profile="native", givens=inputs, data_root=data)
-    assert document.profile == "native"
+    document = compile(root, profile="server", givens=inputs, data_root=data)
+    assert document.profile == "server"
     assert document.source.text == original
     assert set(document.source.imports) == {path.as_uri() for path in (base, schema)}
-    assert document == compile_document(
-        root, profile="native", givens=inputs, data_root=data
-    )
+    assert document == compile(root, profile="server", givens=inputs, data_root=data)
     inputs["minimum"] = 0
-    document.givens["minimum"] = 1
+    with pytest.raises(TypeError):
+        document.givens["minimum"] = 1
     assert document.givens == {"minimum": 20}
     output = tmp_path / ("analysis" + suffix)
     content = renderer.render(document, output_path=output)
@@ -63,44 +64,35 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
     output.write_text(content)
     for path in (root, base, schema):
         path.unlink()
-
     if renderer is marimo:
         values = run_notebook(output)
         model = values["model"]
         try:
             assert values["model_source"].text == original
-            assert values["run_1"].to_dicts() == [{"value": 42}]
-            assert values["sql_1"].item() == 42
-            assert "visible.entries" in model.queries
-            assert model.inspect()["native"]["sources"]
-            assert model.run(query="run:1", givens={"minimum": 10})[
+            assert values["run_0"].to_dicts() == [{"value": 42}]
+            assert values["sql_0"].item() == 42
+            assert "visible.entries" in [q.name for q in model.queries]
+            assert model.inspect().model.sources
+            assert model.query("run:0").run(givens={"minimum": 10}).polars()[
                 "value"
             ].to_list() == [12, 42]
             assert (
-                model.run(
-                    "run: numbers -> { aggregate: total is value.sum() }",
-                    givens=values["givens"],
-                ).item()
+                model.query(
+                    malloy="run: numbers -> { aggregate: total is value.sum() }"
+                )
+                .run(givens=values["givens"])
+                .polars()
+                .item()
                 == 56
             )
         finally:
-            values["session"].close()
+            values["model"].close()
     else:
         notebook = json.loads(content)
-        assert notebook["metadata"]["pymalloy"]["profile"] == "native"
+        assert notebook["metadata"]["pymalloy"]["profile"] == "server"
         execute_notebook(
             output,
-            f"""
-assert model_source.text == {original!r}
-assert run_1.to_dicts() == [{{'value': 42}}]
-assert sql_1.item() == 42
-assert 'visible.entries' in model.queries
-assert model.inspect()['native']['sources']
-givens['minimum'] = 10
-assert model.run(query='run:1', givens=givens)['value'].to_list() == [12, 42]
-assert model.run('run: numbers -> {{ aggregate: total is value.sum() }}', givens=givens).item() == 56
-session.close()
-""",
+            f"\nassert model_source.text == {original!r}\nassert run_0.to_dicts() == [{{'value': 42}}]\nassert sql_0.item() == 42\nassert 'visible.entries' in [q.name for q in model.queries]\nassert model.inspect().model.sources\ngivens['minimum'] = 10\nassert model.query('run:0').run(givens=givens).polars()['value'].to_list() == [12, 42]\nassert model.query(malloy='run: numbers -> {{ aggregate: total is value.sum() }}').run(givens=givens).polars().item() == 56\nmodel.close()\n",
             pymalloy=True,
         )
 
@@ -108,25 +100,27 @@ session.close()
 @pytest.mark.parametrize("renderer,suffix", [(marimo, ".py"), (jupyter, ".ipynb")])
 def test_hydrated_copy_runs_before_dependent_cells(tmp_path, renderer, suffix):
     source = tmp_path / "copy.malloynb"
-    source.write_text(""">>>sql connection:duckdb
+    source.write_text(
+        """>>>sql connection:duckdb
 COPY (SELECT 42 AS answer) TO 'answer.parquet' (FORMAT PARQUET)
 >>>sql
 SELECT * FROM 'answer.parquet'
-""")
-    document = compile_document(source, profile="native")
+"""
+    )
+    document = compile(source, profile="server")
     output = tmp_path / ("copy" + suffix)
     output.write_text(renderer.render(document, output_path=output))
     if renderer is marimo:
         values = run_notebook(output)
         try:
-            assert values["sql_1"].is_empty()
-            assert values["sql_2"].item() == 42
+            assert values["sql_0"].is_empty()
+            assert values["sql_1"].item() == 42
         finally:
-            values["session"].close()
+            values["model"].close()
     else:
         execute_notebook(
             output,
-            "assert sql_1.is_empty()\nassert sql_2.item() == 42\nsession.close()",
+            "assert sql_0.is_empty()\nassert sql_1.item() == 42\nmodel.close()",
             pymalloy=True,
         )
 
@@ -136,28 +130,32 @@ def test_source_bundle_is_closed_and_does_not_fall_back_to_original_files(tmp_pa
     imported.write_text("source: numbers is duckdb.sql('SELECT 42 AS value')")
     root = (tmp_path / "model.malloy").as_uri()
     source = ModelSource(
-        root, "import 'base.malloy'\nrun: numbers -> { select: value }"
+        root,
+        "import 'base.malloy'\nrun: numbers -> { select: value }",
     )
-    with Session() as session:
-        with pytest.raises(CompilationError, match="Source bundle is missing"):
-            session.load_source(source)
-        assert (
-            session.run(
-                "run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}"
-            ).item()
-            == 42
-        )
+    with pytest.raises(CompilationError, match="Source bundle is missing"):
+        pm.model(source)
+    assert (
+        pm.run("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}")
+        .polars()
+        .item()
+        == 42
+    )
 
 
 @pytest.mark.parametrize("borrowed", [False, True])
-def test_unreferenced_session_releases_its_resources_after_model_close(borrowed):
+def test_query_retains_model_resources_until_it_is_released(borrowed):
     connection = duckdb.connect() if borrowed else None
-    session = Session(connection=connection)
-    connection = session.connection
-    model = session.model("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}")
-    del session
-    assert model.run().item() == 42
-    model.close()
+    model = pm.model(
+        "run: duckdb.sql('SELECT 42 AS answer') -> {select:answer}",
+        connection=connection,
+    )
+    connection = model.connection
+    query = model.query()
+    del model
+    gc.collect()
+    assert query.run().rows() == [{"answer": 42}]
+    del query
     gc.collect()
     if borrowed:
         assert connection.execute("SELECT 42").fetchone() == (42,)
@@ -167,7 +165,7 @@ def test_unreferenced_session_releases_its_resources_after_model_close(borrowed)
             connection.execute("SELECT 42")
 
 
-@pytest.mark.parametrize("profile", ["precompiled", "native"])
+@pytest.mark.parametrize("profile", ["precompiled", "server"])
 def test_cli_profiles_preserve_selection_and_dependencies(tmp_path, profile):
     database = tmp_path / "data.duckdb"
     with duckdb.connect(str(database)) as connection:
@@ -187,7 +185,7 @@ def test_cli_profiles_preserve_selection_and_dependencies(tmp_path, profile):
             "--database",
             str(database),
             "--query",
-            "run:1",
+            "run:0",
             "--output",
             str(output),
         ],
@@ -200,18 +198,21 @@ def test_cli_profiles_preserve_selection_and_dependencies(tmp_path, profile):
     notebook = json.loads(output.read_text())
     requirements = notebook["metadata"]["pymalloy"]["dependencies"]
     assert notebook["metadata"]["pymalloy"]["profile"] == profile
-    if profile == "native":
-        assert requirements[0].startswith("pymalloy[server]==")
+    if profile == "server":
+        assert requirements[0].startswith("pymalloy[server,dataframes]==")
         execute_notebook(
             output,
-            "import duckdb\n"
-            "assert run_1.item() == 42\n"
-            "try:\n    session.connection.execute('DELETE FROM numbers')\n"
-            "except duckdb.InvalidInputException:\n    pass\n"
-            "else:\n    raise AssertionError('Expected a read-only connection')\n"
-            "session.close()",
+            """import duckdb
+assert run_0.item() == 42
+try:
+    model.connection.execute('DELETE FROM numbers')
+except duckdb.InvalidInputException:
+    pass
+else:
+    raise AssertionError('Expected a read-only connection')
+model.close()""",
             pymalloy=True,
         )
     else:
-        assert requirements == ["duckdb>=1.5.5", "polars>=1.44.2"]
-        execute_notebook(output, "assert run_1.item() == 42")
+        assert requirements == ["duckdb>=1.5", "polars>=1.44"]
+        execute_notebook(output, "assert run_0.item() == 42")
