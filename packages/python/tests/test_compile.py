@@ -19,7 +19,9 @@ def run_notebook(path):
     return definitions
 
 
-def test_source_views_render_and_execute_from_another_directory(tmp_path, monkeypatch):
+def test_source_view_export_is_reproducible_and_runs_from_another_directory(
+    tmp_path, monkeypatch
+):
     book = compile(EXAMPLES / "orders.malloy")
     assert [query.name for query in book.queries] == [
         "orders.by_region",
@@ -27,7 +29,11 @@ def test_source_views_render_and_execute_from_another_directory(tmp_path, monkey
         "orders.region_detail",
     ]
     output = tmp_path / "report.py"
-    output.write_text(marimo.render(book, output_path=output))
+    source = marimo.render(book, output_path=output)
+    assert source == marimo.render(
+        compile(EXAMPLES / "orders.malloy"), output_path=output
+    )
+    output.write_text(source)
     monkeypatch.chdir(tmp_path)
     definitions = run_notebook(output)
     assert definitions["orders_by_region"].to_dicts() == [
@@ -52,15 +58,6 @@ def test_source_views_render_and_execute_from_another_directory(tmp_path, monkey
             ],
         },
     ]
-
-
-def test_compilation_is_byte_deterministic(tmp_path):
-    output = tmp_path / "report.py"
-    first = compile(EXAMPLES / "orders.malloy")
-    second = compile(EXAMPLES / "orders.malloy")
-    assert marimo.render(first, output_path=output) == marimo.render(
-        second, output_path=output
-    )
 
 
 def test_imports_named_queries_and_ordered_runs(tmp_path):
@@ -161,11 +158,6 @@ def test_compilation_errors_report_the_input(tmp_path, source, message):
         compile(model)
 
 
-def test_unknown_query_lists_available_choices():
-    with pytest.raises(CompilationError, match="orders.by_region"):
-        compile(EXAMPLES / "orders.malloy", queries=["missing"])
-
-
 def test_cli_failure_preserves_existing_output(tmp_path):
     output = tmp_path / "report.py"
     output.write_text("existing notebook\n")
@@ -189,12 +181,32 @@ def test_cli_failure_preserves_existing_output(tmp_path):
     assert result.returncode == 1
     assert result.stdout == ""
     assert "Unknown query 'missing'" in result.stderr
+    assert "orders.by_region" in result.stderr
     assert output.read_text() == "existing notebook\n"
 
 
-def test_compilation_timeout_is_bounded():
+def test_export_timeout_covers_preparation_and_closes_the_model(monkeypatch):
+    from types import SimpleNamespace
+
+    import pymalloy as pm
+    from pymalloy.export import _compile
+
+    elapsed = 0
+    opened = []
+    create = pm.model
+
+    def load(*args, **kwargs):
+        nonlocal elapsed
+        model = create(*args, **kwargs)
+        opened.append(model)
+        elapsed = 121
+        return model
+
+    monkeypatch.setattr(_compile, "time", SimpleNamespace(monotonic=lambda: elapsed))
+    monkeypatch.setattr(pm, "model", load)
     with pytest.raises(CompilationError, match="exceeded"):
-        compile(EXAMPLES / "orders.malloy", timeout=0.001)
+        compile(EXAMPLES / "orders.malloy", timeout=120)
+    assert opened and all(model.closed for model in opened)
 
 
 @pytest.mark.parametrize(
@@ -298,40 +310,29 @@ run: numbers -> { where: value >= $minimum select: value }
 
 
 @pytest.mark.parametrize(
-    "values", ["[]", "{broken", '{"minimum": NaN}', '{"minimum": 1e999}']
-)
-def test_cli_rejects_invalid_givens_before_replacing_output(tmp_path, values):
-    output = tmp_path / "report.py"
-    output.write_text("existing notebook\n")
-    result = subprocess.run(
-        [
-            "pymalloy",
-            "export",
-            str(EXAMPLES / "orders.malloy"),
-            "--format",
-            "marimo",
-            "--givens",
-            values,
-            "--output",
-            str(output),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=20,
-        check=False,
-    )
-    assert result.returncode == 2
-    assert result.stdout == ""
-    assert "givens" in result.stderr.lower()
-    assert output.read_text() == "existing notebook\n"
-
-
-@pytest.mark.parametrize(
     "arguments,message",
     [
-        (["--files", '["orders.csv"]'], "files must be a JSON object"),
-        (["--files", '{"orders.csv": 42}'], "files must be a JSON object"),
-        (["--all", "--query", "run:0"], "not allowed with argument"),
+        pytest.param(["--givens", "[]"], "givens", id="givens-object"),
+        pytest.param(["--givens", "{broken"], "givens", id="givens-json"),
+        pytest.param(["--givens", '{"minimum": NaN}'], "givens", id="givens-constant"),
+        pytest.param(
+            ["--givens", '{"minimum": 1e999}'], "givens", id="givens-overflow"
+        ),
+        pytest.param(
+            ["--files", '["orders.csv"]'],
+            "files must be a JSON object",
+            id="files-object",
+        ),
+        pytest.param(
+            ["--files", '{"orders.csv": 42}'],
+            "files must be a JSON object",
+            id="files-path",
+        ),
+        pytest.param(
+            ["--all", "--query", "run:0"],
+            "not allowed with argument",
+            id="selection-conflict",
+        ),
     ],
 )
 def test_cli_rejects_invalid_export_options_before_replacing_output(
@@ -356,5 +357,6 @@ def test_cli_rejects_invalid_export_options_before_replacing_output(
         check=False,
     )
     assert result.returncode == 2
+    assert result.stdout == ""
     assert message in result.stderr
     assert output.read_text() == "existing notebook\n"

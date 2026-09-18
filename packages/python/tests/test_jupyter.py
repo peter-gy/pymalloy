@@ -1,5 +1,3 @@
-import json
-import subprocess
 from pathlib import Path
 
 import duckdb
@@ -115,60 +113,3 @@ SELECT * FROM 'answer.parquet'
         assert connection.execute(
             "SELECT * FROM read_parquet(?)", [str(data / "answer.parquet")]
         ).fetchall() == [(42,)]
-
-
-def test_jupyter_preserves_readonly_database_access(tmp_path):
-    database = tmp_path / "data.duckdb"
-    with duckdb.connect(str(database)) as connection:
-        connection.execute("CREATE TABLE numbers AS SELECT 42 AS value")
-    model = tmp_path / "numbers.malloy"
-    model.write_text("run: duckdb.table('numbers') -> { select: value }")
-    document = compile(model, database=database)
-    output = tmp_path / "numbers.ipynb"
-    output.write_text(jupyter.render(document, output_path=output))
-    execute_notebook(
-        output,
-        """
-assert run_0.to_dicts() == [{"value": 42}]
-with connect() as connection:
-    try:
-        connection.execute("DELETE FROM numbers")
-    except duckdb.InvalidInputException:
-        pass
-    else:
-        raise AssertionError("Expected the database connection to be read-only")
-with duckdb.connect(str(database)) as writable:
-    assert writable.execute("SELECT * FROM numbers").fetchone() == (42,)
-""",
-    )
-
-
-def test_cli_exports_jupyter_notebook(tmp_path):
-    output = tmp_path / "orders.ipynb"
-    result = subprocess.run(
-        [
-            "pymalloy",
-            "export",
-            str(EXAMPLES / "orders.malloy"),
-            "--format",
-            "jupyter",
-            "--query",
-            "orders.by_region",
-            "--title",
-            "Regional sales",
-            "--output",
-            str(output),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == ""
-    document = json.loads(output.read_text())
-    assert document["metadata"]["title"] == "Regional sales"
-    execute_notebook(
-        output,
-        "assert orders_by_region['revenue'].to_list() == [105, 95]",
-    )

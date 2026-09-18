@@ -166,12 +166,15 @@ def test_query_retains_model_resources_until_it_is_released(borrowed):
 
 
 @pytest.mark.parametrize("profile", ["precompiled", "server"])
-def test_cli_profiles_preserve_selection_and_dependencies(tmp_path, profile):
+def test_cli_profiles_preserve_selection_title_and_readonly_access(tmp_path, profile):
     database = tmp_path / "data.duckdb"
     with duckdb.connect(str(database)) as connection:
         connection.execute("CREATE TABLE numbers AS SELECT 42 AS answer")
     source = tmp_path / "answer.malloy"
-    source.write_text("run: duckdb.table('numbers') -> { select: answer }")
+    source.write_text(
+        "source: numbers is duckdb.table('numbers') extend {view: entries is {select:answer}}\n"
+        "query: selected is numbers -> entries\nrun: selected"
+    )
     output = tmp_path / "answer.ipynb"
     result = subprocess.run(
         [
@@ -185,7 +188,11 @@ def test_cli_profiles_preserve_selection_and_dependencies(tmp_path, profile):
             "--database",
             str(database),
             "--query",
-            "run:0",
+            "selected",
+            "--query",
+            "numbers.entries",
+            "--title",
+            "Answer report",
             "--output",
             str(output),
         ],
@@ -195,7 +202,9 @@ def test_cli_profiles_preserve_selection_and_dependencies(tmp_path, profile):
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
     notebook = json.loads(output.read_text())
+    assert notebook["metadata"]["title"] == "Answer report"
     requirements = notebook["metadata"]["pymalloy"]["dependencies"]
     assert notebook["metadata"]["pymalloy"]["profile"] == profile
     if profile == "server":
@@ -203,7 +212,8 @@ def test_cli_profiles_preserve_selection_and_dependencies(tmp_path, profile):
         execute_notebook(
             output,
             """import duckdb
-assert run_0.item() == 42
+assert selected.item() == 42
+assert numbers_entries.item() == 42
 try:
     model.connection.execute('DELETE FROM numbers')
 except duckdb.InvalidInputException:
@@ -215,4 +225,18 @@ model.close()""",
         )
     else:
         assert requirements == ["duckdb>=1.5", "polars>=1.44"]
-        execute_notebook(output, "assert run_0.item() == 42")
+        execute_notebook(
+            output,
+            """assert selected.item() == 42
+assert numbers_entries.item() == 42
+with connect() as connection:
+    try:
+        connection.execute('DELETE FROM numbers')
+    except duckdb.InvalidInputException:
+        pass
+    else:
+        raise AssertionError('Expected a read-only connection')
+with duckdb.connect(str(database)) as writable:
+    assert writable.execute('SELECT answer FROM numbers').fetchone() == (42,)
+""",
+        )
