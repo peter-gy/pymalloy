@@ -9,21 +9,25 @@ from pymalloy._records import FormatReady, ParseReport, SyntaxNode, SyntaxReady
 from .compiler import Compiler
 
 
+def _format(compiler: Compiler, source: str, deadline: float) -> str:
+    result = compiler.request(
+        {"op": "format", "source": source},
+        FormatReady,
+        describe=lambda sql: [],
+        deadline=deadline,
+    )
+    if result.diagnostics:
+        raise CompilationError(
+            "Malloy formatting failed",
+            diagnostics=result.diagnostics,
+        )
+    return result.source
+
+
 def format(source: str) -> str:
     deadline = time.monotonic() + 30
     with closing(Compiler()) as compiler:
-        result = compiler.request(
-            {"op": "format", "source": source},
-            FormatReady,
-            describe=lambda sql: [],
-            deadline=deadline,
-        )
-        if result.diagnostics:
-            raise CompilationError(
-                "Malloy formatting failed",
-                diagnostics=result.diagnostics,
-            )
-        return result.source
+        return _format(compiler, source, deadline)
 
 
 def parse(source: str, *, url: str) -> ParseReport:
@@ -33,9 +37,11 @@ def parse(source: str, *, url: str) -> ParseReport:
         return compiler.parse(source, url=url, deadline=deadline)
 
 
-def parse_syntax(source: str, *, url: str) -> SyntaxNode:
+def parse_syntax(source: str, *, url: str, format: bool = False) -> SyntaxNode:
     deadline = time.monotonic() + 30
     with closing(Compiler()) as compiler:
+        if format:
+            source = _format(compiler, source, deadline)
         return compiler.request(
             {"op": "syntax", "source": source, "url": url},
             SyntaxReady,

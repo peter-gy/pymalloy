@@ -102,10 +102,12 @@ class Draft:
         )
 
     def format(self) -> Draft:
-        from pymalloy._server.tooling import format as format_source
+        from pymalloy._server.tooling import parse_syntax
 
-        formatted = read_model(format_source(self.text), url=self.url)
-        return replace(self, syntax=formatted.syntax)
+        formatted = from_wire(parse_syntax(self.text, url=self.url, format=True))
+        if not isinstance(formatted, Fragment):
+            raise TypeError("Compiler returned a scalar for a model document")
+        return replace(self, syntax=formatted)
 
     def _input(self) -> str | ModelSource:
         return (
