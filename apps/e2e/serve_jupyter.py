@@ -122,6 +122,25 @@ def main() -> None:
             },
         )
         nbformat.write(notebook, notebooks / "sales.ipynb")
+        dataframe = nbformat.v4.new_notebook(
+            cells=[
+                nbformat.v4.new_code_cell("""import pyarrow as pa
+import pymalloy as pm
+from IPython.display import display
+
+prepared = pa.table({"region": ["North", "North"], "amount": [12, 20]})
+candidate = pm.draft().define(orders=pm.data(prepared)).queries(
+    total=pm.ref("orders").pipe(pm.query(pm.aggregate(total=pm.col("amount").sum())))
+)
+widget = pm.MalloyWidget(candidate, query="total")
+display(widget)"""),
+                nbformat.v4.new_code_cell(
+                    'print("Dataframe rows:", widget.state["rows"])'
+                ),
+            ],
+            metadata=notebook.metadata,
+        )
+        nbformat.write(dataframe, notebooks / "dataframe.ipynb")
         model = root / "report.malloy"
         imported = root / "sales.malloy"
         imported.write_text(SOURCE)

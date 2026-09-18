@@ -184,7 +184,7 @@ jobs:
       - name: Install the widget kernel without server dependencies
         run: |
           uv venv "$RUNNER_TEMP/pymalloy-widget"
-          uv pip install --python "$RUNNER_TEMP/pymalloy-widget/bin/python" 'ipykernel>=7.3' dist/pymalloy-*.whl
+          uv pip install --python "$RUNNER_TEMP/pymalloy-widget/bin/python" 'ipykernel>=7.3' 'pyarrow>=25.0' dist/pymalloy-*.whl
           "$RUNNER_TEMP/pymalloy-widget/bin/python" -c 'import importlib.util; assert importlib.util.find_spec("deno") is None; assert importlib.util.find_spec("duckdb") is None'
           echo "PYMALLOY_KERNEL_PYTHON=$RUNNER_TEMP/pymalloy-widget/bin/python" >> "$GITHUB_ENV"
       - name: Test marimo, JupyterLab, and Pyodide

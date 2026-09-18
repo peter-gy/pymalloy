@@ -94,3 +94,21 @@ test("JupyterLab renders, synchronizes, recovers, and closes multiple views", as
   await page.getByRole("menuitem", { name: /Shut Down Kernel/ }).click();
   await expect(page.getByRole("button", { name: "No Kernel", exact: true })).toBeVisible();
 });
+
+test("a captured Arrow input executes in the browser from a server-free kernel", async ({
+  page,
+}) => {
+  await page.goto("/lab/tree/dataframe.ipynb");
+  await expect(
+    page.getByRole("button", { name: "Python 3 (PyMalloy) | Idle", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("textbox").filter({ hasText: "import pyarrow as pa" }).click();
+  await page.getByRole("button", { name: /Run this cell and advance/ }).click();
+  await expect(page.getByRole("table")).toContainText("32");
+  await page.getByRole("textbox").filter({ hasText: 'print("Dataframe rows:' }).click();
+  await page.getByRole("button", { name: /Run this cell and advance/ }).click();
+  await expect(page.getByText("Dataframe rows: [{'total': 32}]", { exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Kernel", exact: true }).click();
+  await page.getByRole("menuitem", { name: /Shut Down Kernel/ }).click();
+  await expect(page.getByRole("button", { name: "No Kernel", exact: true })).toBeVisible();
+});
