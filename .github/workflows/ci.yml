@@ -96,6 +96,7 @@ jobs:
         run: |
           pnpm check
           pnpm test
+          pnpm canary
   test-python:
     runs-on: ubuntu-latest
     timeout-minutes: 25

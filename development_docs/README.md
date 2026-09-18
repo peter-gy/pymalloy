@@ -28,6 +28,7 @@ runtime assets, and builds the public site.
 uv lock --check
 pnpm check
 pnpm test
+pnpm canary
 uv run --frozen pytest
 uv run --frozen ruff format --check packages/python examples apps/e2e
 uv run --frozen ruff check packages/python examples apps/e2e

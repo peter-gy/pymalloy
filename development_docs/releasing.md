@@ -26,6 +26,11 @@ renderer features and stylesheet in the wheel when changing bundling options.
 
 ## Validate distributions
 
+`pnpm canary` packs and installs the four public TypeScript packages, executes a
+Node query, and builds a browser consumer bundle. Run that bundle through the
+browser suite with `PYMALLOY_CONSUMER_CANARY=1 pnpm --filter @pymalloy/e2e exec
+playwright test --project browser`.
+
 CI tests isolated installs of the wheel and a wheel rebuilt from the source
 archive. It checks base imports, a server query, and
 [browser behavior against the built wheel](testing.md#browser-tests).
