@@ -1,4 +1,4 @@
-import { expect, test } from "./fixture.ts";
+import { expect, test } from "./fixture";
 
 test("an exported widget hydrates captured imports and synchronizes query changes", async ({
   page,

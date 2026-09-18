@@ -1,4 +1,4 @@
-import { expect, test } from "./fixture.ts";
+import { expect, test } from "./fixture";
 test("retained models own competing file mappings and preserve exact result values", async ({
   page,
 }) => {

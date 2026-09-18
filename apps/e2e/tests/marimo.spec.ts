@@ -1,4 +1,4 @@
-import { expect, test } from "./fixture.ts";
+import { expect, test } from "./fixture";
 
 test("marimo controls update the widget and reactive Python readback", async ({
   page,

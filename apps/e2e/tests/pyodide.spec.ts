@@ -1,4 +1,4 @@
-import { expect, test } from "./fixture.ts";
+import { expect, test } from "./fixture";
 
 test("the base wheel runs a synchronized Malloy widget in Pyodide", async ({ page }, testInfo) => {
   const requestedAssets: string[] = [];
