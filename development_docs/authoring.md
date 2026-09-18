@@ -144,6 +144,12 @@ when ordinary Python numeric construction would change its inferred type.
 
 ## Source artifacts and failures
 
+The Python export layer materializes a closed `ModelSource` graph. Native import
+literal spans and table-call ranges identify changes. Data bindings are explicit,
+and SQL readers retain their authored SQL. No filesystem semantics enter core.
+`Validation.source` exposes the accepted graph. Exported files are recompiled
+against their copied inputs to verify relocation.
+
 Runtime compilation retains the source graph and compiler version. An engine
 failure wraps the original exception with detached query evidence. Source imports
 read during ad hoc compilation are retained for replay. Schema errors preserve

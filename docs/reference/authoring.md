@@ -179,7 +179,8 @@ file atomically. Reload after saving before editing again.
 
 A validated snapshot with imports must be saved in its original root directory,
 and imported files must still match their captured text. Saving writes the root
-text. Relocate through `Draft.save()` and validate again at the destination.
+text. Use [source bundles](export.md#source-bundles) to materialize the complete
+captured graph, then revalidate at the destination.
 
 ## Documentation policy
 
@@ -197,6 +198,10 @@ The default policy checks sources, measures and views for a nonempty native
 description and reports warnings. Pass `documentation=None` to disable this lint.
 Compiler diagnostics remain enabled. Error-severity findings make `report.ok`
 false. `validate` accepts the same policy.
+
+After successful validation, `report.source` returns the accepted closed
+`ModelSource`, including imports. Invalid reports reject access. This snapshot
+is ready for `pymalloy.export.bundle` and remains independent of runtime lifetime.
 
 Python reconstruction emits familiar source and query constructors where their
 syntax is unambiguous. Other syntax remains explicit `pm.syntax` or `raw_expr`.
