@@ -5,17 +5,60 @@ import sys
 import pytest
 from traitlets import TraitError
 
-from pymalloy import Malloy, ModelSource, browser
+from pymalloy import MalloyWidget, ModelSource, browser
 
 
-def browser_state(widget, **changes):
+def browser_state(widget, rows=None, **changes):
+    rows = rows if rows is not None else [{"value": 42}]
+
+    def shape(value):
+        if isinstance(value, list):
+            return {"kind": "array_type", "element_type": shape(value[0])}
+        if isinstance(value, dict):
+            return {
+                "kind": "record_type",
+                "fields": [{"name": k, "type": shape(v)} for k, v in value.items()],
+            }
+        return {"kind": "number_type"}
+
+    def cell(value):
+        if isinstance(value, list):
+            return {"kind": "array_cell", "array_value": [cell(v) for v in value]}
+        if isinstance(value, dict):
+            return {
+                "kind": "record_cell",
+                "record_value": [cell(v) for v in value.values()],
+            }
+        if type(value) is int and abs(value) > 2**53:
+            return {
+                "kind": "number_cell",
+                "subtype": "bigint",
+                "number_value": float(value),
+                "string_value": str(value),
+            }
+        if isinstance(value, float) and not math.isfinite(value):
+            return {
+                "kind": "number_cell",
+                "number_value": 0,
+                "string_value": "Infinity",
+            }
+        return {"kind": "number_cell", "number_value": value}
+
     return {
         "revision": widget._input["revision"],
         "status": "ready",
-        "queries": ["run:1"],
-        "sql": "SELECT 42 AS value",
-        "columns": ["value"],
-        "rows": [{"value": 42}],
+        "queries": [{"name": "run:0", "kind": "run", "location": None}],
+        "result": {
+            "sql": "SELECT 42 AS value",
+            "connection_name": "duckdb",
+            "schema": {
+                "fields": [
+                    {"kind": "dimension", **f}
+                    for f in shape(rows[0] if rows else {"value": 0})["fields"]
+                ]
+            },
+            "data": cell(rows),
+        },
         "error": None,
         "diagnostics": [],
         **changes,
@@ -28,7 +71,7 @@ def test_widget_publishes_source_query_files_and_exact_givens():
         "amount": 9223372036854775807,
         "options": [True, {"lower": -9007199254740993}],
     }
-    widget = Malloy("source: orders", files=files, givens=givens)
+    widget = MalloyWidget("source: orders", files=files, givens=givens)
     try:
         state = widget.get_state()
         assert state["_definition"]["source"] == "source: orders"
@@ -36,11 +79,9 @@ def test_widget_publishes_source_query_files_and_exact_givens():
             "orders.csv": b"region,amount\nNorth,42\n",
             "part.parquet": b"PAR1",
         }
-        assert state["_input"]["givens"] == {
-            "amount": "9223372036854775807",
-            "options": [True, {"lower": "-9007199254740993"}],
-        }
-        assert state["_input"]["integer_paths"] == [["amount"], ["options", 1, "lower"]]
+        from pymalloy._givens import given_values
+
+        assert given_values(state["_input"]["givens"]) == givens
         assert widget.givens == givens
         files["part.parquet"] = b"changed"
         givens["options"].append("changed")
@@ -53,7 +94,7 @@ def test_widget_publishes_source_query_files_and_exact_givens():
         assert widget.get_state()["_input"]["revision"] > revision
         assert widget.get_state()["_definition"] == state["_definition"]
         assert (
-            widget.get_state()["_input"]["definition_revision"]
+            widget.get_state()["_input"]["definitionRevision"]
             == state["_definition"]["revision"]
         )
     finally:
@@ -69,7 +110,7 @@ def test_widget_captured_source_preserves_identity_imports_and_revision():
         text=">>>malloy\nimport './parts/orders.malloy'\nrun: orders\n",
         imports=imports,
     )
-    widget = Malloy(source)
+    widget = MalloyWidget(source)
     try:
         imports.clear()
         definition = widget.get_state()["_definition"]
@@ -91,7 +132,7 @@ def test_widget_captured_source_preserves_identity_imports_and_revision():
 
 
 def test_widget_readback_preserves_nested_numbers_and_detaches_snapshots():
-    widget = Malloy("run: example")
+    widget = MalloyWidget("run: example")
     observed = []
     widget.observe(lambda change: observed.append(change.new), names="state")
     try:
@@ -99,13 +140,11 @@ def test_widget_readback_preserves_nested_numbers_and_detaches_snapshots():
             widget,
             rows=[
                 {
-                    "value": "9223372036854775807",
-                    "nested": [{"small": "-9007199254740993"}],
-                    "ratio": None,
+                    "value": 9223372036854775807,
+                    "nested": [{"small": -9007199254740993}],
+                    "ratio": math.inf,
                 }
             ],
-            integer_paths=[[0, "value"], [0, "nested", 0, "small"]],
-            number_paths=[{"path": [0, "ratio"], "value": "inf"}],
         )
         widget.set_state({"_state": wire})
         assert widget.state["rows"] == [
@@ -128,7 +167,7 @@ def test_widget_readback_preserves_nested_numbers_and_detaches_snapshots():
 def test_widget_input_snapshots_require_validated_assignment():
     files = {"data.csv": {"url": "https://example.com/data.csv"}, "part": b"PAR1"}
     givens = {"options": {"minimum": 9007199254740993}}
-    widget = Malloy("run: example", files=files, givens=givens)
+    widget = MalloyWidget("run: example", files=files, givens=givens)
     try:
         draft_files, draft_givens = widget.files, widget.givens
         draft_files["data.csv"]["url"] = "file:///private/data.csv"
@@ -142,9 +181,9 @@ def test_widget_input_snapshots_require_validated_assignment():
         assert widget.files == files
         assert widget.givens == givens
         assert widget.get_state()["_definition"]["files"] == files
-        assert widget.get_state()["_input"]["givens"] == {
-            "options": {"minimum": "9007199254740993"}
-        }
+        from pymalloy._givens import given_values
+
+        assert given_values(widget.get_state()["_input"]["givens"]) == givens
     finally:
         widget.close()
 
@@ -157,7 +196,7 @@ def test_widget_runtime_uses_immutable_explicit_asset_urls():
         worker="https://assets.example/duckdb-browser-mvp.worker.js",
     )
     runtime = browser.Runtime(mvp=bundle)
-    widget = Malloy("run: example", runtime=runtime)
+    widget = MalloyWidget("run: example", runtime=runtime)
     try:
         assert widget.runtime is runtime
         assert widget.get_state()["_runtime"] == {
@@ -176,7 +215,7 @@ def test_widget_runtime_uses_immutable_explicit_asset_urls():
 
 
 def test_widget_input_observers_receive_detached_mappings():
-    widget = Malloy("run: example")
+    widget = MalloyWidget("run: example")
 
     def inspect(change):
         change.new.clear()
@@ -190,13 +229,15 @@ def test_widget_input_observers_receive_detached_mappings():
         assert widget.files == {"data.csv": b"value\n42\n"}
         assert widget.givens == {"minimum": 42}
         assert widget.get_state()["_definition"]["files"] == widget.files
-        assert widget.get_state()["_input"]["givens"] == widget.givens
+        from pymalloy._givens import given_values
+
+        assert given_values(widget.get_state()["_input"]["givens"]) == widget.givens
     finally:
         widget.close()
 
 
 def test_widget_ignores_stale_browser_results_after_edit_and_close():
-    widget = Malloy("run: first")
+    widget = MalloyWidget("run: first")
     old = browser_state(widget)
     widget.source = "run: second"
     widget.set_state({"_state": old})
@@ -210,6 +251,33 @@ def test_widget_ignores_stale_browser_results_after_edit_and_close():
     assert widget.state["status"] == "closed"
     with pytest.raises(TraitError, match="closed"):
         widget.source = "run: third"
+
+
+def test_widget_resynchronization_retains_the_latest_accepted_browser_result(
+    monkeypatch,
+):
+    widget = MalloyWidget("run: first")
+    messages = []
+    monkeypatch.setattr(
+        widget, "_send", lambda message, buffers=None: messages.append(message)
+    )
+    try:
+        earlier = browser_state(widget, rows=[{"value": 1}])
+        widget.set_state({"_state": earlier})
+        widget.source = "run: second"
+        latest = browser_state(widget, rows=[{"value": 2}])
+        widget.set_state({"_state": latest})
+        widget.set_state({"_state": earlier})
+        messages.clear()
+        widget._handle_msg({"content": {"data": {"method": "request_state"}}})
+        assert len(messages) == 1
+        assert messages[0]["method"] == "update"
+        synchronized = messages[0]["state"]
+        assert synchronized["_state"] == latest
+        assert synchronized["_state"]["revision"] == synchronized["_input"]["revision"]
+        assert widget.state["rows"] == [{"value": 2}]
+    finally:
+        widget.close()
 
 
 @pytest.mark.parametrize(
@@ -228,11 +296,11 @@ def test_widget_ignores_stale_browser_results_after_edit_and_close():
 )
 def test_widget_rejects_invalid_inputs(kwargs):
     with pytest.raises(TraitError):
-        Malloy("run: example", **kwargs)
+        MalloyWidget("run: example", **kwargs)
 
 
 def test_widget_validates_new_inputs_before_publishing():
-    widget = Malloy(
+    widget = MalloyWidget(
         "run: example", files={"data.csv": {"url": "https://example.com/data.csv"}}
     )
     try:
@@ -242,7 +310,7 @@ def test_widget_validates_new_inputs_before_publishing():
         assert widget.get_state()["_input"] == before
         assert widget.files == {"data.csv": {"url": "https://example.com/data.csv"}}
         with pytest.raises(TraitError):
-            widget._state = browser_state(widget, integer_paths=[[0, "missing"]])
+            widget._state = browser_state(widget, result={"schema": {}})
         assert widget.state["status"] == "idle"
         widget._state = browser_state(
             widget, status="error", rows=[], error="Unknown query"
@@ -252,44 +320,55 @@ def test_widget_validates_new_inputs_before_publishing():
         widget.close()
 
 
-@pytest.mark.parametrize(
-    "arguments",
-    [["--help"], ["export", "--help"], ["check", "--help"], ["format", "--help"]],
-)
-def test_cli_help_is_available_in_the_base_installation(arguments):
+def test_base_installation_supports_widgets_documents_and_cli_help():
     program = """
 import importlib.abc
+import io
 import sys
-class NativeImports(importlib.abc.MetaPathFinder):
+from contextlib import redirect_stdout
+from pathlib import Path
+class ServerImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in {'duckdb', 'deno', 'polars', 'pyarrow', 'sqlglot'}:
-            raise ModuleNotFoundError(fullname)
-sys.meta_path.insert(0, NativeImports())
+        if fullname.startswith('pymalloy._server') or fullname.split('.')[0] in {'duckdb', 'deno', 'polars', 'pyarrow', 'marimo'}:
+            raise AssertionError(f'Server dependency imported: {fullname}')
+sys.meta_path.insert(0, ServerImports())
+import pymalloy as pm
+assert {'MalloyWidget', 'model', 'run', 'check', 'format'} <= set(dir(pm))
+from pymalloy import MalloyWidget
+with_widget = MalloyWidget("run: example")
+assert with_widget.state["status"] == "idle"
+with_widget.close()
+from pymalloy.export import Document, Query, jupyter
+query = Query('answer', 'SELECT 42 AS answer', 'select')
+document = Document('Answer', (query,), Path.cwd())
+notebook = __import__('json').loads(jupyter.render(document, output_path='answer.ipynb'))
+assert notebook['nbformat'] == 4
+assert any('SELECT 42 AS answer' in ''.join(cell['source']) for cell in notebook['cells'])
 from pymalloy.cli import main
-sys.argv = ['pymalloy', *sys.argv[1:]]
-main()
+for arguments in [['--help'], ['export', '--help'], ['check', '--help'], ['format', '--help']]:
+    sys.argv = ['pymalloy', *arguments]
+    output = io.StringIO()
+    with redirect_stdout(output):
+        try:
+            main()
+        except SystemExit as error:
+            assert error.code == 0, arguments
+        else:
+            raise AssertionError(arguments)
+    assert 'usage:' in output.getvalue(), arguments
 """
-    result = subprocess.run(
-        [sys.executable, "-c", program, *arguments],
-        capture_output=True,
-        text=True,
-        timeout=20,
-        check=False,
-    )
-    assert result.returncode == 0
-    assert "usage:" in result.stdout
-    assert result.stderr == ""
+    subprocess.run([sys.executable, "-c", program], check=True, timeout=20)
 
 
 def test_cli_reports_the_extra_required_for_export(tmp_path):
     program = """
 import importlib.abc
 import sys
-class NativeImports(importlib.abc.MetaPathFinder):
+class ServerImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname == 'duckdb':
             raise ModuleNotFoundError('duckdb')
-sys.meta_path.insert(0, NativeImports())
+sys.meta_path.insert(0, ServerImports())
 from pymalloy.cli import main
 sys.argv = ['pymalloy', 'export', 'model.malloy', '--format', 'marimo', '-o', sys.argv[1]]
 main()
@@ -307,7 +386,7 @@ main()
 
 
 def test_widget_state_observers_receive_detached_readback():
-    widget = Malloy("run: example")
+    widget = MalloyWidget("run: example")
 
     def inspect(change):
         if change.new["status"] == "ready":
@@ -322,7 +401,7 @@ def test_widget_state_observers_receive_detached_readback():
 
 
 def test_widget_diagnostics_preserve_source_locations_and_clear_on_recovery():
-    widget = Malloy("run: missing_source")
+    widget = MalloyWidget("run: missing_source")
     diagnostic = {
         "code": "source-or-query-not-found",
         "severity": "error",
@@ -336,7 +415,7 @@ def test_widget_diagnostics_preserve_source_locations_and_clear_on_recovery():
         },
         "replacement": None,
         "data": {"name": "missing_source"},
-        "error_tag": None,
+        "errorTag": None,
     }
     try:
         widget.set_state(
@@ -350,7 +429,12 @@ def test_widget_diagnostics_preserve_source_locations_and_clear_on_recovery():
                 )
             }
         )
-        assert widget.state["diagnostics"] == [diagnostic]
+        assert widget.state["diagnostics"] == [
+            {
+                **{k: v for k, v in diagnostic.items() if k != "errorTag"},
+                "error_tag": None,
+            }
+        ]
         snapshot = widget.state
         snapshot["diagnostics"][0]["location"]["range"]["start"]["line"] = 99
         assert widget.state["diagnostics"][0]["location"]["range"]["start"]["line"] == 0
@@ -379,7 +463,7 @@ def test_widget_diagnostics_preserve_source_locations_and_clear_on_recovery():
             },
             "replacement": None,
             "data": None,
-            "error_tag": None,
+            "errorTag": None,
         },
         {
             "code": "bad",
@@ -388,17 +472,172 @@ def test_widget_diagnostics_preserve_source_locations_and_clear_on_recovery():
             "location": None,
             "replacement": None,
             "data": {"value": float("nan")},
-            "error_tag": None,
+            "errorTag": None,
         },
     ],
 )
 def test_widget_rejects_malformed_browser_diagnostics(diagnostic):
-    widget = Malloy("run: example")
+    widget = MalloyWidget("run: example")
     try:
         with pytest.raises(TraitError, match="diagnostic"):
             widget.set_state(
                 {"_state": browser_state(widget, diagnostics=[diagnostic])}
             )
         assert widget.state["diagnostics"] == []
+    finally:
+        widget.close()
+
+
+def test_widget_decodes_nullable_schema_types_without_losing_exact_values():
+    from decimal import Decimal
+
+    types_and_cells = {
+        "name": (
+            {"kind": "string_type"},
+            {"kind": "string_cell", "string_value": "Ada"},
+        ),
+        "active": (
+            {"kind": "boolean_type"},
+            {"kind": "boolean_cell", "boolean_value": True},
+        ),
+        "day": (
+            {"kind": "date_type"},
+            {"kind": "date_cell", "date_value": "2026-09-18"},
+        ),
+        "instant": (
+            {"kind": "timestamptz_type"},
+            {"kind": "timestamp_cell", "timestamp_value": "2026-09-18T00:00:00Z"},
+        ),
+        "amount": (
+            {"kind": "number_type", "subtype": "decimal"},
+            {
+                "kind": "number_cell",
+                "number_value": 1.23,
+                "string_value": "1.2300",
+                "subtype": "decimal",
+            },
+        ),
+        "metadata": (
+            {"kind": "json_type"},
+            {"kind": "json_cell", "json_value": '{"tags":["exact"]}'},
+        ),
+        "bytes": (
+            {"kind": "sql_native_type"},
+            {"kind": "sql_native_cell", "sql_native_value": "[0,255]"},
+        ),
+    }
+    widget = MalloyWidget("run: example")
+    try:
+        wire = browser_state(widget)
+        fields = [
+            {"name": name, "type": schema}
+            for name, (schema, _) in types_and_cells.items()
+        ]
+        wire["result"]["schema"]["fields"] = [
+            {
+                "kind": "dimension",
+                "name": "nested",
+                "type": {
+                    "kind": "array_type",
+                    "element_type": {"kind": "record_type", "fields": fields},
+                },
+            },
+        ]
+        wire["result"]["data"] = {
+            "kind": "array_cell",
+            "array_value": [
+                {
+                    "kind": "record_cell",
+                    "record_value": [
+                        {
+                            "kind": "array_cell",
+                            "array_value": [
+                                {
+                                    "kind": "record_cell",
+                                    "record_value": [
+                                        cell for _, cell in types_and_cells.values()
+                                    ],
+                                },
+                                {
+                                    "kind": "record_cell",
+                                    "record_value": [
+                                        {"kind": "null_cell"} for _ in fields
+                                    ],
+                                },
+                                {"kind": "null_cell"},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        widget.set_state({"_state": wire})
+        assert widget.state["rows"] == [
+            {
+                "nested": [
+                    {
+                        "name": "Ada",
+                        "active": True,
+                        "day": "2026-09-18",
+                        "instant": "2026-09-18T00:00:00Z",
+                        "amount": Decimal("1.2300"),
+                        "metadata": {"tags": ["exact"]},
+                        "bytes": [0, 255],
+                    },
+                    dict.fromkeys(types_and_cells),
+                    None,
+                ]
+            }
+        ]
+    finally:
+        widget.close()
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "scalar",
+        "nested",
+        "row_width",
+        "top_record",
+        "null_row",
+        "missing_data",
+        "numeric_text",
+    ],
+)
+def test_widget_rejects_cells_that_disagree_with_the_result_schema(invalid):
+    widget = MalloyWidget("run: example")
+    try:
+        widget.set_state({"_state": browser_state(widget)})
+        accepted = widget.state
+        wire = browser_state(widget, rows=[{"value": 99}])
+        result = wire["result"]
+        match invalid:
+            case "scalar":
+                result["schema"]["fields"][0]["type"] = {"kind": "string_type"}
+            case "nested":
+                result["schema"]["fields"][0]["type"] = {
+                    "kind": "array_type",
+                    "element_type": {"kind": "string_type"},
+                }
+                result["data"]["array_value"][0]["record_value"][0] = {
+                    "kind": "array_cell",
+                    "array_value": [{"kind": "number_cell", "number_value": 99}],
+                }
+            case "row_width":
+                result["data"]["array_value"][0]["record_value"] = []
+            case "top_record":
+                result["data"] = result["data"]["array_value"][0]
+            case "null_row":
+                result["data"]["array_value"] = [{"kind": "null_cell"}]
+            case "missing_data":
+                del result["data"]
+            case "numeric_text":
+                result["data"]["array_value"][0]["record_value"][0]["string_value"] = (
+                    "not a number"
+                )
+        with pytest.raises(TraitError, match="Invalid browser state"):
+            widget.set_state({"_state": wire})
+        assert widget.state == accepted
     finally:
         widget.close()
