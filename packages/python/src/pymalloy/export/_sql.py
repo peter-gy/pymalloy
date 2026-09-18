@@ -7,14 +7,14 @@ import duckdb
 
 def export_sql(
     connection: duckdb.DuckDBPyConnection, sql: str
-) -> tuple[str, Literal["select", "copy"]]:
+) -> tuple[str, Literal["select", "copy"], str | None]:
     """Validate an export statement and anchor relative COPY destinations."""
     statements = connection.extract_statements(sql)
     if len(statements) != 1:
         raise ValueError("SQL cells require one SELECT or COPY statement")
     kind = statements[0].type
     if kind == duckdb.StatementType.SELECT:
-        return sql, "select"
+        return sql, "select", None
     if kind != duckdb.StatementType.COPY:
         raise ValueError("SQL cells require one SELECT or COPY statement")
     tokens = duckdb.tokenize(sql)
@@ -52,5 +52,5 @@ def export_sql(
             sql = (
                 sql[:start] + f"(getvariable('data_root') || '{literal}') " + sql[end:]
             )
-        return sql, "copy"
+        return sql, "copy", path
     raise ValueError("COPY requires a parenthesized SELECT and literal destination")

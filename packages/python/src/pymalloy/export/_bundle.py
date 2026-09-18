@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from itertools import accumulate
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import urlsplit
 
+from pymalloy._connection import DEFAULT_CONNECTION
 from pymalloy._draft import Draft
 from pymalloy._errors import CompilationError
 from pymalloy._givens import encode_givens, given_values
@@ -25,6 +25,7 @@ from pymalloy._source import ModelSource
 from pymalloy._syntax import Fragment, from_wire
 from pymalloy._table import table_path
 from pymalloy.authoring import table
+from pymalloy.export._python import file_guard
 from pymalloy.validation import Validation
 
 
@@ -48,6 +49,7 @@ def bundle(
     *,
     files: Mapping[str | Path, str | Path] | None = None,
     query: str | None = None,
+    connection_name: str | None = None,
     givens: Mapping[str, Any] | None = None,
     format: bool = True,
     timeout: float = 120,
@@ -62,6 +64,19 @@ def bundle(
     from pymalloy._server.compiler import Compiler
 
     accepted = source if isinstance(source, Validation) else None
+    if connection_name is not None and (
+        not isinstance(connection_name, str) or not connection_name
+    ):
+        raise ValueError("connection_name must be a nonempty string")
+    if accepted is not None and connection_name not in {None, accepted.connection_name}:
+        raise ValueError(
+            "Export connection differs from validation; validate the requested connection first"
+        )
+    connection_name = (
+        accepted.connection_name
+        if accepted is not None
+        else connection_name or DEFAULT_CONNECTION
+    )
     managed = []
     declared_files = dict(files or {})
     explicit_references = {table_path(key) for key in declared_files}
@@ -103,10 +118,7 @@ def bundle(
         raise FileExistsError(target)
     if not target.parent.is_dir():
         raise FileNotFoundError(target.parent)
-    if any(
-        urlsplit(url).path.endswith((".malloynb", ".malloysql"))
-        for url in [source.url, *source.imports]
-    ):
+    if source.document_kind != "model":
         raise ValueError("Source bundles require plain .malloy documents")
 
     # Import identity is distinct from the inline root, even when their URLs coincide.
@@ -179,7 +191,9 @@ def bundle(
                         "Cannot format source bundle", diagnostics=formatted.diagnostics
                     )
                 text = formatted.source
-            parsed = compiler.parse(text, url=url, deadline=deadline)
+            parsed = compiler.parse(
+                text, url=url, document_kind="model", deadline=deadline
+            )
             if any(d.severity == "error" for d in parsed.diagnostics):
                 raise CompilationError(
                     "Cannot parse source bundle", diagnostics=parsed.diagnostics
@@ -202,12 +216,19 @@ def bundle(
                 accumulate((len(line) + 1 for line in text.split("\n")), initial=0)
             )
             for reference in parsed.tables:
-                if reference.connection == "duckdb" and reference.path in bindings:
+                if reference.path in bindings:
                     span = reference.range
                     start = offsets[span.start.line] + span.start.character
                     end = offsets[span.end.line] + span.end.character
                     edits.append(
-                        (start, end, table(Path(bindings[reference.path])).text)
+                        (
+                            start,
+                            end,
+                            table(
+                                Path(bindings[reference.path]),
+                                connection=reference.connection,
+                            ).text,
+                        )
                     )
             cursor = 0
             pieces = []
@@ -274,6 +295,7 @@ def bundle(
                 copied_hashes[alias] = _hash(output)
             record = {
                 "reference": reference,
+                "alias": str(alias),
                 "path": str(PurePosixPath("data") / alias),
                 "sha256": copied_hashes[alias],
             }
@@ -298,10 +320,11 @@ def bundle(
                 }
             )
         manifest = {
-            "format_version": 2,
+            "format_version": 3,
             "compiler_version": parsed.compiler_version,
             "model": "model.malloy",
             "data_root": "data",
+            "connection_name": connection_name,
             "query": query,
             "givens": parameters,
             "sources": model_records,
@@ -326,7 +349,10 @@ def bundle(
             "import json\nfrom pathlib import Path\nimport pymalloy as pm\n\n"
             "root = Path(__file__).resolve().parent\n"
             'manifest = json.loads((root / "bundle.json").read_text())\n'
-            'model = pm.model(root / manifest["model"], data_root=root / manifest["data_root"])\n'
+            'data_root = root / manifest["data_root"]\n'
+            + file_guard('(entry["alias"] for entry in manifest["files"])')
+            + "\ncheck_files()\n"
+            'model = pm.model(root / manifest["model"], data_root=data_root, connection_name=manifest["connection_name"])\n'
             "try:\n"
             '    result = model.query(manifest["query"]).run(givens=manifest["givens"])\n'
             "finally:\n    model.close()\n"

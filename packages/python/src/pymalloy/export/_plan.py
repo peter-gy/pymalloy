@@ -1,9 +1,10 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import cached_property, partial
 from importlib.metadata import version
 from pathlib import Path
 
-from pymalloy._document import Document, Markdown, Profile, Query
+from pymalloy._document import Document, Markdown, Profile, QueryCell
 from pymalloy.export._python import (
     connection_setup,
     data_setup,
@@ -12,15 +13,20 @@ from pymalloy.export._python import (
     model_setup,
     model_source_setup,
     query_title,
-    query_variables,
+    variable,
     widget_setup,
 )
+from pymalloy.export._scope import scope
 
 
 @dataclass(frozen=True)
 class Code:
     source: str
     after: str | None = None
+
+    @cached_property
+    def scope(self) -> tuple[frozenset[str], frozenset[str]]:
+        return scope(self.source)
 
 
 @dataclass(frozen=True)
@@ -34,9 +40,10 @@ class SQL:
 class Notebook:
     dependencies: tuple[str, ...]
     cells: tuple[Markdown | Code | SQL, ...]
+    variables: tuple[str, ...]
 
 
-def _precompiled(query: Query, name: str, after: str | None) -> Code | SQL:
+def _precompiled(query: QueryCell, name: str, after: str | None) -> Code | SQL:
     if query.kind == "select":
         return SQL(name, query.sql, after)
     return Code(
@@ -47,7 +54,7 @@ def _precompiled(query: Query, name: str, after: str | None) -> Code | SQL:
     )
 
 
-def _server(query: Query, name: str, after: str | None) -> Code:
+def _server(query: QueryCell, name: str, after: str | None) -> Code:
     if query.kind == "copy":
         source = f"_ = model.connection.execute({query.sql!r})\n{name} = pl.DataFrame()"
     else:
@@ -55,19 +62,21 @@ def _server(query: Query, name: str, after: str | None) -> Code:
     return Code(f"{source}\n{name}", after)
 
 
-def _widget(query: Query, name: str, after: str | None) -> Code:
-    return Code(widget_setup(name, query.name), after)
+def _widget(
+    query: QueryCell, name: str, after: str | None, *, connection_name: str
+) -> Code:
+    return Code(widget_setup(name, query.name, connection_name=connection_name), after)
 
 
 def plan(
     document: Document, output_path: str | Path, *, base: str, imports: str
 ) -> Notebook:
     """Resolve execution policy once; serializers supply notebook syntax only."""
-    queries: Callable[[Query, str, str | None], Code | SQL]
+    queries: Callable[[QueryCell, str, str | None], Code | SQL]
     match document.profile:
         case Profile.PRECOMPILED:
             requirements = ("duckdb>=1.5", "polars>=1.44")
-            runtime_imports = "from contextlib import contextmanager\n\nimport duckdb\nimport polars as pl"
+            runtime_imports = "from contextlib import contextmanager\nfrom pathlib import Path\n\nimport duckdb\nimport polars as pl"
             description = (
                 "## Data access\n\nEach query opens a connection using this data directory "
                 "and closes it after reading its result."
@@ -76,14 +85,14 @@ def plan(
             queries = _precompiled
         case Profile.SERVER:
             requirements = (f"pymalloy[server,dataframes]=={version('pymalloy')}",)
-            runtime_imports = "import pymalloy as pm\nfrom pymalloy import ModelSource\nimport polars as pl"
+            runtime_imports = "from pathlib import Path\nimport pymalloy as pm\nfrom pymalloy import ModelSource\nimport polars as pl"
             description = (
                 "## Malloy model\n\n"
                 "Edit `model_source` to change the model or its captured imports. "
                 "Edit `givens` to change query inputs. Query cells compile and execute "
                 "against the current data through `model.query().run()`. "
                 "Use `model.queries` to discover queries or pass new Malloy query text "
-                "to `model.query().run()`. Call `model.close()` to release resources early."
+                "to `model.query(malloy=...).run()`. Call `model.close()` to release resources early."
             )
             setup = [
                 data_setup(document, output_path, base),
@@ -93,7 +102,7 @@ def plan(
             ]
             queries = _server
         case Profile.WIDGET:
-            requirements = (f"pymalloy=={version('pymalloy')}",)
+            requirements = (f"pymalloy[widget]=={version('pymalloy')}",)
             runtime_imports = "from pymalloy import MalloyWidget, ModelSource"
             description = (
                 "## Interactive Malloy model\n\n"
@@ -112,7 +121,14 @@ def plan(
                 model_source_setup(document),
                 givens_setup(document),
             ]
-            queries = _widget
+            queries = partial(_widget, connection_name=document.connection_name)
+    if document.profile != Profile.WIDGET:
+        description += (
+            "\n\nLocal file access is limited to the notebook's declared inputs and COPY outputs. "
+            "When preparing an export, declare local SQL reader files with `files=` "
+            "and HTTP(S) readers with `remote_files=`. Remote inputs require network access; "
+            "their contents are not frozen by export."
+        )
     description += (
         "\n\nInstall the notebook dependencies with `pip install "
         + " ".join(f"'{requirement}'" for requirement in requirements)
@@ -129,7 +145,14 @@ def plan(
         Markdown(description),
         *(Code(source) for source in setup),
     ]
-    names = iter(query_variables(document))
+    # Reserve both notebook host namespaces so names agree across serializers.
+    used = {"mo", "Path"}
+    for cell in cells:
+        if isinstance(cell, Code):
+            definitions, references = cell.scope
+            used.update(definitions | references)
+    variables = tuple(variable(query.name, used) for query in document.queries)
+    names = iter(variables)
     writer = None
     for cell in contents:
         if isinstance(cell, Markdown):
@@ -141,9 +164,25 @@ def plan(
         ):
             cells.append(Markdown("## " + query_title(cell.name)))
         name = next(names)
-        cells.append(queries(cell, name, writer))
+        query = queries(cell, name, writer)
+        if document.files and document.profile == Profile.SERVER:
+            assert isinstance(query, Code)
+            query = Code("check_files()\n" + query.source, query.after)
+        cells.append(query)
         if cell.kind == "copy":
             writer = name
     if document.profile == Profile.WIDGET and not document.queries:
-        cells.append(Code(widget_setup("widget")))
-    return Notebook(requirements, tuple(cells))
+        cells.append(
+            Code(widget_setup("widget", connection_name=document.connection_name))
+        )
+    return Notebook(requirements, tuple(cells), variables)
+
+
+def query_variables(document: Document) -> tuple[str, ...]:
+    """Return the same result identifiers used by either notebook serializer."""
+    return plan(
+        document,
+        document.data_root / "notebook.py",
+        base="Path.cwd()",
+        imports="from pathlib import Path",
+    ).variables
