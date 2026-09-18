@@ -1,0 +1,50 @@
+:root {
+  --vp-font-family-base: "Avenir Next", "Segoe UI", ui-sans-serif, sans-serif;
+  --vp-font-family-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --vp-c-brand-1: #176a5b;
+  --vp-c-brand-2: #205e52;
+  --vp-c-brand-3: #237c69;
+  --vp-c-brand-soft: #eaf4ef;
+  --vp-c-bg-alt: #f6f7f5;
+  --vp-home-hero-name-color: var(--vp-c-text-1);
+  --vp-home-hero-name-background: none;
+  --vp-button-brand-bg: #176a5b;
+  --vp-button-brand-hover-bg: #205e52;
+}
+
+.dark {
+  --vp-c-brand-1: #91cfb7;
+  --vp-c-brand-2: #b0dfc9;
+  --vp-c-brand-3: #6aad95;
+  --vp-c-brand-soft: #213b33;
+  --vp-c-bg: #191d1b;
+  --vp-c-bg-alt: #141715;
+  --vp-button-brand-bg: #91cfb7;
+  --vp-button-brand-hover-bg: #b0dfc9;
+  --vp-button-brand-text: #17211b;
+  --vp-button-brand-hover-text: #17211b;
+}
+
+.VPHome .VPHomeHero .VPButton {
+  border-radius: 6px;
+}
+
+.VPFeature {
+  border-radius: 8px;
+  border-color: var(--vp-c-divider);
+}
+
+.VPHomeHero .text {
+  max-width: 800px;
+  text-wrap: balance;
+}
+
+.VPHomeHero .tagline {
+  max-width: 720px;
+}
+
+.VPHome .vp-doc {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 24px 64px;
+}

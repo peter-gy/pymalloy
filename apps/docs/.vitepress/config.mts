@@ -1,0 +1,71 @@
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitepress";
+
+const baseName = process.env.BASE_PATH?.trim().replace(/^\/+|\/+$/g, "");
+const sections = [
+  {
+    text: "Start",
+    items: [
+      { text: "What is PyMalloy?", link: "/guide/overview" },
+      { text: "Your first widget", link: "/guide/getting-started" },
+      { text: "Run queries from Python", link: "/guide/native-python" },
+      { text: "Models, queries, and execution", link: "/guide/concepts" },
+    ],
+  },
+  {
+    text: "Guides",
+    items: [
+      { text: "Update widget inputs and read results", link: "/guide/widget" },
+      { text: "Reuse models and select queries", link: "/guide/models" },
+      { text: "Connect files, tables, and Python data", link: "/guide/data" },
+      { text: "Parameterize queries with givens", link: "/guide/givens" },
+      { text: "Check and inspect Malloy source", link: "/guide/language-tools" },
+      { text: "Export notebooks", link: "/guide/export" },
+      { text: "Troubleshooting", link: "/guide/troubleshooting" },
+    ],
+  },
+  {
+    text: "Reference",
+    items: [
+      { text: "Python widget API", link: "/reference/python" },
+      { text: "Native Python API", link: "/reference/server" },
+      { text: "Analysis records", link: "/reference/analysis" },
+      { text: "Browser JavaScript API", link: "/reference/browser" },
+      { text: "Node API", link: "/reference/node" },
+      { text: "Compiler API", link: "/reference/core" },
+      { text: "Export API", link: "/reference/export" },
+      { text: "CLI", link: "/reference/cli" },
+    ],
+  },
+];
+
+export default defineConfig({
+  title: "PyMalloy",
+  description:
+    "Run Malloy in a Python notebook widget. Query in the browser, use native sessions, or export runnable notebooks.",
+  lang: "en-US",
+  srcDir: "../../docs",
+  base: baseName ? `/${baseName}/` : "/",
+  cleanUrls: true,
+  sitemap: { hostname: "https://peter-gy.github.io/pymalloy/" },
+  themeConfig: {
+    socialLinks: [{ icon: "github", link: "https://github.com/peter-gy/pymalloy" }],
+    editLink: { pattern: "https://github.com/peter-gy/pymalloy/edit/main/docs/:path" },
+    nav: [
+      { text: "Start", link: "/guide/overview" },
+      { text: "Guides", items: sections[1].items },
+      { text: "Reference", items: sections[2].items },
+    ],
+    sidebar: sections,
+    search: { provider: "local" },
+    outline: [2, 3],
+  },
+  vite: {
+    publicDir: fileURLToPath(new URL("../public", import.meta.url)),
+    server: {
+      host: "127.0.0.1",
+      port: Number(process.env.PORT ?? 4173),
+      strictPort: true,
+    },
+  },
+});

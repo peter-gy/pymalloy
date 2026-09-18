@@ -1,0 +1,18 @@
+{
+  "name": "@pymalloy/docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vitepress build",
+    "dev": "portless run --name docs.pymalloy vitepress dev",
+    "preview": "portless run --name preview.docs.pymalloy sh -c 'vitepress preview --port \"${PORT:-4173}\"'",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "portless": "catalog:",
+    "typescript": "catalog:",
+    "vitepress": "catalog:"
+  }
+}
