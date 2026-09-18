@@ -1,288 +1,174 @@
+import { checkSource, formatSource } from "@malloy-runtime/compiler/tooling";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { type DuckDBConnection, DuckDBInstance, type JS } from "@duckdb/node-api";
+import { type DuckDBConnection, DuckDBInstance } from "@duckdb/node-api";
 import {
   CompiledModel,
-  checkSource,
-  formatSource,
+  Model,
   ToolingError,
-  type CheckReport,
-  type GivenValue,
-  type Inspection,
-  type LoadOptions,
-  type Position,
-  type ReferenceInfo,
-} from "@pymalloy/core";
+  type ModelSource,
+  type OperationOptions,
+  type RunOptions,
+  type SourcePosition,
+} from "@malloy-runtime/compiler";
+import { connection, drive, fileSearchPath, type Host } from "@malloy-runtime/duckdb";
 import { DuckDBBackend } from "./duckdb.js";
-import { Operations, operationTimeout, type OperationOptions } from "./operations.js";
-
-export type Row = Record<string, JS>;
-
-function querySource(value: string | RunOptions): value is string {
-  return typeof value === "string";
-}
+import { Operations } from "@malloy-runtime/compiler";
 
 export interface SessionOptions {
   dataRoot?: string;
   database?: string;
   connection?: DuckDBConnection;
-  timeout?: number;
 }
-
-export interface RunOptions extends OperationOptions {
-  query?: string;
-  givens?: Record<string, GivenValue>;
-}
-
+export type ModelSpec =
+  | { text: string; url?: string }
+  | { path: string }
+  | { url: string }
+  | { source: ModelSource };
 export interface CheckOptions extends OperationOptions {
   path?: string;
   syntaxOnly?: boolean;
-  position?: Position;
-}
-
-export interface InspectOptions {
-  position?: Position;
-  url?: URL;
+  position?: SourcePosition;
 }
 
 export class Session {
   private readonly backend: DuckDBBackend;
-  private readonly models = new Set<SessionModel>();
+  private readonly models = new Set<Model>();
   private readonly operations: Operations;
   private readonly imports = new AbortController();
   private closing?: Promise<void>;
-
   private constructor(
     private readonly nativeConnection: DuckDBConnection,
-    private readonly dataRoot: string | undefined,
-    timeout: number,
+    private readonly dataRoot: string,
     private readonly instance?: DuckDBInstance,
   ) {
-    this.operations = new Operations(timeout, () => {
+    this.operations = new Operations(() => {
       this.imports.abort();
-      try {
-        this.nativeConnection.interrupt();
-      } finally {
-        void this.close();
-      }
+      this.connection.interrupt();
+      void this.close();
     });
-    this.backend = new DuckDBBackend(nativeConnection, () => this.operations.assertActive());
+    this.backend = new DuckDBBackend(nativeConnection);
   }
-
-  static async create(options: SessionOptions = {}): Promise<Session> {
-    if (options.connection && options.database !== undefined)
-      throw new Error("Choose connection or database");
-    const timeout = operationTimeout(options.timeout ?? 120_000);
-    const dataRoot = options.dataRoot === undefined ? undefined : resolve(options.dataRoot);
-    if (options.connection) return new Session(options.connection, dataRoot, timeout);
+  static async open(options: SessionOptions = {}): Promise<Session> {
+    if (options.connection && (options.database !== undefined || options.dataRoot !== undefined))
+      throw new Error("Borrowed connections use the caller's database and file_search_path");
+    const root = resolve(options.dataRoot ?? ".");
+    if (options.connection) return new Session(options.connection, root);
     const instance = await DuckDBInstance.create(options.database);
     try {
-      const connection = await instance.connect();
+      const native = await instance.connect();
       try {
-        await connection.run("SET TimeZone = 'UTC'");
+        await native.run("SET TimeZone='UTC'");
+        await native.run(fileSearchPath(root));
       } catch (error) {
-        connection.closeSync();
+        native.closeSync();
         throw error;
       }
-      return new Session(connection, dataRoot, timeout, instance);
+      return new Session(native, root, instance);
     } catch (error) {
       instance.closeSync();
       throw error;
     }
   }
-
   get connection(): DuckDBConnection {
     return this.nativeConnection;
   }
-
-  get closed(): boolean {
+  get closed() {
     return this.operations.closed;
   }
-
-  model(source: string, options: OperationOptions & { baseDir?: string } = {}): Promise<Model> {
-    const baseDir = resolve(options.baseDir ?? this.dataRoot ?? ".");
-    return this.operations.run(
-      () => this.loadModel(pathToFileURL(resolve(baseDir, "model.malloy")), source, baseDir),
-      options,
-    );
-  }
-
-  load(path: string, options: OperationOptions = {}): Promise<Model> {
-    const url = pathToFileURL(resolve(path));
-    const baseDir = resolve(path, "..");
-    return this.operations.run(() => this.loadModel(url, undefined, baseDir), options);
-  }
-
-  run(source: string, options: RunOptions = {}): Promise<Row[]> {
-    const selected = structuredClone({ query: options.query, givens: options.givens });
-    const baseDir = this.dataRoot ?? resolve(".");
-    return this.operations.run(async () => {
-      const compiled = await CompiledModel.load(
-        this.loadOptions(pathToFileURL(resolve(baseDir, "model.malloy")), source, baseDir),
-      );
-      const query = await compiled.query(selected.query, undefined, selected.givens);
-      return this.backend.run(query.sql, baseDir);
-    }, options);
-  }
-
-  check(source: string, options: CheckOptions = {}): Promise<CheckReport> {
-    return this.checkRequest(source, options);
-  }
-
-  checkFile(path: string, options: Omit<CheckOptions, "path"> = {}): Promise<CheckReport> {
-    return this.checkRequest(undefined, { ...options, path: resolve(path) });
-  }
-
-  private checkRequest(source: string | undefined, options: CheckOptions): Promise<CheckReport> {
-    const path = resolve(options.path ?? resolve(this.dataRoot ?? ".", "inline.malloy"));
-    const url = pathToFileURL(path);
-    const position = options.position && { ...options.position };
-    const syntaxOnly = options.syntaxOnly ?? false;
-    const load = this.loadOptions(url, source, resolve(path, ".."));
-    return this.operations.run(() => checkSource({ ...load, position, syntaxOnly }), options);
-  }
-
-  format(source: string, options: OperationOptions = {}): Promise<string> {
-    return this.operations.run(async () => {
-      const result = formatSource(source);
-      if (result.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
-        throw new ToolingError(
-          result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"),
-          result.diagnostics,
-        );
-      }
-      return result.source;
-    }, options);
-  }
-
-  close(): Promise<void> {
-    if (!this.closing) {
-      this.closing = this.operations.close().then(() => {
-        for (const model of this.models) model.close();
-        this.imports.abort();
-        if (this.instance) {
-          this.nativeConnection.closeSync();
-          this.instance.closeSync();
-        }
-      });
-    }
-    return this.closing;
-  }
-
-  private loadOptions(url: URL, source: string | undefined, baseDir: string): LoadOptions {
+  private host(source?: ModelSource): Host {
     return {
-      url,
-      source,
-      describe: (sql) => this.backend.describe(sql, this.dataRoot ?? baseDir),
-      readURL: async (importURL) => {
+      describe: (sql) => this.backend.describe(sql),
+      readURL: async (url) => {
         this.operations.assertActive();
-        if (importURL.protocol !== "file:")
-          throw new Error(`Import '${importURL}' must be a local file`);
-        return readFile(importURL, { encoding: "utf8", signal: this.imports.signal });
+        if (source) {
+          if (!Object.hasOwn(source.imports, url.href))
+            throw new Error(`Source bundle is missing '${url.href}'`);
+          return source.imports[url.href];
+        }
+        if (url.protocol !== "file:") throw new Error(`Import '${url}' must be a local file`);
+        return readFile(url, { encoding: "utf8", signal: this.imports.signal });
       },
     };
   }
-
-  private async loadModel(url: URL, source: string | undefined, baseDir: string): Promise<Model> {
-    const root = this.dataRoot ?? baseDir;
-    const compiled = await CompiledModel.load(this.loadOptions(url, source, baseDir));
-    this.operations.assertActive();
-    const model = new SessionModel(
-      compiled,
-      this.operations,
-      {
-        sql: (sql) => this.backend.bind(sql, root, true),
-        run: (sql) => this.backend.run(sql, root),
-      },
-      () => this.models.delete(model),
-    );
-    this.models.add(model);
-    return model;
-  }
-}
-
-export interface Model {
-  readonly queries: readonly string[];
-  inspect(options?: InspectOptions): Inspection & Partial<ReferenceInfo>;
-  sql(options?: RunOptions): Promise<string>;
-  sql(source: string, options?: RunOptions): Promise<string>;
-  run(options?: RunOptions): Promise<Row[]>;
-  run(source: string, options?: RunOptions): Promise<Row[]>;
-  close(): void;
-}
-
-class SessionModel implements Model {
-  readonly queries: readonly string[];
-  private compiled: CompiledModel | undefined;
-
-  constructor(
-    compiled: CompiledModel,
-    private operations: Operations | undefined,
-    private data:
-      | {
-          sql: (sql: string) => Promise<string>;
-          run: (sql: string) => Promise<Row[]>;
-        }
-      | undefined,
-    private release: (() => void) | undefined,
-  ) {
-    this.compiled = compiled;
-    this.queries = compiled.queries;
-  }
-
-  inspect(options: InspectOptions = {}): Inspection & Partial<ReferenceInfo> {
-    const compiled = this.current();
-    if (options.url && !options.position) throw new Error("url requires a position");
-    const inspection = compiled.inspect();
-    if (!options.position) return inspection;
-    return { ...inspection, ...compiled.reference({ ...options.position, url: options.url }) };
-  }
-
-  sql(options?: RunOptions): Promise<string>;
-  sql(source: string, options?: RunOptions): Promise<string>;
-  sql(sourceOrOptions: string | RunOptions = {}, options: RunOptions = {}): Promise<string> {
-    return this.submit(sourceOrOptions, options, this.data?.sql);
-  }
-
-  run(options?: RunOptions): Promise<Row[]>;
-  run(source: string, options?: RunOptions): Promise<Row[]>;
-  run(sourceOrOptions: string | RunOptions = {}, options: RunOptions = {}): Promise<Row[]> {
-    return this.submit(sourceOrOptions, options, this.data?.run);
-  }
-
-  close(): void {
-    this.compiled = undefined;
-    this.operations = undefined;
-    this.data = undefined;
-    this.release?.();
-    this.release = undefined;
-  }
-
-  private current(): CompiledModel {
-    if (!this.compiled || !this.operations) throw new Error("Model is closed");
-    this.operations.assertActive();
-    return this.compiled;
-  }
-
-  private submit<T>(
-    sourceOrOptions: string | RunOptions,
-    options: RunOptions,
-    execute: ((sql: string) => Promise<T>) | undefined,
-  ): Promise<T> {
-    if (!this.operations) return Promise.reject(new Error("Model is closed"));
-    if (this.operations.closed) return Promise.reject(new Error("Session is closed"));
-    if (!execute) return Promise.reject(new Error("Model is closed"));
-    const source = querySource(sourceOrOptions) ? sourceOrOptions : undefined;
-    const selected = querySource(sourceOrOptions) ? options : sourceOrOptions;
-    const { query, givens } = structuredClone({ query: selected.query, givens: selected.givens });
+  model(input: ModelSpec, options: OperationOptions = {}): Promise<Model> {
+    const spec = structuredClone(input);
+    if ("path" in spec) spec.path = resolve(spec.path);
     return this.operations.run(async () => {
-      const compiled = this.current();
-      if (source !== undefined && query !== undefined) throw new Error("Choose source or query");
-      const prepared = await compiled.query(query, source, givens);
-      return execute(prepared.sql);
-    }, selected);
+      const captured = "source" in spec ? spec.source : undefined;
+      const url = new URL(
+        captured?.url ??
+          ("path" in spec
+            ? pathToFileURL(resolve(spec.path)).href
+            : "url" in spec && spec.url
+              ? spec.url
+              : pathToFileURL(resolve(this.dataRoot, "model.malloy")).href),
+      );
+      const host = this.host(captured);
+      const compiled = await drive(
+        CompiledModel.begin({
+          url,
+          source: captured?.text ?? ("text" in spec ? spec.text : undefined),
+          connection,
+        }),
+        host,
+      );
+      this.operations.assertActive();
+      const model = new Model(compiled, {
+        assertActive: () => {
+          this.operations.assertActive();
+        },
+        compile: (job) => drive(job, host),
+        run: (sql, template) => this.backend.run(sql, template),
+        submit: (task, options) => this.operations.run(task, options),
+        release: () => this.models.delete(model),
+      });
+      this.models.add(model);
+      return model;
+    }, options);
+  }
+  async run(text: string, options: RunOptions = {}) {
+    const captured = { signal: options.signal, givens: structuredClone(options.givens) };
+    const model = await this.model({ text }, captured);
+    try {
+      return await model.query().run(captured);
+    } finally {
+      model.close();
+    }
+  }
+  check(source: string, options: CheckOptions = {}) {
+    const url = pathToFileURL(resolve(options.path ?? resolve(this.dataRoot, "inline.malloy")));
+    return this.operations.run(
+      () =>
+        drive(
+          checkSource({
+            url,
+            source,
+            connection,
+            position: options.position,
+            syntaxOnly: options.syntaxOnly,
+          }),
+          this.host(),
+        ),
+      options,
+    );
+  }
+  format(source: string) {
+    const result = formatSource(source);
+    if (result.diagnostics.length)
+      throw new ToolingError("Malloy formatting failed", result.diagnostics);
+    return result.source;
+  }
+  close(): Promise<void> {
+    this.closing ??= this.operations.close().then(() => {
+      for (const model of this.models) model.close();
+      this.imports.abort();
+      if (this.instance) {
+        this.connection.closeSync();
+        this.instance.closeSync();
+      }
+    });
+    return this.closing;
   }
 }
-
-export type { OperationOptions };

@@ -1,12 +1,13 @@
-export { Session } from "./session.js";
-export type {
+export { Session, type SessionOptions, type ModelSpec, type CheckOptions } from "./session.js";
+export {
   Model,
-  RunOptions,
-  SessionOptions,
-  CheckOptions,
-  InspectOptions,
-  OperationOptions,
-  Row,
-} from "./session.js";
-export { ToolingError } from "@pymalloy/core";
-export type { CheckReport, Inspection, Position } from "@pymalloy/core";
+  Query,
+  ToolingError,
+  type Result,
+  type Row,
+  type Value,
+  type RunOptions,
+  type OperationOptions,
+  type QueryDescriptor,
+  type ModelSource,
+} from "@malloy-runtime/compiler";

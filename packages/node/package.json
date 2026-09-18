@@ -1,5 +1,5 @@
 {
-  "name": "@pymalloy/node",
+  "name": "@malloy-runtime/node",
   "version": "0.1.0",
   "files": [
     "dist"
@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "@duckdb/node-api": "catalog:",
-    "@pymalloy/core": "workspace:*"
+    "@malloy-runtime/compiler": "workspace:*",
+    "@malloy-runtime/duckdb": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
