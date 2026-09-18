@@ -1,0 +1,19 @@
+packages/python/src/pymalloy/export/_bundle.py
+  s_eb8331ad77ae5f::t_8896a00fb4a679 15,22,160-162,165-167,171-174,178-181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b0cca71b0bf9793bf617ae49bec0a842c70688a1",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
