@@ -13,13 +13,14 @@ from fixtures.model import SALES, SOURCE, UPDATED_SALES
 from jupyterlab.handlers.announcements import NeverCheckForUpdate
 from jupyterlab.labapp import LabApp
 
-from pymalloy.export import compile, jupyter
+from pymalloy.export import jupyter, prepare
 
 CELLS = [
     f"""import asyncio
 import json
 from IPython.display import display
 from pymalloy import MalloyWidget
+from pymalloy.analysis import to_dict
 
 source = {SOURCE!r}
 widget = MalloyWidget(source, files={{"sales.csv": {SALES!r}}}, query="sales.by_region")
@@ -27,13 +28,13 @@ widget = MalloyWidget(source, files={{"sales.csv": {SALES!r}}}, query="sales.by_
 async def ready(expected_rows):
     event = asyncio.Event()
     def changed(change):
-        if widget.state.get("status") == "ready" and widget.state.get("rows") == expected_rows:
+        if widget.state.get("status") == "ready" and to_dict(widget.state["rows"]) == expected_rows:
             event.set()
     widget.observe(changed, names="state")
     try:
         changed(None)
         await asyncio.wait_for(event.wait(), timeout=30)
-        return widget.state
+        return to_dict(widget.state)
     finally:
         widget.unobserve(changed, names="state")
 
@@ -126,6 +127,7 @@ def main() -> None:
             cells=[
                 nbformat.v4.new_code_cell("""import pyarrow as pa
 import pymalloy as pm
+from pymalloy.analysis import to_dict
 from IPython.display import display
 
 prepared = pa.table({"region": ["North", "North"], "amount": [12, 20]})
@@ -135,7 +137,7 @@ candidate = pm.draft().define(orders=pm.data(prepared)).queries(
 widget = pm.MalloyWidget(candidate, query="total")
 display(widget)"""),
                 nbformat.v4.new_code_cell(
-                    'print("Dataframe rows:", widget.state["rows"])'
+                    'print("Dataframe rows:", to_dict(widget.state["rows"]))'
                 ),
             ],
             metadata=notebook.metadata,
@@ -149,7 +151,7 @@ display(widget)"""),
         )
         (root / "sales.csv").write_text(SALES)
         output = notebooks / "exported.ipynb"
-        document = compile(model, profile="widget", queries=["run:0"])
+        document = prepare(model, profile="widget", queries=["run:0"])
         exported = nbformat.reads(
             jupyter.render(document, output_path=output), as_version=4
         )

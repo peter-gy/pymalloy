@@ -1,11 +1,14 @@
 import { expect, test } from "./fixture";
 
-test("the base wheel runs a synchronized Malloy widget in Pyodide", async ({ page }, testInfo) => {
+test("the widget extra runs a synchronized Malloy widget in Pyodide", async ({
+  page,
+}, testInfo) => {
   const requestedAssets: string[] = [];
   page.on("request", (request) => requestedAssets.push(new URL(request.url()).pathname));
   await page.goto("/");
   await expect(page.getByLabel("Kernel status")).toHaveText("Python ready", { timeout: 120_000 });
   await expect(page.getByRole("table")).toContainText("42");
+  expect(requestedAssets).toContainEqual(expect.stringMatching(/^\/wheels\/pymalloy-.*\.whl$/));
   expect(requestedAssets).toContain("/duckdb/duckdb-eh.wasm");
   expect(requestedAssets).toContain("/duckdb/duckdb-browser-eh.worker.js");
   const state = async () => JSON.parse(await page.getByLabel("Python readback").innerText());

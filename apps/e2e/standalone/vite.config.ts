@@ -4,6 +4,7 @@ import { defineConfig } from "vite-plus";
 
 const distribution = fileURLToPath(new URL("../../../dist/", import.meta.url));
 const runtimeFiles = new Map([
+  ["/widget.mjs", new URL("../../../packages/widget/dist/widget.js", import.meta.url)],
   [
     "/runtime.mjs",
     new URL(
@@ -35,7 +36,7 @@ export default defineConfig({
   server: { host: "127.0.0.1", port: 28443, strictPort: true },
   plugins: [
     {
-      name: "python-wheel",
+      name: "python-package-index",
       configureServer(server) {
         server.middlewares.use((request, response, next) => {
           const runtimeFile = runtimeFiles.get(request.url ?? "");
@@ -47,7 +48,16 @@ export default defineConfig({
             createReadStream(fileURLToPath(runtimeFile)).pipe(response);
             return;
           }
-          if (request.url !== "/wheel.json" && !request.url?.startsWith("/wheels/")) return next();
+          const packageName = /^\/simple\/([^/]+)\/$/.exec(request.url ?? "")?.[1];
+          const packageIndex = packageName === "pymalloy";
+          if (packageName && !packageIndex) {
+            response.writeHead(302, {
+              Location: `https://pypi.org/simple/${encodeURIComponent(packageName)}/`,
+            });
+            response.end();
+            return;
+          }
+          if (!packageIndex && !request.url?.startsWith("/wheels/")) return next();
           const wheels = readdirSync(distribution).filter((file) =>
             /^pymalloy-.*-py3-none-any\.whl$/.test(file),
           );
@@ -57,9 +67,9 @@ export default defineConfig({
             return;
           }
           const wheel = wheels[0];
-          if (request.url === "/wheel.json") {
-            response.setHeader("Content-Type", "application/json");
-            response.end(JSON.stringify({ url: `/wheels/${wheel}` }));
+          if (packageIndex) {
+            response.setHeader("Content-Type", "text/html");
+            response.end(`<a href="/wheels/${wheel}">${wheel}</a>`);
           } else if (request.url === `/wheels/${wheel}`) {
             response.setHeader("Content-Type", "application/octet-stream");
             createReadStream(`${distribution}/${wheel}`).pipe(response);

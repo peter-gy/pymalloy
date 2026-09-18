@@ -1,3 +1,4 @@
+import type { WidgetModel } from "../../../packages/widget/src/protocol";
 import { expect, test } from "./fixture";
 test("retained models own competing file mappings and preserve exact result values", async ({
   page,
@@ -309,7 +310,7 @@ test("session abort settles running and queued browser work and releases models"
     // Abort after DuckDB receives the query, exercising termination during execution.
     Worker.prototype.postMessage = function (message, transfer) {
       post.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
-      if (message.type === "RUN_QUERY") started();
+      if (message.type === "START_PENDING_QUERY") started();
     };
     const query = model.query();
     const running = query.run();
@@ -382,5 +383,235 @@ test("repeated SQL cells observe schema changes and expose detached columns", as
     repeated: [{ name: "value", type: "BIGINT" }],
     changed: [{ name: "value", type: "VARCHAR" }],
     rows: [{ value: "hi" }],
+  });
+});
+
+test("cancelling one browser query preserves its model and queued work", async ({ page }) => {
+  await page.goto("/runtime.html");
+  const output = await page.evaluate(async () => {
+    const entry = "/runtime.mjs";
+    const { Session } = await import(entry);
+    const session = await Session.open({
+      bundles: {
+        mvp: {
+          mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
+          mainWorker: new URL("/duckdb/duckdb-browser-mvp.worker.js", location.href).href,
+        },
+      },
+    });
+    try {
+      const model = await session.model({
+        text: `
+        source: numbers is duckdb.sql('SELECT range AS value FROM range(1000000000000)')
+        query: slow is numbers -> {aggregate: total is value.sum()}
+        query: fast is duckdb.sql('SELECT 42 AS answer') -> {select: answer}
+      `,
+      });
+      // Abort after dispatch so this exercises an active statement, not the queue.
+      const controller = new AbortController();
+      // oxlint-disable-next-line typescript/unbound-method -- Restored in finally, called with its original receiver.
+      const post = Worker.prototype.postMessage;
+      let started!: () => void;
+      const dispatched = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      Worker.prototype.postMessage = function (message, transfer) {
+        post.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
+        if (message.type === "START_PENDING_QUERY") started();
+      };
+      try {
+        const running = model.query("slow").run({ signal: controller.signal });
+        const queued = model.query("fast").run();
+        const outcome = running.then(
+          () => "resolved",
+          (error: Error) => error.name,
+        );
+        await dispatched;
+        controller.abort();
+        const cancelled = await outcome;
+        const immediate = model.query("fast").run();
+        return {
+          cancelled,
+          immediate: (await immediate).rows,
+          queued: (await queued).rows,
+          repeated: (await model.query("fast").run()).rows,
+          closed: session.closed,
+        };
+      } finally {
+        Worker.prototype.postMessage = post;
+      }
+    } finally {
+      await session.close();
+    }
+  });
+  expect(output).toEqual({
+    cancelled: "AbortError",
+    immediate: [{ answer: 42 }],
+    queued: [{ answer: 42 }],
+    repeated: [{ answer: 42 }],
+    closed: false,
+  });
+});
+
+test("a widget replaces an active query on its retained browser model", async ({ page }) => {
+  await page.goto("/runtime.html");
+  const output = await page.evaluate(async () => {
+    const entry = "/widget.mjs";
+    const { default: createWidget } = await import(entry);
+    const state: WidgetModel = {
+      query: null,
+      _state: null,
+      _runtime: {
+        mvp: {
+          mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
+          mainWorker: new URL("/duckdb/duckdb-browser-mvp.worker.js", location.href).href,
+        },
+      },
+      _definition: {
+        revision: 1,
+        files: {},
+        documentKind: "model",
+        connectionName: "duckdb",
+        source: `
+          query: slow is duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> {aggregate: total is value.sum()}
+          query: fast is duckdb.sql('SELECT 42 AS answer') -> {select: answer}
+        `,
+      },
+      _input: { revision: 1, definitionRevision: 1, query: "slow", givens: {} },
+    };
+    const listeners = new Map<string, Set<() => void>>();
+    const publications: Array<{
+      revision: number;
+      status: string;
+      value?: number;
+      error?: string | null;
+    }> = [];
+    let finished!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      finished = resolve;
+    });
+    const model = {
+      get: <K extends keyof WidgetModel>(key: K): WidgetModel[K] => state[key],
+      set: <K extends keyof WidgetModel>(key: K, value: WidgetModel[K]) => {
+        state[key] = value;
+      },
+      on: (event: string, callback: () => void) => {
+        if (!listeners.has(event)) listeners.set(event, new Set());
+        listeners.get(event)!.add(callback);
+      },
+      off: (event: string, callback: () => void) => listeners.get(event)?.delete(callback),
+      save_changes: () => {
+        const current = state._state!;
+        publications.push({
+          revision: current.revision,
+          status: current.status,
+          value:
+            current.result?.data?.kind === "array_cell" &&
+            current.result.data.array_value[0]?.kind === "record_cell" &&
+            current.result.data.array_value[0].record_value[0]?.kind === "number_cell"
+              ? current.result.data.array_value[0].record_value[0].number_value
+              : undefined,
+          error: current.error,
+        });
+        if (current.revision === 2 && (current.status === "ready" || current.status === "error"))
+          finished();
+      },
+    };
+    // Replace the selection when the slow statement reaches the actual worker.
+    // oxlint-disable-next-line typescript/unbound-method -- Restored in finally and invoked with its Worker receiver.
+    const post = Worker.prototype.postMessage;
+    let replaced = false;
+    Worker.prototype.postMessage = function (message, transfer) {
+      post.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
+      if (
+        !replaced &&
+        message.type === "START_PENDING_QUERY" &&
+        !message.data[1].startsWith("DESCRIBE")
+      ) {
+        replaced = true;
+        state._input = { definitionRevision: 1, givens: {}, revision: 2, query: "fast" };
+        for (const callback of listeners.get("change:_input") ?? []) callback();
+      }
+    };
+    const dispose = await createWidget().initialize({
+      model,
+      signal: new AbortController().signal,
+    });
+    try {
+      await ready;
+      return publications.filter((value) => value.status === "ready" || value.status === "error");
+    } finally {
+      Worker.prototype.postMessage = post;
+      await dispose();
+    }
+  });
+  expect(output).toEqual([{ revision: 2, status: "ready", value: 42, error: null }]);
+});
+
+test("a relocated widget executes absolute HTTP data without a native server", async ({ page }) => {
+  await page.route("**/remote-values.csv", (route) =>
+    route.fulfill({ contentType: "text/csv", body: "value\n42\n" }),
+  );
+  await page.goto("/runtime.html");
+  const output = await page.evaluate(async () => {
+    const entry = "/widget.mjs";
+    const { default: createWidget } = await import(entry);
+    const url = new URL("/remote-values.csv", location.href).href;
+    const state: WidgetModel = {
+      query: null,
+      _state: null,
+      _runtime: {
+        mvp: {
+          mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
+          mainWorker: new URL("/duckdb/duckdb-browser-mvp.worker.js", location.href).href,
+        },
+      },
+      _definition: {
+        revision: 1,
+        files: {},
+        documentKind: "model",
+        connectionName: "warehouse",
+        url: "https://relocated.example/analysis.malloy",
+        source: `run: warehouse.table(${JSON.stringify(url)}) -> { select: value }`,
+        imports: {},
+      },
+      _input: { revision: 1, definitionRevision: 1, query: null, givens: {} },
+    };
+    let finished!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      finished = resolve;
+    });
+    const dispose = await createWidget().initialize({
+      signal: new AbortController().signal,
+      model: {
+        get: <K extends keyof WidgetModel>(key: K): WidgetModel[K] => state[key],
+        set: <K extends keyof WidgetModel>(key: K, value: WidgetModel[K]) => {
+          state[key] = value;
+        },
+        on: () => undefined,
+        off: () => undefined,
+        save_changes: () => {
+          if (state._state?.status === "ready" || state._state?.status === "error") finished();
+        },
+      },
+    });
+    try {
+      await ready;
+      return state._state;
+    } finally {
+      await dispose();
+    }
+  });
+  expect(output).toMatchObject({
+    status: "ready",
+    error: null,
+    result: {
+      data: {
+        kind: "array_cell",
+        array_value: [
+          { kind: "record_cell", record_value: [{ kind: "number_cell", number_value: 42 }] },
+        ],
+      },
+    },
   });
 });

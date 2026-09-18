@@ -7,14 +7,16 @@ let firstResult;
 const lifetime = new AbortController();
 const pyodide = await globalThis.loadPyodide();
 await pyodide.loadPackage("micropip");
-const wheel = await (await fetch("/wheel.json")).json();
-pyodide.globals.set("wheel_url", new URL(wheel.url, location.href).href);
+pyodide.globals.set("package_index", new URL("/simple", location.href).href);
 pyodide.globals.set("asset_root", new URL("/duckdb/", location.href).href);
 await pyodide.runPythonAsync(`
+import importlib.util
 import micropip
-await micropip.install(wheel_url)
+await micropip.install("pymalloy[widget]", index_urls=package_index)
+assert all(importlib.util.find_spec(name) is None for name in ("deno", "duckdb"))
 import json
 from pymalloy import MalloyWidget, browser
+from pymalloy.analysis import to_dict
 source = '''
 ##! experimental.givens
  given: region_filter :: string is 'North'
@@ -44,9 +46,9 @@ def model_save(value):
 const get = pyodide.globals.get("model_get");
 const save = pyodide.globals.get("model_save");
 const publish = () => {
-  readback.textContent = pyodide.runPython("json.dumps(widget.state, sort_keys=True)");
+  readback.textContent = pyodide.runPython("json.dumps(to_dict(widget.state), sort_keys=True)");
   document.querySelector('[aria-label="Python values"]').textContent = pyodide.runPython(
-    "repr(widget.state['rows'])",
+    "repr(to_dict(widget.state)['rows'])",
   );
 };
 const changed = (name) => {

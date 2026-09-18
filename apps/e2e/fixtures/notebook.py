@@ -10,8 +10,9 @@ def _():
     from model import SALES, SOURCE
 
     from pymalloy import MalloyWidget
+    from pymalloy.analysis import to_dict
 
-    return MalloyWidget, SALES, SOURCE, mo
+    return MalloyWidget, SALES, SOURCE, mo, to_dict
 
 
 @app.cell
@@ -49,9 +50,9 @@ def _(SOURCE, analysis, invalid, region):
 
 
 @app.cell
-def _(analysis, mo):
+def _(analysis, mo, to_dict):
     _ = analysis.value
-    state = analysis.widget.state
+    state = to_dict(analysis.widget.state)
     mo.md(
         f"Python received: `{state.get('status')}`\n\nRows: `{state.get('rows', [])}`"
     )
