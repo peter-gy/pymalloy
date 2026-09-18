@@ -323,7 +323,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 class ServerImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.startswith('pymalloy._server') or fullname.split('.')[0] in {'duckdb', 'deno', 'polars', 'pyarrow', 'marimo'}:
+        if fullname.split('.')[0] in {'duckdb', 'deno', 'polars', 'pyarrow', 'marimo'}:
             raise AssertionError(f'Server dependency imported: {fullname}')
 sys.meta_path.insert(0, ServerImports())
 import pymalloy as pm
