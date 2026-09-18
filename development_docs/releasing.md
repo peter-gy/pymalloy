@@ -1,0 +1,73 @@
+# Build and release
+
+Build the JavaScript assets before packaging Python:
+
+```sh
+pnpm build
+uv build --package pymalloy
+```
+
+pnpm builds in dependency order. `packages/python/build.mjs` copies the widget,
+compiler bridge, and production dependency notices into `pymalloy/_assets`.
+Hatch includes them in the wheel and source archive. Rebuild after JavaScript
+source or dependency changes.
+
+To build just Python's JavaScript dependencies:
+
+```sh
+pnpm --filter '@pymalloy/python...' build
+```
+
+## Validate distributions
+
+CI tests isolated installs of the wheel and a wheel rebuilt from the source
+archive. It checks base imports, a native query, and
+[browser behavior against the built wheel](testing.md#browser-tests).
+
+Check distribution metadata:
+
+```sh
+uv run --frozen --only-group release twine check dist/pymalloy-*.whl dist/pymalloy-*.tar.gz
+```
+
+## Publish
+
+Prepare a version change and merge it after CI passes:
+
+```sh
+uv version --package pymalloy --bump patch
+uv lock
+```
+
+Tag the release commit on `main`:
+
+```sh
+git switch main
+git pull --ff-only origin main
+version="$(uv version --package pymalloy --short)"
+git tag -a "v$version" -m "Release $version"
+git push origin "v$version"
+```
+
+The publish workflow verifies the annotated tag against the package version,
+runs CI, and uploads the tested distributions through PyPI Trusted Publishing.
+Configure the publisher with repository `peter-gy/pymalloy`, workflow `publish.yml`,
+and environment `pypi`.
+
+Published versions cannot be overwritten. If upload is interrupted, rerun the
+failed job. `uv publish --check-url` checks files already present on PyPI.
+
+## Deploy documentation
+
+CI calls `.github/workflows/pages.yml` to build the site. Runs on `main` deploy
+to `https://peter-gy.github.io/pymalloy/` using the `github-pages` environment.
+Set **Settings → Pages → Build and deployment → Source → GitHub Actions**.
+
+Preview the deployment path locally:
+
+```sh
+BASE_PATH=/pymalloy/ pnpm docs:build
+BASE_PATH=/pymalloy/ pnpm docs:preview
+```
+
+Run `actionlint .github/workflows/*.yml` after workflow changes.
