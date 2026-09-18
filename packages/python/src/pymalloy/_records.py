@@ -181,6 +181,23 @@ class Range(Record):
 type Relationship = Literal["one", "many", "cross"]
 
 
+class ScalarField(Record, tag_field="kind", tag="field"):
+    path: Sequence[str]
+
+
+class ScalarGiven(Record, tag_field="kind", tag="given"):
+    name: str
+
+
+class ScalarLiteral(Record, tag_field="kind", tag="literal"):
+    type: Literal["string", "number", "boolean", "null", "date", "timestamp"]
+    value: str
+
+
+class ScalarRaw(Record, tag_field="kind", tag="raw"):
+    code: str
+
+
 class SchemaNeed(Record):
     connection: str
     key: str
@@ -540,6 +557,14 @@ class CheckReport(Record):
     url: str
 
 
+class ConcreteSyntax(Record, tag_field="type", tag="syntax"):
+    kind: Literal[
+        "document", "source", "query", "field", "expression", "annotation", "clause"
+    ]
+    name: str | None
+    parts: Sequence[str | SyntaxNode]
+
+
 type Data = DataWithRecordCell | DataWithArrayCell
 
 
@@ -763,6 +788,7 @@ type Response = (
     | CheckReady
     | ParseReady
     | FormatReady
+    | SyntaxReady
 )
 
 
@@ -775,6 +801,78 @@ class Result(Record):
     query_timezone: str | UnsetType = UNSET
     source_annotations: Sequence[Annotation] | UnsetType = UNSET
     sql: str | UnsetType = UNSET
+
+
+type Scalar = Annotated[
+    ScalarField
+    | ScalarGiven
+    | ScalarLiteral
+    | ScalarUnary
+    | ScalarBinary
+    | ScalarCall
+    | ScalarCast
+    | ScalarNullTest
+    | ScalarTruncate
+    | ScalarFilter
+    | ScalarCase
+    | ScalarRaw,
+    Meta(
+        description="Symbolic scalar syntax; Malloy remains responsible for typing and semantics."
+    ),
+]
+
+
+class ScalarBinary(Record, tag_field="kind", tag="binary"):
+    left: Scalar
+    operator: str
+    right: Scalar
+
+
+class ScalarCall(Record, tag_field="kind", tag="call"):
+    args: Sequence[Scalar]
+    name: str
+    receiver: Sequence[str] | None
+
+
+class Branch(Record):
+    then: Scalar
+    when: Scalar
+
+
+class ScalarCase(Record, tag_field="kind", tag="case"):
+    branches: Sequence[Branch]
+    otherwise: Scalar
+
+
+class ScalarCast(Record, tag_field="kind", tag="cast"):
+    safe: bool
+    type: str
+    value: Scalar
+
+
+class ScalarFilter(Record, tag_field="kind", tag="filter"):
+    predicate: Scalar
+    value: Scalar
+
+
+class ScalarNullTest(Record, tag_field="kind", tag="null_test"):
+    negated: bool
+    value: Scalar
+
+
+class ScalarSyntax(Record, tag_field="type", tag="scalar"):
+    scalar: Scalar
+    source: str
+
+
+class ScalarTruncate(Record, tag_field="kind", tag="truncate"):
+    unit: str
+    value: Scalar
+
+
+class ScalarUnary(Record, tag_field="kind", tag="unary"):
+    operator: Literal["-", "not"]
+    value: Scalar
 
 
 class Schema(Record):
@@ -795,6 +893,18 @@ class State(Record):
     result: Result | None
     revision: Annotated[int, Meta(ge=0)]
     status: Literal["idle", "loading", "ready", "error", "closed"]
+
+
+type SyntaxNode = Annotated[
+    ConcreteSyntax | ScalarSyntax,
+    Meta(
+        description="Lossless authored syntax. Strings retain all syntax outside editable bindings."
+    ),
+]
+
+
+class SyntaxReady(Record, tag_field="kind", tag="syntax"):
+    syntax: SyntaxNode
 
 
 class View(Record):

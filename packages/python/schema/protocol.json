@@ -578,6 +578,37 @@
       "required": ["kind"],
       "type": "object"
     },
+    "ConcreteSyntax": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["document", "source", "query", "field", "expression", "annotation", "clause"],
+          "type": "string"
+        },
+        "name": {
+          "type": ["string", "null"]
+        },
+        "parts": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/definitions/SyntaxNode"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "syntax",
+          "type": "string"
+        }
+      },
+      "required": ["type", "kind", "name", "parts"],
+      "type": "object"
+    },
     "Data": {
       "anyOf": [
         {
@@ -2322,6 +2353,9 @@
         },
         {
           "$ref": "#/definitions/FormatReady"
+        },
+        {
+          "$ref": "#/definitions/SyntaxReady"
         }
       ]
     },
@@ -2363,6 +2397,300 @@
         }
       },
       "required": ["schema", "connection_name"],
+      "type": "object"
+    },
+    "Scalar": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ScalarField"
+        },
+        {
+          "$ref": "#/definitions/ScalarGiven"
+        },
+        {
+          "$ref": "#/definitions/ScalarLiteral"
+        },
+        {
+          "$ref": "#/definitions/ScalarUnary"
+        },
+        {
+          "$ref": "#/definitions/ScalarBinary"
+        },
+        {
+          "$ref": "#/definitions/ScalarCall"
+        },
+        {
+          "$ref": "#/definitions/ScalarCast"
+        },
+        {
+          "$ref": "#/definitions/ScalarNullTest"
+        },
+        {
+          "$ref": "#/definitions/ScalarTruncate"
+        },
+        {
+          "$ref": "#/definitions/ScalarFilter"
+        },
+        {
+          "$ref": "#/definitions/ScalarCase"
+        },
+        {
+          "$ref": "#/definitions/ScalarRaw"
+        }
+      ],
+      "description": "Symbolic scalar syntax; Malloy remains responsible for typing and semantics."
+    },
+    "ScalarBinary": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "binary",
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/definitions/Scalar"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "right": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "operator", "left", "right"],
+      "type": "object"
+    },
+    "ScalarCall": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "$ref": "#/definitions/Scalar"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "call",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "receiver": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["kind", "name", "args", "receiver"],
+      "type": "object"
+    },
+    "ScalarCase": {
+      "additionalProperties": false,
+      "properties": {
+        "branches": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "then": {
+                "$ref": "#/definitions/Scalar"
+              },
+              "when": {
+                "$ref": "#/definitions/Scalar"
+              }
+            },
+            "required": ["when", "then"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "case",
+          "type": "string"
+        },
+        "otherwise": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "branches", "otherwise"],
+      "type": "object"
+    },
+    "ScalarCast": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "cast",
+          "type": "string"
+        },
+        "safe": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "value", "type", "safe"],
+      "type": "object"
+    },
+    "ScalarField": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "field",
+          "type": "string"
+        },
+        "path": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["kind", "path"],
+      "type": "object"
+    },
+    "ScalarFilter": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "filter",
+          "type": "string"
+        },
+        "predicate": {
+          "$ref": "#/definitions/Scalar"
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "value", "predicate"],
+      "type": "object"
+    },
+    "ScalarGiven": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "given",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "name"],
+      "type": "object"
+    },
+    "ScalarLiteral": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "literal",
+          "type": "string"
+        },
+        "type": {
+          "enum": ["string", "number", "boolean", "null", "date", "timestamp"],
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "type", "value"],
+      "type": "object"
+    },
+    "ScalarNullTest": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "null_test",
+          "type": "string"
+        },
+        "negated": {
+          "type": "boolean"
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "value", "negated"],
+      "type": "object"
+    },
+    "ScalarRaw": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "raw",
+          "type": "string"
+        }
+      },
+      "required": ["kind", "code"],
+      "type": "object"
+    },
+    "ScalarSyntax": {
+      "additionalProperties": false,
+      "description": "A scalar operation tree paired with its original authored spelling.",
+      "properties": {
+        "scalar": {
+          "$ref": "#/definitions/Scalar"
+        },
+        "source": {
+          "type": "string"
+        },
+        "type": {
+          "const": "scalar",
+          "type": "string"
+        }
+      },
+      "required": ["type", "source", "scalar"],
+      "type": "object"
+    },
+    "ScalarTruncate": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "truncate",
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "value", "unit"],
+      "type": "object"
+    },
+    "ScalarUnary": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "unary",
+          "type": "string"
+        },
+        "operator": {
+          "enum": ["-", "not"],
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "operator", "value"],
       "type": "object"
     },
     "Schema": {
@@ -2546,6 +2874,31 @@
       },
       "required": ["name", "type", "range", "lensRange", "children"],
       "title": "SymbolInfo",
+      "type": "object"
+    },
+    "SyntaxNode": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ConcreteSyntax"
+        },
+        {
+          "$ref": "#/definitions/ScalarSyntax"
+        }
+      ],
+      "description": "Lossless authored syntax. Strings retain all syntax outside editable bindings."
+    },
+    "SyntaxReady": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "syntax",
+          "type": "string"
+        },
+        "syntax": {
+          "$ref": "#/definitions/SyntaxNode"
+        }
+      },
+      "required": ["kind", "syntax"],
       "type": "object"
     },
     "TimestampTimeframe": {
