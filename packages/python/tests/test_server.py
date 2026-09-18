@@ -48,6 +48,7 @@ import pymalloy as pm
 source = "run: duckdb.sql('SELECT 9007199254740993::BIGINT AS id') -> { select: id }"
 assert pm.format(source)
 blocked.remove('duckdb')
+blocked.remove('pyarrow')
 model = pm.model(source)
 query = model.query()
 assert query.run().rows() == [{'id': 9007199254740993}]
@@ -58,8 +59,8 @@ model.close()
 assert pm.check(source).diagnostics == []
 assert pm.run(pm.format(source)).rows() == [{'id': 9007199254740993}]
 Path('answer.malloy').write_text(source)
-from pymalloy.export import compile
-assert compile('answer.malloy').queries[0].name == 'run:0'
+from pymalloy.export import prepare
+assert prepare('answer.malloy').queries[0].name == 'run:0'
 """
     subprocess.run(
         [sys.executable, "-c", program],

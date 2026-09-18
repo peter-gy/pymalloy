@@ -101,3 +101,20 @@ def test_ad_hoc_failure_captures_new_imports_for_detached_replay(tmp_path):
         assert repeated.value.context.sql == context.sql
     finally:
         replay.close()
+
+
+def test_execution_evidence_retains_the_configured_connection_after_close():
+    source = """source: values is analytics.sql("SELECT 'invalid' AS value")
+query: numeric is values -> {select: value is value::number}
+"""
+    with pytest.raises(pm.ExecutionError) as failed:
+        pm.run(source, connection_name="analytics")
+    context = failed.value.context
+    assert context.connection_name == "analytics"
+    with pytest.raises(pm.ExecutionError) as replayed:
+        pm.run(
+            context.source,
+            connection_name=context.connection_name,
+            givens=context.givens,
+        )
+    assert replayed.value.context.sql == context.sql

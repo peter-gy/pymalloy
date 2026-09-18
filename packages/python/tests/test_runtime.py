@@ -1,13 +1,13 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from uuid import UUID
 
 import duckdb
 import polars as pl
+import pyarrow as pa
 import pytest
 
 import pymalloy as pm
@@ -16,7 +16,7 @@ from pymalloy import CompilationError, ModelError
 ONE = "run: duckdb.sql('SELECT 1 AS value') -> { select: value }"
 
 
-def test_rows_preserve_native_scalar_types_and_huge_integers():
+def test_rows_preserve_arrow_scalar_types_and_huge_integer_precision():
     result = pm.run('''run: duckdb.sql("""
 SELECT 170141183460469231731687303715884105727::HUGEINT AS huge,
        '00000000-0000-0000-0000-000000000001'::UUID AS id,
@@ -24,25 +24,34 @@ SELECT 170141183460469231731687303715884105727::HUGEINT AS huge,
 """) -> {select:*}''')
     assert result.rows() == [
         {
-            "huge": 170141183460469231731687303715884105727,
-            "id": UUID(int=1),
+            "huge": Decimal(170141183460469231731687303715884105727),
+            "id": "00000000-0000-0000-0000-000000000001",
             "payload": b"abc",
-            "duration": timedelta(days=2),
+            "duration": pa.MonthDayNano((0, 2, 0)),
         }
     ]
 
 
-def test_inline_model_and_registered_python_data():
-    result = pm.run(
-        """source: orders is duckdb.table('orders') extend { measure: revenue is amount.sum() }
-run: orders -> { group_by: region aggregate: revenue order_by: region }""",
-        tables={
-            "orders": pl.DataFrame(
-                {"region": ["North", "South", "North"], "amount": [30, 20, 50]}
+def test_inline_model_and_captured_python_data():
+    frame = pl.DataFrame(
+        {"region": ["North", "South", "North"], "amount": [30, 20, 50]}
+    )
+    draft = (
+        pm.draft()
+        .define(
+            orders=pm.data(frame).extend(pm.measure(revenue=pm.col("amount").sum()))
+        )
+        .queries(
+            totals=pm.ref("orders").pipe(
+                pm.query(
+                    pm.group_by(pm.col("region")),
+                    pm.aggregate(pm.col("revenue")),
+                    pm.order_by(pm.col("region")),
+                )
             )
-        },
-    ).polars()
-    assert result.to_dicts() == [
+        )
+    )
+    assert pm.run(draft).polars().to_dicts() == [
         {"region": "North", "revenue": 80},
         {"region": "South", "revenue": 20},
     ]
@@ -363,18 +372,18 @@ run: one -> { select: value is $value }
     assert results == list(range(8))
 
 
-def test_query_timeout_closes_model_and_preserves_borrowed_connection():
+def test_query_timeout_preserves_model_and_borrowed_connection():
     with duckdb.connect() as connection:
         model = pm.model(
             """source: numbers is duckdb.sql('SELECT i FROM range(100000000000) t(i)')
 run: numbers -> {aggregate:total is i.sum()}""",
             connection=connection,
         )
-        with pytest.raises(TimeoutError, match="model closed"):
+        with pytest.raises(TimeoutError, match="exceeded"):
             model.run(timeout=0.5)
-        assert model.closed
-        with pytest.raises(ModelError):
-            model.run()
+        assert not model.closed
+        assert model.query(malloy=ONE).run().rows() == [{"value": 1}]
+        model.close()
         assert connection.execute("SELECT 42").fetchone() == (42,)
 
 
@@ -547,10 +556,12 @@ def test_arrow_conversions_detach_nested_values_and_share_only_schema():
 def test_startup_and_compilation_share_one_deadline(monkeypatch, operation):
     from types import SimpleNamespace
 
-    from pymalloy._server import api, runtime
+    from pymalloy._server import api, runtime, tooling
 
+    tooling._tooling.close()
+    origin = runtime.time.monotonic()
     elapsed = 0
-    clock = SimpleNamespace(monotonic=lambda: elapsed)
+    clock = SimpleNamespace(monotonic=lambda: origin + elapsed)
     start = runtime.Compiler.__init__
 
     def initialize(self, **options):
@@ -560,8 +571,261 @@ def test_startup_and_compilation_share_one_deadline(monkeypatch, operation):
 
     monkeypatch.setattr(api, "time", clock)
     monkeypatch.setattr(runtime, "time", clock)
+    monkeypatch.setattr(tooling, "time", clock)
     monkeypatch.setattr(runtime.Compiler, "__init__", initialize)
     with duckdb.connect() as connection:
         with pytest.raises(TimeoutError, match="deadline"):
             operation(ONE, connection=connection, timeout=2)
         assert connection.execute("SELECT 42").fetchone() == (42,)
+
+
+def test_model_context_releases_owned_resources_and_preserves_borrowed_transaction():
+    with pm.model(ONE) as owned:
+        result = owned.run()
+    assert owned.closed
+    assert result.rows() == [{"value": 1}]
+    with pytest.raises(ModelError, match="closed"), owned:
+        pass
+
+    with duckdb.connect() as connection:
+        connection.execute("BEGIN")
+        connection.execute("CREATE TABLE retained AS SELECT 42 AS value")
+        with (
+            pytest.raises(ValueError, match="caller failure"),
+            pm.model(ONE, connection=connection) as borrowed,
+        ):
+            raise ValueError("caller failure")
+        assert borrowed.closed
+        assert connection.execute("SELECT * FROM retained").fetchall() == [(42,)]
+        connection.execute("ROLLBACK")
+        assert not connection.execute("SHOW TABLES").fetchall()
+
+
+def test_connection_name_is_shared_by_authoring_check_and_execution():
+    draft = (
+        pm.draft()
+        .define(values=pm.sql("SELECT 42 AS amount", connection="analytics"))
+        .queries(answer=pm.ref("values").pipe(pm.query(pm.select(pm.col("amount")))))
+    )
+    assert draft.check(connection_name="analytics").ok
+    assert (
+        draft.validate(connection_name="analytics").require_valid().connection_name
+        == "analytics"
+    )
+    with draft.compile(connection_name="analytics") as model:
+        assert model.run().rows() == [{"amount": 42}]
+    with pytest.raises(ValueError, match="connection_name"):
+        draft.compile(connection_name="")
+
+
+def test_deadline_between_parsing_and_execution_interrupts_only_that_operation(
+    monkeypatch,
+):
+    interrupted = threading.Event()
+    watchdog_fired = threading.Event()
+    extract = duckdb.DuckDBPyConnection.extract_statements
+    interrupt = duckdb.DuckDBPyConnection.interrupt
+    with pm.model(
+        "run: duckdb.sql('SELECT i FROM range(100000000000) t(i)') -> { aggregate: total is i.sum() }"
+    ) as model:
+        connection = model.connection
+
+        def wait_after_parsing(self, sql):
+            statements = extract(self, sql)
+            assert interrupted.wait(2), "Operation deadline did not interrupt"
+            return statements
+
+        def observe_interrupt(self):
+            interrupt(self)
+            interrupted.set()
+
+        def rescue():
+            watchdog_fired.set()
+            interrupt(connection)
+
+        monkeypatch.setattr(
+            duckdb.DuckDBPyConnection, "extract_statements", wait_after_parsing
+        )
+        monkeypatch.setattr(duckdb.DuckDBPyConnection, "interrupt", observe_interrupt)
+        watchdog = threading.Timer(3, rescue)
+        watchdog.start()
+        try:
+            with pytest.raises(TimeoutError, match="exceeded"):
+                model.run(timeout=0.05)
+        finally:
+            watchdog.cancel()
+            watchdog.join()
+        assert not watchdog_fired.is_set(), "Query escaped its operation deadline"
+        monkeypatch.setattr(duckdb.DuckDBPyConnection, "extract_statements", extract)
+        assert model.query(malloy=ONE).run().rows() == [{"value": 1}]
+
+
+def test_inline_source_identity_matches_drafts_and_preserves_import_base(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "shared.malloy").write_text(
+        "source: values is duckdb.sql('SELECT 42 amount')"
+    )
+    source = 'import "shared.malloy"\nrun: values -> { select: amount }'
+    expected = (tmp_path / "model.malloy").as_uri()
+    assert pm.draft(source).url == pm.read_model(source).url == expected
+    with pm.model(source, data_root=tmp_path) as model:
+        snapshot = model.source()
+        assert snapshot.url == expected
+        assert snapshot.document_kind == "model"
+        assert model.run().rows() == [{"amount": 42}]
+
+
+def test_explicit_document_kind_survives_snapshot_replay_and_overrides_suffix():
+    notebook = ">>>sql connection:duckdb\nSELECT 42 AS answer\n"
+    url = "memory://test/analysis.txt"
+    assert pm.check(notebook, url=url, document_kind="notebook").ok
+    assert not pm.parse(notebook, url=url, document_kind="notebook").diagnostics
+    with pm.model(notebook, url=url, document_kind="notebook") as model:
+        captured = model.source()
+        assert captured.document_kind == "notebook"
+        assert model.run().rows() == [{"answer": 42}]
+    assert pm.run(captured).rows() == [{"answer": 42}]
+    plain = pm.ModelSource("memory://test/plain.malloynb", ONE, document_kind="model")
+    assert pm.run(plain).rows() == [{"value": 1}]
+    assert pm.run(ONE, url=plain.url, document_kind="model").rows() == [{"value": 1}]
+    assert pm.run(pm.draft(ONE, url=plain.url)).rows() == [{"value": 1}]
+    with pytest.raises(ValueError, match="document_kind"):
+        pm.model(ONE, document_kind="unknown")
+
+
+def test_timestamp_rows_use_bundled_zoneinfo_data_without_a_system_database():
+    import subprocess
+    import sys
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            r"""
+import zoneinfo
+import pymalloy as pm
+zoneinfo.reset_tzpath([])
+zoneinfo.ZoneInfo.clear_cache()
+result = pm.run("run: duckdb.sql(\"SELECT TIMESTAMPTZ '2026-01-01 12:00:00+00' AS moment\") -> { select: moment }")
+value = result.rows()[0]["moment"]
+assert value.hour == 12
+assert isinstance(value.tzinfo, zoneinfo.ZoneInfo)
+""",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+
+def test_native_config_preserves_explicit_settings_and_borrowed_ownership(tmp_path):
+    (tmp_path / "configured.csv").write_text("amount\n42\n")
+    source = "run: duckdb.table('configured.csv') -> { select: amount }"
+    config = {
+        "TimeZone": "America/New_York",
+        "File_Search_Path": str(tmp_path),
+        "threads": 1,
+    }
+    assert pm.check(source, config=config).ok
+    with pm.model(source, config=config) as model:
+        assert model.run().rows() == [{"amount": 42}]
+        assert model.connection.execute(
+            "SELECT current_setting('timezone'), current_setting('threads'), current_setting('file_search_path')"
+        ).fetchone() == ("America/New_York", 1, str(tmp_path))
+    assert config == {
+        "TimeZone": "America/New_York",
+        "File_Search_Path": str(tmp_path),
+        "threads": 1,
+    }
+    with pytest.raises(ValueError, match="Choose data_root"):
+        pm.model(ONE, data_root=tmp_path, config=config)
+    with duckdb.connect() as connection:
+        connection.execute("BEGIN")
+        connection.execute("CREATE TABLE retained AS SELECT 42 AS value")
+        with pytest.raises(ValueError, match="Borrowed connections"):
+            pm.model(ONE, connection=connection, config={})
+        assert connection.execute("SELECT * FROM retained").fetchone() == (42,)
+        connection.execute("ROLLBACK")
+
+
+def test_native_config_restricts_external_reads_before_schema_discovery(tmp_path):
+    allowed = tmp_path / "allowed.csv"
+    denied = tmp_path / "denied.csv"
+    allowed.write_text("amount\n42\n")
+    denied.write_text("amount\n99\n")
+    config = {
+        "allowed_paths": [str(allowed)],
+        "enable_external_access": False,
+        "lock_configuration": True,
+    }
+    source = f"run: duckdb.table('{allowed}') -> {{ select: amount }}"
+    with pm.model(source, config=config) as model:
+        assert model.run().rows() == [{"amount": 42}]
+        with pytest.raises(CompilationError, match="disabled|Permission"):
+            model.query(
+                malloy=f"run: duckdb.table('{denied}') -> {{ select: amount }}"
+            ).run()
+        assert model.run().rows() == [{"amount": 42}]
+    report = pm.check(
+        f"run: duckdb.table('{denied}') -> {{ select: amount }}", config=config
+    )
+    assert not report.ok
+
+
+def test_declared_extensions_initialize_before_external_access_restrictions(tmp_path):
+    source = """run: duckdb.sql("SELECT json_array_length('[1, 2, 3]')::BIGINT AS n") -> { select: n }"""
+    config = {
+        "secret_directory": str(tmp_path / "secrets"),
+        "autoload_known_extensions": False,
+        "autoinstall_known_extensions": False,
+        "enable_external_access": False,
+        "lock_configuration": True,
+    }
+    assert pm.check(source, extensions=("icu", "json"), config=config).ok
+    assert pm.run(source, extensions=("icu", "json"), config=config).rows() == [
+        {"n": 3}
+    ]
+    with duckdb.connect() as connection:
+        with pytest.raises(ValueError, match="Borrowed connections"):
+            pm.model(ONE, connection=connection, extensions=("json",))
+        assert connection.execute("SELECT 42").fetchone() == (42,)
+
+
+@pytest.mark.parametrize("operation", [pm.model, pm.check])
+def test_extension_initialization_shares_the_startup_deadline(monkeypatch, operation):
+    connections = []
+    statements = []
+    execute = duckdb.DuckDBPyConnection.execute
+    watchdog_fired = threading.Event()
+
+    def observed_execute(self, sql, *args, **kwargs):
+        statements.append(sql)
+        return execute(self, sql, *args, **kwargs)
+
+    def install(self, extension):
+        connections.append(self)
+        self.execute("SELECT sum(i) FROM range(100000000000) t(i)")
+
+    def rescue():
+        watchdog_fired.set()
+        for connection in connections:
+            connection.interrupt()
+
+    monkeypatch.setattr(duckdb.DuckDBPyConnection, "install_extension", install)
+    monkeypatch.setattr(duckdb.DuckDBPyConnection, "execute", observed_execute)
+    watchdog = threading.Timer(3, rescue)
+    watchdog.start()
+    try:
+        with pytest.raises(TimeoutError, match="startup.*deadline"):
+            operation(ONE, extensions=("json",), timeout=0.05)
+    finally:
+        watchdog.cancel()
+        watchdog.join()
+    assert not watchdog_fired.is_set(), "Extension setup escaped its deadline"
+    assert not any(sql.startswith("DESCRIBE ") for sql in statements)
+    assert len(connections) == 1
+    with pytest.raises(duckdb.ConnectionException, match="closed"):
+        connections[0].execute("SELECT 1")
