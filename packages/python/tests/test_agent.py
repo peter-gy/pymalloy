@@ -14,7 +14,13 @@ def test_capability_loads_the_installed_skill_and_references():
     plugin = module.agent_plugin()
     skill = module.agent_skill()
     assert plugin.manifest.name == "pymalloy"
-    for name in ["SKILL.md", "references/modeling.md", "references/api.md"]:
+    for name in [
+        "SKILL.md",
+        "references/modeling.md",
+        "references/api.md",
+        "references/artifacts.md",
+        "references/triage.md",
+    ]:
         assert skill.file(name).read_text(encoding="utf-8")
 
 
@@ -69,3 +75,21 @@ for operation in (candidate.compile, candidate.check, candidate.validate):
         [sys.executable, "-c", program], text=True, capture_output=True, check=False
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_installed_workflow_recipes_execute_through_public_apis(tmp_path):
+    from pymalloy import agent
+
+    for name in ("artifacts", "triage"):
+        text = agent.agent_skill().file(f"references/{name}.md").read_text()
+        for index, block in enumerate(text.split("```python\n")[1:]):
+            script = tmp_path / f"{name}-{index}.py"
+            script.write_text(block.split("```", 1)[0])
+            subprocess.run(
+                [sys.executable, str(script)],
+                check=True,
+                cwd=tmp_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )

@@ -9,6 +9,9 @@ Start with the instructions shipped with this installed version::
     print(skill.body)
     print(skill.file("references/modeling.md").read_text())
 
+For portable artifacts, read references/artifacts.md. For failed queries, read
+references/triage.md. Both include executable public-API workflows.
+
 Compose sources with pm.table(...).extend(pm.measure(revenue=pm.col("amount").sum())),
 and name them with pm.draft().define(orders=source). Use pm.read_model(...) to
 load existing Malloy with editable named expressions. All edits return new values.
