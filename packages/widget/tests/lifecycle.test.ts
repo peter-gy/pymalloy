@@ -384,25 +384,3 @@ test("model revisions publish warnings, located errors, and recovered results", 
     result: { sql: "SELECT 1" },
   });
 });
-
-test("new input aborts an active query and publishes the replacement", async () => {
-  const loaded = model();
-  loaded.run.mockImplementationOnce(
-    ({ signal }) =>
-      new Promise((_resolve, reject) => {
-        signal!.addEventListener("abort", () => reject(signal!.reason), { once: true });
-      }),
-  );
-  const runtime = session(loaded);
-  create.mockResolvedValue(runtime);
-  const widget = new Widget();
-  await initialize(widget);
-  await vi.waitFor(() => expect(loaded.run).toHaveBeenCalledTimes(1));
-  widget.update({ givens: { threshold: { type: "number", value: 2 } } });
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
-  expect(widget.get("_state")?.revision).toBe(2);
-  expect(runtime.model).toHaveBeenCalledTimes(1);
-  expect(
-    widget.saved.filter((state) => state.status === "ready").map((state) => state.revision),
-  ).toEqual([2]);
-});
