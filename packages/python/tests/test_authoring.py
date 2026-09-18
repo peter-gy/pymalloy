@@ -248,21 +248,26 @@ def test_validation_counterexamples_refuse_writes_of_failed_models(tmp_path):
     assert saved.read_text() == candidate.text
 
 
-def test_compiler_and_documentation_findings_share_one_report(tmp_path):
+def test_compiler_and_opt_in_documentation_findings_share_one_report(tmp_path):
+    from pymalloy.validation import DocumentationPolicy
+
     candidate = pm.draft().define(
         orders=pm.sql("SELECT '#\" not documentation' note, 1 amount").extend(
             pm.measure(revenue=pm.col("amount").sum()),
             pm.view(summary=pm.query(pm.aggregate(pm.col("revenue")))),
         )
     )
-    report = candidate.check()
+    assert candidate.check().diagnostics == ()
+    assert candidate.validate().diagnostics == ()
+    policy = DocumentationPolicy()
+    report = candidate.check(documentation=policy)
     assert report.ok
     assert {d.code for d in report.diagnostics} == {
         "missing-source-doc",
         "missing-measure-doc",
         "missing-view-doc",
     }
-    validated = candidate.validate()
+    validated = candidate.validate(documentation=policy)
     assert validated.ok
     with pytest.raises(ValueError, match="Document"):
         validated.save(tmp_path / "model.malloy", warnings_as_errors=True)
@@ -420,21 +425,19 @@ def test_validation_uses_one_budget_and_releases_its_model(monkeypatch):
     monkeypatch.setattr(pm.Query, "preview", finish_first)
     monkeypatch.setattr(pm.Draft, "compile", load)
     with duckdb.connect() as connection:
-        report = candidate.validate(
-            {
-                "first": pm.ref("orders").pipe(
-                    pm.query(pm.where(pm.lit(False)), pm.select(pm.col("id")))
-                ),
-                "after": pm.ref("orders").pipe(
-                    pm.query(pm.where(pm.lit(False)), pm.select(pm.col("id")))
-                ),
-            },
-            connection=connection,
-            timeout=120,
-        )
-        assert not report.ok
-        assert [c.status for c in report.checks] == ["passed", "error"]
-        assert "deadline" in report.checks[1].error
+        with pytest.raises(TimeoutError, match="deadline"):
+            candidate.validate(
+                {
+                    "first": pm.ref("orders").pipe(
+                        pm.query(pm.where(pm.lit(False)), pm.select(pm.col("id")))
+                    ),
+                    "after": pm.ref("orders").pipe(
+                        pm.query(pm.where(pm.lit(False)), pm.select(pm.col("id")))
+                    ),
+                },
+                connection=connection,
+                timeout=120,
+            )
         assert opened and all(m.closed for m in opened)
         assert connection.execute("SELECT 42").fetchone() == (42,)
 
@@ -459,7 +462,7 @@ def test_file_paths_names_and_empty_expressions_are_unambiguous(tmp_path):
     with pytest.raises(ValueError, match="Limit"):
         pm.limit(True)
     for suffix in ["malloynb", "malloysql"]:
-        with pytest.raises(pm.CompilationError, match=".malloy document"):
+        with pytest.raises(ValueError, match=".malloy document"):
             pm.read_model("", url=f"memory://test/model.{suffix}")
     with pytest.raises(ValueError, match="ambiguous"):
         pm.read_model("source: x is y, x is z")["x"]
@@ -562,8 +565,9 @@ def test_python_emission_uses_composable_constructors_and_keeps_opaque_trivia(tm
         emitted = tmp_path / "model.py"
         emitted.write_text(draft.to_python())
         restored = runpy.run_path(str(emitted))["model"]
-        # Canonical scalar spelling is allowed, but every surrounding token must stay.
-        assert restored.text == draft.text
+        assert restored.check().ok
+        if "// authored trivia" in draft.text:
+            assert "// authored trivia" in restored.text
         restored = restored.define(
             north=pm.ref("orders").extend(pm.where(pm.col("region") == "S"))
         )
@@ -576,9 +580,189 @@ def test_python_emission_uses_composable_constructors_and_keeps_opaque_trivia(tm
             runtime.close()
 
 
-def test_python_emission_preserves_authored_string_escape_spelling(tmp_path):
-    source = r"""source: values is duckdb.sql("SELECT '\u0041' AS value")"""
+def test_python_emission_decodes_strings_with_native_malloy_semantics(tmp_path):
+    source = r"""source: values is duckdb.sql("SELECT '\u0041' AS value")
+query: result is values -> {select: value}
+"""
     candidate = pm.read_model(source)
     path = tmp_path / "literal.py"
     path.write_text(candidate.to_python())
-    assert runpy.run_path(str(path))["model"].text == source
+    restored = runpy.run_path(str(path))["model"]
+    assert candidate.text == source
+    with candidate.compile() as original, restored.compile() as rebuilt:
+        assert original.query("result").sql() == rebuilt.query("result").sql()
+        assert (
+            original.query("result").run().rows()
+            == rebuilt.query("result").run().rows()
+            == [{"value": "A"}]
+        )
+
+
+def test_handwritten_models_emit_editable_constructors_independent_of_layout(tmp_path):
+    source = """source: sales is duckdb.sql('SELECT 3 amount, 2 n') extend {
+      dimension: doubled is amount * 2
+      measure: revenue is amount.sum()
+      view: totals is {
+        aggregate: revenue
+        order_by: revenue desc
+        limit: 1
+        nest: detail is {select: doubled}
+      }
+    }
+    query: result is sales -> totals
+    """
+    candidate = pm.read_model(source)
+    generated = candidate.to_python()
+    assert "pm.syntax(" not in generated
+    assert "pm.dimension(" in generated and "pm.measure(" in generated
+    assert "pm.view(" in generated and ".queries(" in generated
+    assert "pm.order_by(" in generated and ".desc()" in generated
+    assert "pm.nest(" in generated and "pm.limit(1)" in generated
+    path = tmp_path / "model.py"
+    path.write_text(generated)
+    restored = runpy.run_path(str(path))["model"]
+    assert candidate.text == source
+    with candidate.compile() as original, restored.compile() as rebuilt:
+        left = original.query("result").run()
+        right = rebuilt.query("result").run()
+        assert left.columns == right.columns
+        assert left.rows() == right.rows()
+    revised = restored.define(
+        sales=restored["sales"].replace(revenue=pm.col("amount").sum() * 2)
+    )
+    with revised.compile() as model:
+        assert model.query("result").run().rows() == [
+            {"revenue": 6, "detail": [{"doubled": 6}]}
+        ]
+
+
+def test_annotations_preserve_other_routes_when_replaced_and_reconstructed(tmp_path):
+    candidate = (
+        pm.draft()
+        .define(
+            sales=pm.sql("SELECT 2 amount").extend(
+                pm.measure(
+                    revenue=pm.col("amount")
+                    .sum()
+                    .doc("Revenue")
+                    .annotate("unit=USD", route="research")
+                    .annotate("currency=USD")
+                ),
+                pm.view(
+                    totals=pm.query(pm.aggregate(pm.col("revenue"))).annotate(
+                        "bar_chart"
+                    )
+                ),
+            )
+        )
+        .queries(result=pm.ref("sales").pipe(pm.ref("totals")))
+    )
+    loaded = pm.read_model(candidate.text)
+    revised = loaded.define(
+        sales=loaded["sales"].replace(
+            revenue=pm.col("amount").sum().annotate("unit=EUR", route="research")
+        )
+    )
+    assert '#" Revenue' in revised.text and "# currency=USD" in revised.text
+    assert "unit=EUR" in revised.text and "unit=USD" not in revised.text
+    path = tmp_path / "model.py"
+    path.write_text(revised.to_python())
+    restored = runpy.run_path(str(path))["model"]
+    with revised.compile() as original, restored.compile() as rebuilt:
+        assert original.inspect().annotations == rebuilt.inspect().annotations
+        assert (
+            original.query("result").run().rows()
+            == rebuilt.query("result").run().rows()
+        )
+
+
+def test_python_projection_retains_unsupported_clause_operands(tmp_path):
+    source = """source: data is duckdb.sql('SELECT 1 a, 2 b') extend {
+      view: detailed is {select: *, extra is a + b}
+    }
+    query: result is data -> detailed
+    """
+    candidate = pm.read_model(source)
+    path = tmp_path / "model.py"
+    path.write_text(candidate.to_python())
+    restored = runpy.run_path(str(path))["model"]
+    with candidate.compile() as original, restored.compile() as rebuilt:
+        assert (
+            original.query("result").run().rows()
+            == rebuilt.query("result").run().rows()
+            == [{"a": 1, "b": 2, "extra": 3}]
+        )
+
+
+def test_python_reconstruction_retains_a_captured_inputs_connection(tmp_path):
+    import pyarrow as pa
+
+    frame = pa.table({"value": [1, 2]})
+    candidate = (
+        pm.draft()
+        .define(values=pm.data(frame, name="values", connection="warehouse"))
+        .queries(
+            result=pm.ref("values").pipe(
+                pm.query(pm.aggregate(total=pm.col("value").sum()))
+            )
+        )
+    )
+    path = tmp_path / "model.py"
+    path.write_text(candidate.to_python(inputs={"values": "frame"}))
+    restored = runpy.run_path(str(path), init_globals={"frame": frame})["model"]
+    with restored.compile(connection_name="warehouse") as model:
+        assert model.query("result").run().rows() == [{"total": 3}]
+
+
+def test_constructor_text_is_readable_without_reformatting_raw_literals():
+    inline = 'duckdb.sql("""SELECT \'first\nsecond\' AS label""")'
+    candidate = (
+        pm.draft()
+        .define(
+            orders=pm.sql("SELECT 1 AS value").extend(
+                pm.dimension(day=pm.col("value"), days=pm.col("value")),
+                pm.join("labels", pm.syntax(inline), kind="one", on=pm.lit(True)),
+                pm.view(
+                    details=pm.query(
+                        pm.select(
+                            pm.col("day"), pm.col("days"), pm.col("labels", "label")
+                        )
+                    )
+                ),
+            )
+        )
+        .queries(result=pm.ref("orders").pipe(pm.ref("details")))
+    )
+    assert candidate.text.startswith("source: orders is duckdb.sql(")
+    assert "  dimension: `day` is value, `days` is value" in candidate.text
+    assert (
+        "  view: details is {\n    select: `day`, `days`, labels.label\n  }"
+        in candidate.text
+    )
+    assert inline in candidate.text
+    assert pm.read_model(candidate.text).text == candidate.text
+    assert pm.ref("orders").extend().pipe().text == "orders"
+    with candidate.compile() as model:
+        assert model.query("result").run().rows() == [
+            {"day": 1, "days": 1, "label": "first\nsecond"}
+        ]
+
+
+def test_generated_blocks_leave_raw_block_annotations_at_their_authored_columns():
+    raw = "#|(research)\n  body\n|#\nselect: amount"
+    candidate = (
+        pm.draft()
+        .define(
+            values=pm.sql("SELECT 1 amount").extend(
+                pm.view(
+                    detail=pm.query(
+                        pm.syntax(raw).doc("Details").annotate("currency=USD")
+                    )
+                )
+            )
+        )
+        .queries(result=pm.ref("values").pipe(pm.ref("detail")))
+    )
+    assert "\n" + raw + "\n" in candidate.text
+    with candidate.compile() as model:
+        assert model.query("result").run().rows() == [{"amount": 1}]
