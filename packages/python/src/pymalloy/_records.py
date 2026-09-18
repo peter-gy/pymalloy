@@ -238,6 +238,12 @@ class SymbolInfo(Record):
     type: str
 
 
+class TableSyntax(Record, tag_field="type", tag="table"):
+    connection: str
+    path: str
+    source: str
+
+
 type TimestampTimeframe = Literal[
     "year", "quarter", "month", "week", "day", "hour", "minute", "second"
 ]
@@ -923,7 +929,7 @@ class State(Record):
 
 
 type SyntaxNode = Annotated[
-    ConcreteSyntax | ScalarSyntax,
+    ConcreteSyntax | ScalarSyntax | TableSyntax,
     Meta(
         description="Lossless authored syntax. Strings retain all syntax outside editable bindings."
     ),

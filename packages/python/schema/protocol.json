@@ -2978,6 +2978,9 @@
         },
         {
           "$ref": "#/definitions/ScalarSyntax"
+        },
+        {
+          "$ref": "#/definitions/TableSyntax"
         }
       ],
       "description": "Lossless authored syntax. Strings retain all syntax outside editable bindings."
@@ -2994,6 +2997,27 @@
         }
       },
       "required": ["kind", "syntax"],
+      "type": "object"
+    },
+    "TableSyntax": {
+      "additionalProperties": false,
+      "description": "A native table source, retaining its exact spelling and resolved reference.",
+      "properties": {
+        "connection": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "type": {
+          "const": "table",
+          "type": "string"
+        }
+      },
+      "required": ["type", "source", "connection", "path"],
       "type": "object"
     },
     "TimestampTimeframe": {
