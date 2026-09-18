@@ -1,11 +1,11 @@
 [project]
 name = "pymalloy"
 version = "0.1.0"
-description = "Run Malloy in browser widgets and native DuckDB sessions"
+description = "Run Malloy in browser widgets and server-side Python sessions"
 readme = "README.md"
 authors = [{ name = "Péter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
 requires-python = ">=3.12"
-dependencies = ["anywidget>=0.11.0", "traitlets>=5.16.1"]
+dependencies = ["anywidget>=0.11", "msgspec>=0.19", "traitlets>=5"]
 
 [project.urls]
 Homepage = "https://github.com/peter-gy/pymalloy"
@@ -14,9 +14,10 @@ Source = "https://github.com/peter-gy/pymalloy"
 Issues = "https://github.com/peter-gy/pymalloy/issues"
 
 [project.optional-dependencies]
-server = ["deno>=2.9.6", "duckdb>=1.5.5", "polars>=1.44.2", "pyarrow>=25.0.1", "sqlglot>=30.18.0"]
-marimo = ["marimo>=0.24.0"]
-jupyter = ["nbformat>=5.11.1", "nbclient>=0.11.0", "ipykernel>=7.3.0"]
+server = ["deno>=2.9.6,<3", "duckdb>=1.5", "pytz>=2026.3"]
+dataframes = ["polars>=1.44", "pyarrow>=25.0"]
+marimo = ["marimo>=0.24"]
+jupyter = ["nbformat>=5.11", "nbclient>=0.11", "ipykernel>=7.3"]
 
 [project.scripts]
 pymalloy = "pymalloy.cli:main"

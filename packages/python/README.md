@@ -8,9 +8,9 @@ pip install pymalloy
 ```
 
 ```python
-from pymalloy import Malloy
+from pymalloy import MalloyWidget
 
-query = Malloy("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
+query = MalloyWidget("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
 query
 ```
 
@@ -19,8 +19,8 @@ Display the widget in a marimo or Jupyter notebook. It shows one row with
 Read `query.state` for the latest asynchronous result, or observe its state changes.
 
 - [Explore with the widget](https://peter-gy.github.io/pymalloy/guide/getting-started).
-- [Run native Python queries](https://peter-gy.github.io/pymalloy/guide/native-python)
-  with `pymalloy[server]`.
+- [Run server-side Python queries](https://peter-gy.github.io/pymalloy/guide/server-python)
+  with `pymalloy[server,dataframes]`.
 - [Check and inspect source](https://peter-gy.github.io/pymalloy/guide/language-tools)
   from Python or the command line.
 - [Export marimo and Jupyter notebooks](https://peter-gy.github.io/pymalloy/guide/export).

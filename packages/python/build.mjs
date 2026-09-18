@@ -8,7 +8,7 @@ const assets = join(root, "packages/python/src/pymalloy/_assets");
 await rm(assets, { recursive: true, force: true });
 await mkdir(assets, { recursive: true });
 for (const [name, source] of Object.entries({
-  "bridge.mjs": "apps/python-bridge/dist/main.mjs",
+  "server.mjs": "packages/server/dist/server.mjs",
   "widget.js": "packages/widget/dist/widget.js",
   "widget.css": "packages/widget/dist/widget.css",
 })) {
@@ -36,4 +36,4 @@ for (const directory of directories) {
   notices.push(`${pkg.name}@${pkg.version} (${pkg.license ?? "see notice"})\n${texts.join("\n")}`);
 }
 await writeFile(join(assets, "THIRD_PARTY_LICENSES.txt"), notices.join("\n\n---\n\n"));
-console.log("Staged widget, compiler bridge, and dependency notices");
+console.log("Staged widget, server, and dependency notices");

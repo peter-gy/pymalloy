@@ -9,11 +9,12 @@ pymalloy = { workspace = true }
 
 [dependency-groups]
 dev = [
-  "pymalloy[server,marimo,jupyter]",
+  "pymalloy[server,dataframes,marimo,jupyter]",
   "pytest>=9.1.1",
   "ruff>=0.16.6",
   "ty>=0.0.80",
   "jupyterlab>=4.6.2",
+  "datamodel-code-generator>=0.82.0",
 ]
 
 release = ["twine>=7.0.0"]
