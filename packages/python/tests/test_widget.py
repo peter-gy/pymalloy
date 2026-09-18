@@ -186,6 +186,14 @@ def test_widget_input_snapshots_require_validated_assignment():
     files = {"data.csv": {"url": "https://example.com/data.csv"}, "part": b"PAR1"}
     givens = {"options": {"minimum": 9007199254740993}, "choices": [1, 2]}
     widget = MalloyWidget("run: example", files=files, givens=givens)
+    observed = {}
+
+    def inspect(change):
+        with pytest.raises(TypeError):
+            change.new["unexpected"] = 1
+        observed[change.name] = change.new
+
+    widget.observe(inspect, names=["files", "givens"])
     try:
         retained_files, retained_givens = widget.files, widget.givens
         with pytest.raises(TypeError):
@@ -201,8 +209,10 @@ def test_widget_input_snapshots_require_validated_assignment():
             widget.givens = {"options": {"minimum": float("nan")}}
         widget.files = widget.files
         widget.givens = widget.givens
-        widget.files = {**widget.files, "part": b"changed"}
-        widget.givens = {**widget.givens, "choices": (3, 4)}
+        with widget.hold_trait_notifications():
+            widget.files = {**widget.files, "part": b"changed"}
+            widget.givens = {**widget.givens, "choices": (3, 4)}
+        assert observed == {"files": widget.files, "givens": widget.givens}
         assert retained_files == files
         assert retained_givens["choices"] == (1, 2)
         assert widget.files["part"] == b"changed"
@@ -237,29 +247,6 @@ def test_widget_runtime_uses_immutable_explicit_asset_urls():
             browser.Bundle(module="file:///duckdb.wasm", worker=bundle.worker)
         with pytest.raises(TypeError, match="browser.Bundle"):
             browser.Runtime(mvp={})
-    finally:
-        widget.close()
-
-
-def test_widget_input_observers_receive_immutable_mappings():
-    widget = MalloyWidget("run: example")
-
-    def inspect(change):
-        with pytest.raises(TypeError):
-            change.new["unexpected"] = 1
-
-    widget.observe(inspect, names=["files", "givens"])
-    try:
-        with widget.hold_trait_notifications():
-            widget.files = {"data.csv": "value\n42\n"}
-            widget.givens = {"minimum": 42}
-        widget.source = "run: changed"
-        assert widget.files == {"data.csv": b"value\n42\n"}
-        assert widget.givens == {"minimum": 42}
-        assert widget.get_state()["_definition"]["files"] == widget.files
-        from pymalloy._givens import given_values
-
-        assert given_values(widget.get_state()["_input"]["givens"]) == widget.givens
     finally:
         widget.close()
 

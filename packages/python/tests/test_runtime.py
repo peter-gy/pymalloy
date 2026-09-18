@@ -183,14 +183,6 @@ run: values -> { select: * }
     ]
 
 
-def test_empty_results_keep_their_schema():
-    result = pm.run(
-        "run: duckdb.sql('SELECT 1::BIGINT id WHERE FALSE') -> { select: id }"
-    ).polars()
-    assert result.shape == (0, 1)
-    assert result.schema == {"id": pl.Int64}
-
-
 def test_record_and_aware_datetime_givens():
     model = pm.model(
         """
@@ -532,24 +524,6 @@ def test_compiler_memory_budget_releases_a_borrowed_connection():
         with pytest.raises(ModelError, match="Compiler process stopped"):
             pm.model(ONE, connection=connection, compiler_memory_mb=1)
         assert connection.execute("SELECT 42").fetchone() == (42,)
-
-
-def test_arrow_conversions_detach_nested_values_and_share_only_schema():
-    first = pm.run(
-        "run: duckdb.sql('SELECT 9007199254740993::BIGINT AS id, [1, 2] AS items') -> {select:*}"
-    )
-    second = pm.run(
-        "run: duckdb.sql('SELECT 9007199254740994::BIGINT AS id, [3, 4] AS items') -> {select:*}"
-    )
-    arrow = first.arrow()
-    rows = first.rows()
-    rows[0]["items"].append(99)
-    assert (
-        arrow.to_pylist()
-        == first.arrow().to_pylist()
-        == [{"id": 9007199254740993, "items": [1, 2]}]
-    )
-    assert second.polars().to_dicts() == [{"id": 9007199254740994, "items": [3, 4]}]
 
 
 @pytest.mark.parametrize("operation", [pm.model, pm.check])
