@@ -1,0 +1,32 @@
+packages/python/tests/check_samples.py
+  s_eb8331ad77ae5f::t_e1dd555ee0b544 13,263,267,320
+packages/python/tests/_corpus.py
+  s_eb8331ad77ae5f::t_e1dd555ee0b544 1-90
+development_docs/testing.md
+  s_eb8331ad77ae5f::t_620f77f0cd4edf 127-141,154-158
+  s_eb8331ad77ae5f::t_642be39ca4fbe8 142-153
+packages/python/tests/test_samples.py
+  s_eb8331ad77ae5f::t_e1dd555ee0b544 7
+  s_eb8331ad77ae5f::t_642be39ca4fbe8 174
+  s_eb8331ad77ae5f::t_e110d7e0e4d9cb 88,108,119,121-173,175
+packages/python/tests/check_roundtrip.py
+  s_eb8331ad77ae5f::t_e1dd555ee0b544 15,31,33,39-44,47,50-53,70,75,140,149-157,159-161,163,166-170,172,196-207,213-223,226,232,238-240,262-265,267
+  s_eb8331ad77ae5f::t_269a9916916fbe 23-24,130-134,137-139,173-178,209-211,236-237,251-261,268-272
+  s_eb8331ad77ae5f::t_2c683dffe97b0f 1-14,16-22,25-30,32,34-38,45-46,48-49,54-69,71-74,76-129,135-136,141-148,158,162,164-165,171,179-195,208,212,224-225,227-231,233-235,241-250,266,273-281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "7ffe5cd58506feafcfeb1a0c2d38d7258d4245ed",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
