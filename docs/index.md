@@ -2,41 +2,34 @@
 layout: home
 hero:
   name: PyMalloy
-  text: Malloy in Python notebooks.
-  tagline: Define models in Malloy. Explore them in a notebook, run them from Python,
-    and share executable analyses.
+  text: Author, check, run, and share Malloy models.
+  tagline: Compose semantic models in Python, query with DuckDB, and carry models and inputs into notebooks or source bundles.
   actions:
     - theme: brand
-      text: Run your first query
-      link: /guide/getting-started
+      text: Author a model
+      link: /guide/authoring
     - theme: alt
-      text: Choose where to run
-      link: /guide/overview
+      text: Try a browser widget
+      link: /guide/getting-started
 features:
-  - title: Query in the browser
-    details: Explore files and remote data with an interactive Malloy widget powered by DuckDB.
-  - title: Read results in Python
-    details: Receive rows, columns, SQL, and errors, with nested values and exact integers preserved.
-  - title: Choose your runtime
-    details: Run server-side Python or Node sessions, or export an executable marimo or Jupyter notebook.
+  - title: Compose with Python
+    details: Build symbolic expressions and reusable queries, or edit existing Malloy while preserving surrounding source.
+    link: /guide/authoring
+  - title: Check assumptions
+    details: Combine compiler diagnostics, optional documentation checks, and named counterexample queries.
+    link: /guide/authoring#check-and-save-a-revision
+  - title: Carry models and inputs
+    details: Capture prepared dataframes, bundle Malloy with copied data, or export an executable notebook.
+    link: /guide/bundles
 ---
 
-## Display a query
+## Choose where to start
 
-Install `pymalloy`, then run a [Malloy](https://www.malloydata.dev/) query in
-Jupyter or marimo:
+[Run queries from Python](/guide/server-python) with `pymalloy[server]`, or
+[display a browser widget](/guide/getting-started) with the base `pymalloy`
+package. Widgets run Malloy and DuckDB WebAssembly in the browser and require
+no Deno or server extra.
 
-```sh
-pip install pymalloy
-```
-
-```python
-from pymalloy import MalloyWidget
-
-query = MalloyWidget("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
-query
-```
-
-The widget shows `42`. First use downloads DuckDB WebAssembly into the browser.
-Follow [your first widget](/guide/getting-started) to supply data and read results
-in Python, or [choose another runtime](/guide/overview).
+[Choose a workflow](/guide/overview) for authoring, dataframe inputs, validation,
+source bundles, notebook export, and the Node and browser JavaScript APIs.
+[Concepts and boundaries](/guide/concepts) explains what each step captures and checks.

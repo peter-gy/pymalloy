@@ -13,8 +13,12 @@ For widget errors, inspect `widget.state["error"]` and `diagnostics`. Remote fil
 and WebAssembly assets require reachable URLs and CORS permission. Declare SQL
 reader files explicitly when exporting widgets.
 
-After active cancellation, create a new Python model or TypeScript session.
-Completed results remain readable.
+A SQL timeout interrupts the statement and leaves a healthy model or TypeScript
+session available for another query. A timeout while waiting for queued work
+leaves the active operation running. Compiler failure or worker death requires a
+new model or session. Completed results remain readable. See the
+[error reference](../reference/server.md#result-and-errors) for exception types.
 
-After a schema change, compile a new model. After changing a widget mapping,
-assign it back to `files` or `givens` to publish a new revision.
+After a schema change, compile a new model. Widget input mappings are read-only.
+Assign a replacement, such as `widget.givens = {**widget.givens, "minimum": 20}`,
+to publish a new revision for a model that declares `minimum`.

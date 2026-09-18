@@ -1,52 +1,45 @@
 # What is PyMalloy?
 
-PyMalloy runs [Malloy](https://docs.malloydata.dev/documentation/) analyses in
-notebooks, Python, and JavaScript. Malloy defines datasets and reusable queries,
-then compiles them to SQL. [DuckDB](https://duckdb.org/) executes that SQL.
+PyMalloy lets you author, check, run, and share Malloy models from Python.
+[Malloy](https://docs.malloydata.dev/documentation/) defines sources, joins,
+measures, and queries, then compiles them to SQL. PyMalloy supplies Python
+composition, runtime adapters, and exports. DuckDB executes the SQL.
 
-## Choose where to run
+## Choose a workflow
 
-| Task                                   | Use                                      | Result                                        |
-| -------------------------------------- | ---------------------------------------- | --------------------------------------------- |
-| Explore in Jupyter or marimo           | [MalloyWidget](/guide/getting-started)   | Interactive table and Python result snapshots |
-| Query files, dataframes, or a database | [Server Python](/guide/server-python)    | Result with optional dataframe conversion     |
-| Share an executable analysis           | [Notebook export](/guide/export)         | marimo `.py` or Jupyter `.ipynb`              |
-| Build a web application                | [Browser JavaScript](/reference/browser) | Rows, columns, and SQL                        |
-| Query from Node                        | [Node](/reference/node)                  | Rows, columns, SQL, and Malloy metadata       |
+| Task                                       | Start here                                                         | What you get                                             |
+| ------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------- |
+| Create or extend a semantic model          | [Author and validate models](authoring.md)                         | Editable Python grammar and ordinary Malloy source       |
+| Use a prepared dataframe                   | [Capture Python data](dataframes.md)                               | An immutable input that can travel with the model        |
+| Run queries in a script or notebook kernel | [Run queries from Python](server-python.md)                        | SQL, columns, and materialized values                    |
+| Explore in Jupyter or marimo               | [Your first widget](getting-started.md)                            | Browser execution and asynchronous Python snapshots      |
+| Share a model and its inputs               | [Bundle models and inputs](bundles.md)                             | Malloy files, copied data, a manifest, and replay script |
+| Share an executable notebook               | [Export notebooks](export.md)                                      | marimo Python or Jupyter JSON                            |
+| Use JavaScript                             | [Node](../reference/node.md) or [browser](../reference/browser.md) | A shared Model/Query/Result API                          |
 
-**Native execution** uses DuckDB in Python or Node. Browser execution uses
-WebAssembly, compiled database code running in a background browser worker.
-These environments have separate connections. To use Python data in a widget,
-supply a file the browser can read.
+## Choose dependencies
 
-## Explore in a notebook
+| Install                       | Capabilities                                                            |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `pymalloy`                    | Python syntax construction and source records                           |
+| `pymalloy[widget]`            | Browser widgets in Jupyter or marimo                                    |
+| `pymalloy[agent]`             | Installed model-authoring guidance and agent discovery                  |
+| `pymalloy[server]`            | Parse, check, validate, execute to Arrow in Python, and prepare exports |
+| `pymalloy[dataframes]`        | Capture dataframe inputs and convert results with PyArrow and Polars    |
+| `pymalloy[server,dataframes]` | Native execution with Polars input and result conversion                |
 
-Install `pymalloy` and display a `MalloyWidget`. Select queries, change parameters,
-and inspect SQL. Malloy's renderer displays nested tables and chart tags, while
-`widget.state` receives the complete result asynchronously. First use downloads DuckDB WebAssembly and needs
-permission to create browser workers.
+The `server` extra supplies the Deno compiler process and native DuckDB.
+Widgets compile and execute in the browser, independently of that extra. Their
+first use downloads DuckDB WebAssembly and requires browser workers. Python
+syntax construction alone starts neither runtime.
 
-[Run your first widget query](/guide/getting-started).
+Native Python, Node, and browser runtimes have separate connections. Use
+[captured inputs](dataframes.md) or [virtual files](widget.md) to supply browser
+data. Native database tables belong to their connection.
 
-## Run from Python
-
-Install `pymalloy[server,dataframes]` and call `pymalloy.run` or `pymalloy.model` to query files,
-dataframes, or a DuckDB connection. Queries return `Result` objects with rows,
-SQL, and optional Arrow or Polars conversion. Python executes queries locally and owns a Deno compiler process.
-
-[Run a server-side Python query](/guide/server-python).
-
-## Share a notebook
-
-Export a Malloy file as marimo or Jupyter. Choose `precompiled` for SQL that runs
-without PyMalloy, `server` for an editable Python model, or `widget` for browser
-widgets. Recipients need the notebook's dependencies and referenced data.
-
-[Export a notebook](/guide/export).
-
-## Learn Malloy
-
-The [concepts guide](/guide/concepts) defines PyMalloy's terms. For modeling syntax,
-joins, and nested queries, use the [Malloy documentation](https://docs.malloydata.dev/documentation/).
-PyMalloy uses the `duckdb` connection. Adapt models written for other databases
-before running them.
+Read [concepts and boundaries](concepts.md) for the relationships between drafts,
+models, snapshots, validation, and bundles. For language syntax and modeling
+semantics, use the [Malloy documentation](https://docs.malloydata.dev/documentation/).
+PyMalloy's runtime adapters execute the DuckDB dialect. `connection_name` on
+Python models and `connectionName` on JavaScript sessions configure the Malloy
+connection name. Models written for other databases need compatible sources and SQL.

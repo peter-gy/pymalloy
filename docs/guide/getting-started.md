@@ -9,11 +9,11 @@ uses [DuckDB](https://duckdb.org/docs/stable/) in your browser. For scripts, use
 Install PyMalloy into your notebook's Python environment:
 
 ```sh
-pip install pymalloy
+pip install "pymalloy[widget]"
 ```
 
 Use a [Jupyter](https://docs.jupyter.org/) notebook or install the
-[marimo](https://docs.marimo.io/) notebook editor with `pip install "pymalloy[marimo]"`.
+[marimo](https://docs.marimo.io/) notebook editor with `pip install "pymalloy[widget,marimo]"`.
 
 ## Display a query
 
@@ -58,10 +58,13 @@ Results arrive asynchronously from the displayed widget. Register an observer to
 consume completed rows:
 
 ```python
+from pymalloy.analysis import to_dict
+
+
 def receive_result(change):
     state = change["new"]
     if state["status"] == "ready":
-        print(state["rows"])
+        print(to_dict(state["rows"]))
 
 orders.observe(receive_result, names="state")
 orders.source = """
@@ -70,7 +73,8 @@ orders.source = """
 ```
 
 The callback prints `[{'amount': 40}, {'amount': 30}, {'amount': 2}]`. Read
-`orders.state` for the latest snapshot. Call `orders.close()` when finished.
+`orders.state` for the latest read-only snapshot. `to_dict` converts its nested
+mappings and tuples into dictionaries and lists. Call `orders.close()` when finished.
 
 Next: [change inputs](/guide/widget), [learn the concepts](/guide/concepts),
 or [troubleshoot](/guide/troubleshooting).

@@ -1,5 +1,8 @@
 # Update widget inputs and read results
 
+Install `pymalloy[widget]` in the notebook environment. Compilation and execution
+run in the browser, so this mode needs no Deno dependency.
+
 ```python
 from pymalloy import MalloyWidget
 
@@ -14,15 +17,37 @@ Display the widget in Jupyter or marimo. The browser compiles the source and run
 DuckDB WebAssembly. Malloy's renderer displays nested results and rendering tags.
 The first initialization downloads versioned WebAssembly assets.
 
+The browser serves the `duckdb` connection by default. For source that refers to
+`analytics.table(...)` or `analytics.sql(...)`, construct the widget with
+`connection_name="analytics"`. This setting stays fixed for the widget's lifetime.
+Captured inputs created with `pm.data(frame, connection="analytics")` use the same
+explicit setting.
+
 Assign `source`, `query`, `givens`, or `files` to request another result.
 `files` maps virtual names to UTF-8 text, bytes, or HTTP(S) URL descriptors.
-Remote servers must allow CORS. A `ModelSource` can replace source text.
+Remote servers must allow CORS. Source also accepts a `ModelSource` or a `Draft`,
+including [captured dataframe inputs](dataframes.md#use-a-browser-without-deno).
 
-`widget.state` is a detached snapshot with `status`, typed query descriptors,
-SQL, columns, rows, the Malloy result tree, diagnostics, and an error message.
-Observe `state` to react to asynchronous results. Read `rows` when status is
-`ready`. Python bigint and nested values are exact. Decimal text becomes Decimal.
+`widget.state` is a read-only mapping containing `status`, query descriptors,
+SQL, column names, rows, the Malloy result tree, diagnostics, and an error message.
+Nested mappings are read-only and sequences are tuples. Observe `state` to react
+to asynchronous results, and read `rows` when status is `ready`. Big integers
+remain exact and decimal cells become Python `Decimal` values.
 
-Every result belongs to an input revision. A result from earlier work cannot
-replace a newer input's state. Mutating a returned snapshot does not update the
-widget. Assign a complete input mapping and call `widget.close()` when finished.
+Retained snapshots stay unchanged after subsequent updates. To produce mutable
+containers, convert explicitly:
+
+```python
+from pymalloy.analysis import to_dict
+
+snapshot = to_dict(widget.state)
+widget.files = {**widget.files, "orders.csv": "amount\n50\n75\n"}
+```
+
+`to_dict` preserves scalar types, including `Decimal`. Choose an encoder for those
+types when serializing to JSON. `files` and `givens` also expose read-only
+mappings. Assign complete mappings to publish an update.
+
+Every result belongs to an input revision. Changing inputs cancels superseded
+work, and late results cannot replace the current state. Call `widget.close()`
+when finished.

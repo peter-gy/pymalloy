@@ -1,4 +1,4 @@
-# Publish Python data as a Malloy model
+# Capture Python data
 
 Use `pm.data(frame)` to capture prepared Python data in a semantic model. The
 input travels with the draft, validation result, and exported bundle.
@@ -38,11 +38,10 @@ accepted = candidate.validate(checks).require_valid()
 artifact = bundle(accepted, "booked-sales", query="by_region")
 ```
 
-`booked-sales/model.malloy` reads ordinary Parquet files under `data/`. The bundle
-also includes imported models, editable Python grammar in `model.py`,
-`bundle.json`, and `replay.py`. Run
-`python booked-sales/replay.py` to execute the selected query against the frozen
-inputs. The script exposes a `result` when loaded with `runpy.run_path`.
+`booked-sales/model.malloy` reads ordinary Parquet files under `data/`. The
+[bundle guide](bundles.md) explains its manifest, editable Python reconstruction,
+and replay script. Replay uses the captured data, while rebuilding requires the
+producer that created it.
 
 ## Capture once, reuse the same values
 
@@ -54,7 +53,8 @@ retained draft or validation result.
 
 Polars DataFrames, Arrow Tables and RecordBatches, pandas DataFrames, and
 materialized producers implementing Arrow's `__arrow_c_stream__` interface are
-accepted. PyArrow is required. pandas is optional and its index is excluded.
+accepted. PyArrow is supplied by the `server` and `dataframes` extras. Polars and
+pandas are optional producers, and a pandas index is excluded.
 Call `.collect()` on lazy data explicitly before passing it to `pm.data`.
 
 Supported data includes nested lists and records, nulls, booleans, strings,
@@ -74,6 +74,19 @@ Plain `.save()` rejects drafts with managed inputs.
 with an explicit Python variable binding. It preserves shared input references.
 It cannot infer the code that produced `prepared`.
 
+## Work with query results
+
+Native query results retain the Arrow table produced by DuckDB. `result.arrow()`
+returns that table, `result.rows()` materializes Python values, and
+`result.polars()` converts without consolidating Arrow chunks. Install `polars` or
+the `dataframes` extra for the latter. Results remain usable after the model closes.
+
+Python rows follow Arrow scalar representations. With DuckDB's default Arrow
+settings, `HUGEINT` becomes `Decimal`, `UUID` becomes a string, and `INTERVAL`
+becomes `pyarrow.MonthDayNano`. Decimal precision, nested values, nulls, dates,
+and timezone-aware timestamps are preserved. Caller-owned connections retain
+their Arrow conversion settings.
+
 ## Keep preparation in the notebook
 
 In marimo, put dataframe preparation, model construction, validation, and export
@@ -85,10 +98,10 @@ The bundle publishes the accepted data snapshot. Its `model.py` reconstructs the
 Malloy grammar against bundled files. The notebook retains the original dataframe
 operations and the model's construction logic.
 
-Replay runs `replay.py` against frozen Parquet. Rebuilding means explicitly rerunning
-the notebook or producer script, validating the new result, and exporting to a new
-directory. External files, services, environment settings, and randomness remain
-requirements of that Python program. Existing bundles are never overwritten.
+External files, services, environment settings, and randomness remain requirements
+of the producer. Record them alongside the notebook when others need to rebuild
+the input. Source bundles record captured values and file identities, not the
+producer's dependency graph.
 
 ## Use a browser without Deno
 
@@ -97,7 +110,7 @@ widget = pm.MalloyWidget(candidate, query="by_region")
 widget
 ```
 
-This needs the base package and PyArrow, or `pymalloy[dataframes]`. The widget
+Install `pymalloy[widget,dataframes]`, or `pymalloy[widget]` with PyArrow. The widget
 materializes Parquet locally and sends it with the draft to DuckDB-WASM. Browser
 Malloy compilation requires neither the server extra nor Deno. Additional
 `files=` may supply other virtual files but cannot replace managed inputs.

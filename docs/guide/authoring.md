@@ -1,4 +1,4 @@
-# Author and verify models
+# Author and validate models
 
 Compose Malloy sources in Python, edit existing models by name, and test their
 assumptions before saving. Construction works with the base package. Install
@@ -47,6 +47,10 @@ report = candidate.validate(
 )
 report.save("orders.malloy", warnings_as_errors=True)
 ```
+
+The assertions check duplicate keys, null keys, and a known total. A zero-row
+result passes. The save publishes the accepted root source. See
+[concepts and boundaries](concepts.md#what-checks-establish) for the scope of this evidence.
 
 Source expressions and clauses are immutable values. Reuse them across drafts.
 `define(orders=...)` names the source, while `measure(revenue=...)` names a field.
@@ -125,12 +129,20 @@ print(candidate.diff())
 print(candidate.check().diagnostics)
 ```
 
-The edit replaces `revenue` and its directly attached `#"` description. It
+The edit replaces `revenue` and its directly owned documentation route. It
 preserves the surrounding text and leaves `original` unchanged. A replacement
-without `.doc(...)` retains the existing description. Shared statement tags and
-block annotations remain unchanged. Names belong to their containing
+without `.doc(...)` retains the existing description. `.annotate(text, route=...)`
+replaces another owned route, such as a renderer tag or app annotation. Shared
+statement annotations remain unchanged. Names belong to their containing
 scope. A nested view's fields require selecting that view first. Missing names
 raise `KeyError`, and ambiguous names raise `ValueError`.
+
+Attach renderer and application annotations with their native routes:
+
+```python
+view = pm.query(pm.aggregate(revenue=pm.col("amount").sum())).annotate("bar_chart")
+measure = pm.col("amount").sum().annotate("unit=USD", route="research")
+```
 
 Changing a measure also requires reviewing its name, documentation, and assertions.
 For a separate definition, derive a source with `pm.ref`:
@@ -158,10 +170,11 @@ restored = namespace["candidate"]
 assert restored["orders"]["revenue"].equals(original["orders"]["revenue"])
 ```
 
-The emitted Python uses scalar constructors such as `pm.col`, `pm.lit`, and
-operators inside the model syntax. Editing those operations changes the resulting
-Malloy. Supported scalar expressions may be respelled with quoted identifiers and
-explicit parentheses. Their semantics, source identity, and captured imports are
+The emitted Python uses source and query constructors where the parsed structure
+can be represented, with `pm.col`, `pm.lit`, and operators for scalar expressions.
+Unrepresented grammar and surrounding comments remain explicit syntax fragments. Editing those operations changes the resulting
+Malloy. Constructors indent nested blocks and quote names when Malloy requires
+it. Supported scalar expressions may gain explicit parentheses. Their semantics, source identity, and captured imports are
 preserved. Comments and other surrounding syntax retain their original text.
 
 Reading a file and saving it unchanged preserves its exact bytes. A Python
@@ -172,30 +185,41 @@ through the execution and export APIs.
 
 ## Check and save a revision
 
-| Operation                | Result                                                                                              |
-| ------------------------ | --------------------------------------------------------------------------------------------------- |
-| `draft.check()`          | Compiler diagnostics and advisory documentation warnings, source fields, query names, and locations |
-| `draft.validate(checks)` | Static diagnostics and executable assertions for the captured revision                              |
-| `draft.compile()`        | A reusable model for inspection and execution                                                       |
+| Operation                | Result                                                                 |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `draft.check()`          | Compiler diagnostics, source fields, query names, and locations        |
+| `draft.validate(checks)` | Static diagnostics and executable assertions for the captured revision |
+| `draft.compile()`        | A reusable model for inspection and execution                          |
 
-Documentation checks flag missing source, measure, and view descriptions.
-Warnings remain advisory unless `warnings_as_errors=True` is passed to
+Enable documentation checks explicitly:
+
+```python
+from pymalloy.validation import DocumentationPolicy
+
+report = candidate.check(documentation=DocumentationPolicy())
+```
+
+The default policy checks source, measure, and view descriptions. Pass the same
+`documentation=` option to `validate` when descriptions are an acceptance
+condition. Warnings remain advisory unless `warnings_as_errors=True` is passed to
 `Validation.require_valid()` or `Validation.save()`.
 
-For [captured dataframe inputs](dataframes.md), publish with `bundle(accepted, ...)`.
-Plain `.save()` rejects managed inputs.
+Choose what to publish:
 
-`Draft.save()` saves unfinished work without managed inputs. `Validation.save()` requires successful
-validation and saves the captured revision. Both reject an unrelated existing
-file unless `overwrite=True`. Loaded files reject external changes. Reload after
-saving before making another revision.
+- `Draft.save()` writes unfinished root source.
+- `Validation.save()` writes the accepted root revision after checking validity.
+- [`bundle(accepted, ...)`](bundles.md) writes source, imports, and declared or
+  captured inputs into a new directory.
 
-Validated saves with captured imports require the original root directory and
-unchanged imported files. To relocate a model, save the draft and revalidate at
-its destination. Saving writes the root file. Data may change after validation,
-so retain and rerun the assertions.
+Plain saves reject managed dataframe inputs. Loaded files reject observed
+external changes, and validated saves also check imported files and the root
+directory. Reload after saving before editing again. The
+[persistence reference](../reference/authoring.md#persistence) defines overwrite
+and relocation rules.
 
 ## Agent instructions
+
+Install `pymalloy[agent]` for versioned model-authoring guidance:
 
 ```python
 import pymalloy.agent as agent
