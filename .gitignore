@@ -1,0 +1,14 @@
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.vitepress/cache/
+_assets/
+playwright-report/
+test-results/

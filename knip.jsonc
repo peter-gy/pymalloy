@@ -1,0 +1,17 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  "ignoreBinaries": ["uv"],
+  "workspaces": {
+    "apps/e2e": {
+      "vite": { "config": "standalone/vite.config.ts" },
+    },
+    "packages/browser": {
+      // The bundler injects process/browser for Malloy's browser build.
+      "ignoreDependencies": ["process"],
+    },
+    "packages/python": {
+      // These build dependencies produce the files copied by build.mjs.
+      "ignoreDependencies": ["@pymalloy/python-bridge", "@pymalloy/widget"],
+    },
+  },
+}

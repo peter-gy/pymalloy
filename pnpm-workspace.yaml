@@ -1,0 +1,31 @@
+packages:
+  - packages/*
+  - apps/*
+catalog:
+  "@oxlint/plugins": 1.76.0
+  knip: 6.32.2
+  portless: 0.15.6
+  "@malloydata/malloy": 0.0.433
+  "@malloydata/malloy-sql": 0.0.433
+  "@duckdb/node-api": 1.5.5-r.4
+  "@types/node": 22.20.1
+  typescript: 6.0.3
+  vite-plus: 0.3.0
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
+  vitepress: 2.0.0-alpha.19
+  "@duckdb/duckdb-wasm": 1.33.1-dev57.0
+  apache-arrow: 17.0.0
+  "@anywidget/types": 0.4.0
+  "@playwright/test": 1.61.1
+overrides:
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
+  vitest: 4.1.11
+  vitepress>vite: 8.2.0
+publicHoistPattern:
+  - vue
+  - "@vue/*"
+  - "@vueuse/*"
+  - vitepress
+peerDependencyRules:
+  allowedVersions:
+    vite: 0.3.0
