@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PyMalloy in Pyodide</title>
+    <style>
+      body {
+        max-width: 920px;
+        margin: 32px auto;
+        padding: 0 20px;
+        font: 16px system-ui;
+      }
+      button {
+        padding: 8px 12px;
+        margin: 6px;
+      }
+      output {
+        display: block;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.28.3/full/pyodide.js"></script>
+  </head>
+  <body>
+    <h1>Sales in a browser Python kernel</h1>
+    <output aria-label="Kernel status">Loading Python</output>
+    <nav aria-label="Python actions">
+      <button
+        disabled
+        data-code="widget.givens = {'region_filter': 'South'}; widget.query = 'sales.filtered'"
+      >
+        Set South
+      </button>
+      <button
+        disabled
+        data-code="widget.files = {'sales.csv': b'region,amount\nNorth,70\nSouth,10\n'}; widget.query = 'sales.by_region'"
+      >
+        Replace data
+      </button>
+      <button disabled data-code="widget.source = 'run: missing_source'">Invalid model</button>
+      <button disabled data-code="widget.source = source">Recover model</button>
+      <button disabled id="scalars">Inspect scalar types</button>
+      <button disabled id="remote">Load URL data</button>
+      <button disabled id="close">Close analysis</button>
+    </nav>
+    <section aria-label="Malloy analysis" id="widget"></section>
+    <h2>Python readback</h2>
+    <output aria-label="Python readback"></output>
+    <output aria-label="Python values"></output>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
