@@ -1,6 +1,7 @@
 """Typed language reports generated from the compiler contract."""
 
-from pymalloy._records import (
+from pymalloy._protocol.codec import to_dict
+from pymalloy._protocol.records import (
     AnnotatedObject,
     AnnotationInfo,
     CheckReport,
@@ -22,7 +23,6 @@ from pymalloy._records import (
     SourceSpan,
     SymbolInfo,
 )
-from pymalloy._wire import to_dict
 
 __all__ = [
     "AnnotatedObject",

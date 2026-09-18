@@ -6,11 +6,8 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._identifiers import identifier
-from pymalloy._inputs import snapshot_data
-from pymalloy._records import SyntaxOperationKind
-from pymalloy._syntax import (
+from pymalloy._authoring.identifiers import identifier
+from pymalloy._authoring.syntax import (
     Fragment,
     binding,
     block,
@@ -18,10 +15,13 @@ from pymalloy._syntax import (
     named_clause,
     syntax,
 )
-from pymalloy._syntax import (
+from pymalloy._authoring.syntax import (
     scalar_expression as _scalar,
 )
-from pymalloy._table import TableReference, table_path
+from pymalloy._authoring.tables import TableReference, table_path
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.inputs import snapshot_data
+from pymalloy._protocol.records import SyntaxOperationKind
 from pymalloy.expressions import Expr, Sort
 
 __all__ = [

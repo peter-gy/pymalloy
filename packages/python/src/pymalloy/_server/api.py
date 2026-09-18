@@ -9,9 +9,9 @@ from typing import Any, TypedDict, Unpack
 
 import duckdb
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._draft import Draft
-from pymalloy._source import DocumentKind, ModelSource
+from pymalloy._authoring.draft import Draft
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.source import DocumentKind, ModelSource
 from pymalloy.analysis import CheckReport, SourcePosition
 from pymalloy.result import Result
 

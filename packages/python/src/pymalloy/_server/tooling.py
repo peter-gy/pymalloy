@@ -6,9 +6,9 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from pymalloy._errors import CompilationError
-from pymalloy._records import FormatReady, ParseReport, SyntaxNode, SyntaxReady
-from pymalloy._source import DocumentKind
+from pymalloy._model.errors import CompilationError
+from pymalloy._model.source import DocumentKind
+from pymalloy._protocol.records import FormatReady, ParseReport, SyntaxNode, SyntaxReady
 
 from .compiler import Compiler
 

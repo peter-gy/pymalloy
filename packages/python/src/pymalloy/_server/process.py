@@ -14,8 +14,8 @@ from typing import IO, Any
 
 import msgspec
 
-from pymalloy._errors import CompilerError
-from pymalloy._records import CompilerReady, Response
+from pymalloy._model.errors import CompilerError
+from pymalloy._protocol.records import CompilerReady, Response
 
 _MAX_FRAME = 64 * 1024 * 1024
 _DECODER = msgspec.json.Decoder(Response)

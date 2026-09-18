@@ -8,10 +8,10 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Unpack
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._errors import CompilationError
-from pymalloy._givens import encode_givens
-from pymalloy._syntax import Fragment
+from pymalloy._authoring.syntax import Fragment
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.errors import CompilationError
+from pymalloy._protocol.givens import encode_givens
 from pymalloy.execution import ExecutionError
 from pymalloy.validation import (
     DataCheck,
@@ -21,7 +21,7 @@ from pymalloy.validation import (
 )
 
 if TYPE_CHECKING:
-    from pymalloy._draft import Draft
+    from pymalloy._authoring.draft import Draft
 
     from .api import _RuntimeOptions
 

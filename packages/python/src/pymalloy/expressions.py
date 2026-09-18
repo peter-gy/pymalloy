@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import NoReturn
 
-from pymalloy._annotations import with_annotation
-from pymalloy._expression_ops import render
-from pymalloy._identifiers import identifier
-from pymalloy._records import (
+from pymalloy._authoring.annotations import with_annotation
+from pymalloy._authoring.identifiers import identifier
+from pymalloy._authoring.operations import render
+from pymalloy._protocol.records import (
     Branch,
     Scalar,
     ScalarBinary,

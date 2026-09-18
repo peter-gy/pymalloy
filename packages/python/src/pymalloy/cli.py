@@ -6,7 +6,7 @@ import time
 from importlib.metadata import version
 from pathlib import Path
 
-from pymalloy._connection import DEFAULT_CONNECTION
+from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy.analysis import Diagnostic, to_dict
 
 

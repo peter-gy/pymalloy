@@ -80,7 +80,7 @@ def test_widget_publishes_source_query_files_and_exact_givens():
             "orders.csv": b"region,amount\nNorth,42\n",
             "part.parquet": b"PAR1",
         }
-        from pymalloy._givens import given_values
+        from pymalloy._protocol.givens import given_values
 
         assert given_values(state["_input"]["givens"]) == givens
         assert widget.givens == {
@@ -218,7 +218,7 @@ def test_widget_input_snapshots_require_validated_assignment():
         assert widget.files["part"] == b"changed"
         assert widget.givens["choices"] == (3, 4)
         assert widget.get_state()["_definition"]["files"]["part"] == b"changed"
-        from pymalloy._givens import given_values
+        from pymalloy._protocol.givens import given_values
 
         assert given_values(widget.get_state()["_input"]["givens"])["choices"] == [3, 4]
     finally:

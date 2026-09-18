@@ -7,8 +7,8 @@ from typing import Any
 import duckdb
 import pyarrow as pa
 
-from pymalloy._errors import SchemaError
-from pymalloy._records import SchemaNeed, TableSchemaNeed
+from pymalloy._model.errors import SchemaError
+from pymalloy._protocol.records import SchemaNeed, TableSchemaNeed
 from pymalloy.result import Column, Result
 
 from .deadline import interrupt_at

@@ -10,11 +10,11 @@ import anywidget
 import traitlets as t
 from msgspec import to_builtins
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._draft import Draft
-from pymalloy._givens import encode_givens
-from pymalloy._snapshot import freeze
-from pymalloy._source import ModelSource
+from pymalloy._authoring.draft import Draft
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.source import ModelSource
+from pymalloy._protocol.givens import encode_givens
+from pymalloy._protocol.snapshot import freeze
 from pymalloy.browser import Runtime
 
 
@@ -57,7 +57,7 @@ def _json_value(value: Any) -> Any:
 def _decode_state(wire: dict[str, Any]) -> dict[str, Any]:
     from msgspec import ValidationError
 
-    from pymalloy._wire import decode_state
+    from pymalloy._protocol.codec import decode_state
 
     try:
         return decode_state(wire)

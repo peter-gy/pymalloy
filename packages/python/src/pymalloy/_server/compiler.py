@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
-from pymalloy._errors import CompilationError, CompilerError, SchemaError
-from pymalloy._records import (
+from pymalloy._model.errors import CompilationError, CompilerError, SchemaError
+from pymalloy._model.source import DocumentKind, read_text, resolve_document_kind
+from pymalloy._protocol.records import (
     CompileError,
     CompileNeeds,
     CompilerFailure,
@@ -15,7 +16,6 @@ from pymalloy._records import (
     ParseReport,
     SchemaNeed,
 )
-from pymalloy._source import DocumentKind, read_text, resolve_document_kind
 
 from .process import Process
 

@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pymalloy._draft import Draft, draft, read_model
-from pymalloy._errors import (
+from pymalloy._authoring.draft import Draft, draft, read_model
+from pymalloy._model.errors import (
     CompilationError,
     CompilerError,
     ModelError,
     PyMalloyError,
     SchemaError,
 )
-from pymalloy._source import ModelSource
+from pymalloy._model.source import ModelSource
 from pymalloy.analysis import QueryDescriptor
 from pymalloy.authoring import (
     Fragment,

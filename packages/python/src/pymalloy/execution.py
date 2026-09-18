@@ -6,11 +6,11 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._errors import PyMalloyError
-from pymalloy._givens import given_values
-from pymalloy._inputs import DataInput
-from pymalloy._source import ModelSource
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.errors import PyMalloyError
+from pymalloy._model.inputs import DataInput
+from pymalloy._model.source import ModelSource
+from pymalloy._protocol.givens import given_values
 from pymalloy.analysis import QueryDescriptor
 
 

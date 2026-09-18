@@ -10,16 +10,16 @@ from urllib.parse import unquote, urlsplit
 
 from msgspec import structs
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._givens import given_values
-from pymalloy._records import NativeMetadata
-from pymalloy._source import ModelSource, read_text
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.source import ModelSource, read_text
+from pymalloy._protocol.givens import given_values
+from pymalloy._protocol.records import NativeMetadata
 from pymalloy.analysis import CheckReport, Diagnostic
 from pymalloy.execution import ExecutionContext
 from pymalloy.result import Result
 
 if TYPE_CHECKING:
-    from pymalloy._draft import Draft
+    from pymalloy._authoring.draft import Draft
 
 
 @dataclass(frozen=True)

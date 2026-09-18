@@ -12,12 +12,20 @@ from typing import Any, Self
 
 import duckdb
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._draft import Draft
-from pymalloy._errors import ModelError
-from pymalloy._givens import encode_givens, given_values
-from pymalloy._inputs import DataInput
-from pymalloy._records import (
+from pymalloy._authoring.draft import Draft
+from pymalloy._authoring.syntax import Fragment
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.errors import ModelError
+from pymalloy._model.inputs import DataInput
+from pymalloy._model.selection import query_names
+from pymalloy._model.source import (
+    DocumentKind,
+    ModelSource,
+    resolve_document_kind,
+    resolve_source,
+)
+from pymalloy._protocol.givens import encode_givens, given_values
+from pymalloy._protocol.records import (
     CheckReady,
     DocumentCell,
     DocumentReady,
@@ -26,14 +34,6 @@ from pymalloy._records import (
     QueryReady,
     SourceReady,
 )
-from pymalloy._selection import query_names
-from pymalloy._source import (
-    DocumentKind,
-    ModelSource,
-    resolve_document_kind,
-    resolve_source,
-)
-from pymalloy._syntax import Fragment
 from pymalloy.analysis import (
     CheckReport,
     Inspection,
