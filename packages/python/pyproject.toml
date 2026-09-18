@@ -29,8 +29,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build]
 artifacts = ["src/pymalloy/_assets/**"]
 
+[tool.hatch.build.hooks.custom]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/pymalloy"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "pyproject.toml", "README.md"]
+include = ["src", "pyproject.toml", "README.md", "hatch_build.py"]

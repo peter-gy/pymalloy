@@ -9,8 +9,10 @@ uv build --package pymalloy
 
 pnpm builds in dependency order. `packages/python/build.mjs` copies the widget,
 compiler, and production dependency notices into `pymalloy/_assets`.
-Hatch includes them in the wheel and source archive. Rebuild after JavaScript
-source or dependency changes.
+Hatch checks that all four staged artifacts exist and are nonempty before building
+a wheel or source archive. Missing assets fail the build with the `pnpm build`
+instruction. The source archive includes this check and the built artifacts.
+Rebuild after JavaScript source or dependency changes.
 
 To build just Python's JavaScript dependencies:
 
