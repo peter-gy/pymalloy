@@ -81,12 +81,12 @@ describe("Node Session", () => {
         .query()
         .run({ signal: AbortSignal.timeout(20) })
         .then((result) => result.rows);
-      const queued = model
-        .query()
-        .run()
-        .then((result) => result.rows);
+      const queued = runtime.run("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}");
       const failures = await Promise.allSettled([running, queued]);
-      expect(failures.map((result) => result.status)).toEqual(["rejected", "rejected"]);
+      expect(failures.map((result) => result.status)).toEqual(["rejected", "fulfilled"]);
+      expect(failures[1]).toMatchObject({ value: { rows: [{ answer: 42 }] } });
+      expect(runtime.closed).toBe(false);
+      expect(model.inspect().queries).toHaveLength(1);
       expect(failures[0]).toMatchObject({ reason: { name: "TimeoutError" } });
       await runtime.close();
       expect(runtime.closed).toBe(true);
@@ -453,7 +453,7 @@ run: numbers -> {select: value order_by: value}`)
     const model = await runtime.model({
       text: "run: duckdb.table('orders.csv') -> { aggregate: total is amount.sum() }",
     });
-    expect(() => model.query("missing")).toThrow("Choose a query");
+    expect(() => model.query("missing")).toThrow("Unknown query 'missing'");
     expect(
       await model
         .query()
@@ -529,4 +529,19 @@ test("retained source views bind each call and read current data", async () => {
   expect((await query.run()).malloy.schema.fields.map((field) => field.name)).toEqual(["value"]);
   await expect(query.run({ givens: { cutoff: "invalid" } })).rejects.toThrow(/cutoff/);
   expect((await query.run()).rows).toEqual([{ value: 42 }, { value: 99 }]);
+});
+
+test("a rejected active query allows an immediate new selection on its retained model", async () => {
+  const runtime = await session();
+  const model = await runtime.model({
+    text: `
+    query: slow is duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> {aggregate: total is value.sum()}
+    query: fast is duckdb.sql('SELECT 42 AS answer') -> {select: answer}
+  `,
+  });
+  await expect(model.query("slow").run({ signal: AbortSignal.timeout(20) })).rejects.toMatchObject({
+    name: "TimeoutError",
+  });
+  expect((await model.query("fast").run()).rows).toEqual([{ answer: 42 }]);
+  expect(runtime.closed).toBe(false);
 });

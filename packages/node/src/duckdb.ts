@@ -20,19 +20,25 @@ const convert: DuckDBValueConverter<JS> = (value, type, converter) => {
   return JSDuckDBValueConverter(value, type, converter);
 };
 export class DuckDBBackend {
-  constructor(readonly connection: DuckDBConnection) {}
+  constructor(
+    readonly connection: DuckDBConnection,
+    private readonly connectionName: string,
+  ) {}
   async describe(sql: string) {
-    const result = await this.connection.runAndReadAll(`DESCRIBE ${sql}`);
+    const result = await this.connection.runAndReadAll(sql);
     return result
       .getRowObjectsJS()
       .map((row) => ({ name: text(row.column_name), type: text(row.column_type) }));
   }
-  async run(sql: string, template?: Result["malloy"]): Promise<Result> {
+  async run(sql: string, template?: Result["malloy"], signal?: AbortSignal): Promise<Result> {
+    signal?.throwIfAborted();
     const statements = await this.connection.extractStatements(sql);
     if (statements.count !== 1)
       throw new Error("Query execution requires one SELECT or COPY statement");
+    signal?.throwIfAborted();
     const prepared = await statements.prepare(0);
     try {
+      signal?.throwIfAborted();
       if (
         prepared.statementType !== StatementType.SELECT &&
         prepared.statementType !== StatementType.COPY
@@ -47,7 +53,12 @@ export class DuckDBBackend {
         result.statementType === StatementType.COPY
           ? []
           : (result.convertRowObjects(convert) as Row[]);
-      return { sql, columns, rows, malloy: stableResult(sql, columns, rows, template) };
+      return {
+        sql,
+        columns,
+        rows,
+        malloy: stableResult(sql, columns, rows, template, this.connectionName),
+      };
     } finally {
       prepared.destroySync();
     }

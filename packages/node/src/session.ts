@@ -5,11 +5,14 @@ import { pathToFileURL } from "node:url";
 import { type DuckDBConnection, DuckDBInstance } from "@duckdb/node-api";
 import {
   CompiledModel,
+  documentKind,
+  defaultSourceFilename,
+  type DocumentKind,
   Model,
   ToolingError,
   type ModelSource,
   type OperationOptions,
-  type RunOptions,
+  type QueryOptions,
   type SourcePosition,
 } from "@malloy-runtime/compiler";
 import { connection, drive, fileSearchPath, type Host } from "@malloy-runtime/duckdb";
@@ -20,20 +23,24 @@ export interface SessionOptions {
   dataRoot?: string;
   database?: string;
   connection?: DuckDBConnection;
+  connectionName?: string;
 }
-export type ModelSpec =
+export type ModelSpec = (
   | { text: string; url?: string }
   | { path: string }
   | { url: string }
-  | { source: ModelSource };
+  | { source: ModelSource }
+) & { documentKind?: DocumentKind };
 export interface CheckOptions extends OperationOptions {
   path?: string;
   syntaxOnly?: boolean;
+  documentKind?: DocumentKind;
   position?: SourcePosition;
 }
 
 export class Session {
   private readonly backend: DuckDBBackend;
+  private readonly compilerConnection: typeof connection;
   private readonly models = new Set<Model>();
   private readonly operations: Operations;
   private readonly imports = new AbortController();
@@ -42,19 +49,18 @@ export class Session {
     private readonly nativeConnection: DuckDBConnection,
     private readonly dataRoot: string,
     private readonly instance?: DuckDBInstance,
+    connectionName = connection.name,
   ) {
-    this.operations = new Operations(() => {
-      this.imports.abort();
-      this.connection.interrupt();
-      void this.close();
-    });
-    this.backend = new DuckDBBackend(nativeConnection);
+    this.operations = new Operations(() => this.connection.interrupt());
+    this.compilerConnection = { ...connection, name: connectionName };
+    this.backend = new DuckDBBackend(nativeConnection, connectionName);
   }
   static async open(options: SessionOptions = {}): Promise<Session> {
     if (options.connection && (options.database !== undefined || options.dataRoot !== undefined))
       throw new Error("Borrowed connections use the caller's database and file_search_path");
     const root = resolve(options.dataRoot ?? ".");
-    if (options.connection) return new Session(options.connection, root);
+    if (options.connection)
+      return new Session(options.connection, root, undefined, options.connectionName);
     const instance = await DuckDBInstance.create(options.database);
     try {
       const native = await instance.connect();
@@ -65,7 +71,7 @@ export class Session {
         native.closeSync();
         throw error;
       }
-      return new Session(native, root, instance);
+      return new Session(native, root, instance, options.connectionName);
     } catch (error) {
       instance.closeSync();
       throw error;
@@ -78,17 +84,28 @@ export class Session {
     return this.operations.closed;
   }
   private host(source?: ModelSource): Host {
+    const operations = this.operations;
+    const signal = operations.signal
+      ? AbortSignal.any([operations.signal, this.imports.signal])
+      : this.imports.signal;
     return {
-      describe: (sql) => this.backend.describe(sql),
+      signal,
+      describe: (sql) => {
+        signal.throwIfAborted();
+        return this.backend.describe(sql);
+      },
       readURL: async (url) => {
-        this.operations.assertActive();
+        signal.throwIfAborted();
         if (source) {
           if (!Object.hasOwn(source.imports, url.href))
             throw new Error(`Source bundle is missing '${url.href}'`);
           return source.imports[url.href];
         }
         if (url.protocol !== "file:") throw new Error(`Import '${url}' must be a local file`);
-        return readFile(url, { encoding: "utf8", signal: this.imports.signal });
+        return readFile(url, {
+          encoding: "utf8",
+          signal,
+        });
       },
     };
   }
@@ -103,24 +120,26 @@ export class Session {
             ? pathToFileURL(resolve(spec.path)).href
             : "url" in spec && spec.url
               ? spec.url
-              : pathToFileURL(resolve(this.dataRoot, "model.malloy")).href),
+              : pathToFileURL(resolve(this.dataRoot, defaultSourceFilename)).href),
       );
       const host = this.host(captured);
       const compiled = await drive(
         CompiledModel.begin({
           url,
           source: captured?.text ?? ("text" in spec ? spec.text : undefined),
-          connection,
+          connection: this.compilerConnection,
+          documentKind: spec.documentKind ?? captured?.documentKind ?? documentKind(url),
         }),
         host,
       );
       this.operations.assertActive();
       const model = new Model(compiled, {
-        assertActive: () => {
+        assertAvailable: () => this.operations.assertHealthy(),
+        compile: (job) => drive(job, this.host(captured)),
+        run: (sql, template) => {
           this.operations.assertActive();
+          return this.backend.run(sql, template, this.operations.signal);
         },
-        compile: (job) => drive(job, host),
-        run: (sql, template) => this.backend.run(sql, template),
         submit: (task, options) => this.operations.run(task, options),
         release: () => this.models.delete(model),
       });
@@ -128,7 +147,7 @@ export class Session {
       return model;
     }, options);
   }
-  async run(text: string, options: RunOptions = {}) {
+  async run(text: string, options: QueryOptions = {}) {
     const captured = { signal: options.signal, givens: structuredClone(options.givens) };
     const model = await this.model({ text }, captured);
     try {
@@ -138,16 +157,19 @@ export class Session {
     }
   }
   check(source: string, options: CheckOptions = {}) {
-    const url = pathToFileURL(resolve(options.path ?? resolve(this.dataRoot, "inline.malloy")));
+    const url = pathToFileURL(
+      resolve(options.path ?? resolve(this.dataRoot, defaultSourceFilename)),
+    );
     return this.operations.run(
       () =>
         drive(
           checkSource({
             url,
             source,
-            connection,
+            connection: this.compilerConnection,
             position: options.position,
             syntaxOnly: options.syntaxOnly,
+            documentKind: options.documentKind ?? documentKind(url),
           }),
           this.host(),
         ),

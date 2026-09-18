@@ -6,7 +6,7 @@ export {
   type Result,
   type Row,
   type Value,
-  type RunOptions,
+  type QueryOptions,
   type OperationOptions,
   type QueryDescriptor,
   type ModelSource,
