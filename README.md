@@ -24,6 +24,7 @@ on first use.
 - [Explore files and read widget results](https://peter-gy.github.io/pymalloy/guide/widget)
 - [Query files, dataframes, and databases from Python](https://peter-gy.github.io/pymalloy/guide/server-python)
 - [Export marimo or Jupyter notebooks](https://peter-gy.github.io/pymalloy/guide/export)
+- [Author and verify models](https://peter-gy.github.io/pymalloy/guide/authoring)
 - [Check and inspect source](https://peter-gy.github.io/pymalloy/guide/language-tools)
 - [Use the JavaScript APIs](https://peter-gy.github.io/pymalloy/reference/browser)
 

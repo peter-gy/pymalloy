@@ -21,6 +21,8 @@ Read `query.state` for the latest asynchronous result, or observe its state chan
 - [Explore with the widget](https://peter-gy.github.io/pymalloy/guide/getting-started).
 - [Run server-side Python queries](https://peter-gy.github.io/pymalloy/guide/server-python)
   with `pymalloy[server,dataframes]`.
+- [Author and verify models](https://peter-gy.github.io/pymalloy/guide/authoring)
+  with immutable drafts, compiler checks, and named data assertions.
 - [Check and inspect source](https://peter-gy.github.io/pymalloy/guide/language-tools)
   from Python or the command line.
 - [Export marimo and Jupyter notebooks](https://peter-gy.github.io/pymalloy/guide/export).

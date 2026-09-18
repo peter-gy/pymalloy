@@ -79,3 +79,7 @@ closed model or failed compiler process. Invalid options raise `TypeError` or
 `ValueError`. DuckDB errors retain their exception types. An active timeout
 closes the model. A timeout waiting for its operation lock leaves active work
 running. Heap exhaustion closes the model with `ModelError`.
+
+Author models with [immutable drafts and source builders](authoring.md).
+`pm.check` also accepts a `Path` or captured `ModelSource`, plus `url` and
+registered Python `tables`. `Query.preview(limit=20)` bounds returned rows.
