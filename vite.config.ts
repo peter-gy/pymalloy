@@ -47,6 +47,7 @@ export default defineConfig({
         files: [
           "packages/node/src/duckdb.ts",
           "packages/core/src/selection.ts",
+          "packages/core/tests/syntax.test.ts",
           "packages/node/src/session.ts",
           "packages/browser/src/session.ts",
         ],

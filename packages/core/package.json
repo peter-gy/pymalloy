@@ -27,7 +27,9 @@
   "dependencies": {
     "@malloydata/malloy": "catalog:",
     "@malloydata/malloy-interfaces": "catalog:",
-    "@malloydata/malloy-sql": "catalog:"
+    "@malloydata/malloy-sql": "catalog:",
+    "@malloydata/malloy-tag": "catalog:",
+    "antlr4ts": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
