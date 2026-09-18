@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from pymalloy.analysis import Diagnostic
+from pymalloy._protocol.records import Diagnostic
 
 
 class PyMalloyError(RuntimeError):
