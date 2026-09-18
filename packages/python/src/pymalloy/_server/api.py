@@ -8,6 +8,7 @@ from typing import Any, TypedDict, Unpack
 
 import duckdb
 
+from pymalloy._draft import Draft
 from pymalloy._source import ModelSource
 from pymalloy.analysis import CheckReport, SourcePosition
 from pymalloy.result import Result
@@ -33,7 +34,7 @@ class _ModelOptions(_RuntimeOptions, total=False):
 
 
 def model(
-    source: str | Path | ModelSource,
+    source: str | Path | ModelSource | Draft,
     *,
     url: str | None = None,
     data_root: str | Path | None = None,
@@ -67,7 +68,7 @@ def model(
 
 
 def run(
-    source: str | Path | ModelSource,
+    source: str | Path | ModelSource | Draft,
     *,
     givens: Mapping[str, Any] | None = None,
     **options: Unpack[_ModelOptions],
@@ -82,7 +83,7 @@ def run(
 
 
 def check(
-    source: str | Path | ModelSource,
+    source: str | Path | ModelSource | Draft,
     *,
     path: str | Path | None = None,
     url: str | None = None,

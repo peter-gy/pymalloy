@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Mapping
 from dataclasses import replace
@@ -10,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Unpack
 import duckdb
 
 from pymalloy._errors import CompilationError, ModelError
+from pymalloy._givens import encode_givens
 from pymalloy._syntax import Fragment
 from pymalloy.execution import ExecutionError
 from pymalloy.validation import (
@@ -36,6 +38,7 @@ def validate(
 ) -> Validation:
     # One budget covers compilation, metadata, and every data assertion.
     deadline = time.monotonic() + options.get("timeout", 120)
+    bindings = json.dumps(encode_givens(givens))
     selected = tuple(checks.items())
     if not all(
         isinstance(name, str)
@@ -51,9 +54,11 @@ def validate(
     try:
         model = draft.compile(**options)
     except CompilationError as error:
-        return Validation(draft, tuple(error.diagnostics), skipped, str(error))
+        return Validation(
+            draft, tuple(error.diagnostics), skipped, str(error), bindings
+        )
     except (ModelError, TimeoutError) as error:
-        return Validation(draft, (), skipped, str(error))
+        return Validation(draft, (), skipped, str(error), bindings)
     try:
 
         def remaining() -> float:
@@ -98,8 +103,14 @@ def validate(
                         else (),
                     )
                 )
-        return Validation(frozen, diagnostics, tuple(results))
+        return Validation(
+            frozen,
+            diagnostics,
+            tuple(results),
+            _givens_json=bindings,
+            queries=tuple(query.name for query in model.queries),
+        )
     except (CompilationError, ModelError, TimeoutError) as error:
-        return Validation(draft, (), skipped, str(error))
+        return Validation(draft, (), skipped, str(error), bindings)
     finally:
         model.close()

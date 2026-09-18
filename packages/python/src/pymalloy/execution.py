@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pymalloy._givens import given_values
+from pymalloy._inputs import DataInput
 from pymalloy._source import ModelSource
 from pymalloy.analysis import QueryDescriptor
 
@@ -22,6 +23,7 @@ class ExecutionContext:
     compiler_version: str
     preview_limit: int | None = None
     _givens_json: str = field(default="{}", repr=False)
+    _inputs: tuple[DataInput, ...] = field(default=(), repr=False)
 
     @property
     def givens(self) -> dict[str, Any]:

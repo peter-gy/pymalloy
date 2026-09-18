@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import unquote, urlsplit
 
 from msgspec import structs
 
+from pymalloy._givens import given_values
 from pymalloy._records import NativeMetadata
 from pymalloy._source import ModelSource, read_text
 from pymalloy.analysis import CheckReport, Diagnostic
@@ -99,6 +101,12 @@ class Validation:
     diagnostics: tuple[Diagnostic, ...]
     checks: tuple[DataCheck, ...]
     error: str | None = None
+    _givens_json: str = field(default="{}", repr=False)
+    queries: tuple[str, ...] = ()
+
+    @property
+    def givens(self) -> dict[str, Any]:
+        return given_values(json.loads(self._givens_json))
 
     @property
     def ok(self) -> bool:
@@ -130,7 +138,11 @@ class Validation:
         self.require_valid()
         if self.draft.imports is None:
             raise ValueError("Validation has no captured source graph")
-        return ModelSource(self.draft.url, self.draft.text, self.draft.imports)
+        return ModelSource(
+            self.draft.url,
+            self.draft.syntax.render(materialize=True),
+            self.draft.imports,
+        )
 
     def save(
         self,

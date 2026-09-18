@@ -12,8 +12,10 @@ from typing import Any
 
 import duckdb
 
+from pymalloy._draft import Draft
 from pymalloy._errors import ModelError
 from pymalloy._givens import encode_givens, given_values
+from pymalloy._inputs import DataInput
 from pymalloy._records import (
     CheckReady,
     DocumentCell,
@@ -162,13 +164,17 @@ class _Runtime:
 
     def compile(
         self,
-        source: str | Path | ModelSource,
+        source: str | Path | ModelSource | Draft,
         *,
         url: str | None = None,
         deadline: float,
         tables: Mapping[str, Any] | None = None,
     ) -> Model:
         """Compile text, a Path, or a closed ModelSource snapshot."""
+        inputs = source.inputs if isinstance(source, Draft) else ()
+        if isinstance(source, Draft):
+            url = url or source.url
+            source = source._input()
         identity, text, imports = resolve_source(source, url=url, root=self._root)
         with self.operation(deadline=deadline):
             for name, data in (tables or {}).items():
@@ -187,11 +193,12 @@ class _Runtime:
                     result.source.url, result.source.text, result.source.imports
                 ),
                 result.compiler_version,
+                inputs,
             )
 
     def check(
         self,
-        source: str | Path | ModelSource,
+        source: str | Path | ModelSource | Draft,
         *,
         path: str | Path | None = None,
         url: str | None = None,
@@ -206,6 +213,9 @@ class _Runtime:
             raise TypeError("position must be a SourcePosition")
         if path is not None and url is not None:
             raise ValueError("Choose path or url")
+        if isinstance(source, Draft):
+            url = url or source.url
+            source = source._input()
         identity, text, imports = resolve_source(
             source,
             url=Path(path).resolve().as_uri() if path is not None else url,
@@ -246,7 +256,9 @@ class Model:
         imports: Mapping[str, str] | None,
         source: ModelSource,
         compiler_version: str,
+        inputs: tuple[DataInput, ...],
     ) -> None:
+        self._inputs = inputs
         self._source = source
         self.compiler_version = compiler_version
         self._owner = runtime
@@ -274,16 +286,18 @@ class Model:
             raise TypeError("malloy must be query text")
         if selection is not None and malloy is not None:
             raise ValueError("Choose a query selection or Malloy text")
+        inputs = selection.inputs if isinstance(selection, Fragment) else ()
         if isinstance(selection, Fragment):
             if selection.kind != "expression":
                 raise TypeError("Query selection requires a source/query expression")
-            malloy = "run: " + selection.text
+            malloy = "run: " + selection.render(materialize=True)
             selection = None
         if malloy is not None:
             return Query(
                 self,
                 QueryDescriptor(name="query", kind="run", location=None),
                 {"malloy": malloy},
+                inputs,
             )
         name = selection
         if name is None:
@@ -375,9 +389,14 @@ class Query:
     """A query selection that retains its model and binds values per call."""
 
     def __init__(
-        self, model: Model, info: QueryDescriptor, selection: str | dict[str, str]
+        self,
+        model: Model,
+        info: QueryDescriptor,
+        selection: str | dict[str, str],
+        inputs: tuple[DataInput, ...] = (),
     ) -> None:
         self._model = model
+        self._inputs = (*model._inputs, *inputs)
         self._selection = selection
         self.name, self.kind, self.location = info.name, info.kind, info.location
         self._info = info
@@ -431,6 +450,7 @@ class Query:
                     compiler_version=self._model.compiler_version,
                     preview_limit=limit,
                     _givens_json=json.dumps(encoded),
+                    _inputs=self._inputs,
                 )
                 raise ExecutionError(context, error) from error
 
