@@ -42,7 +42,7 @@ export function diagnostics(problems: readonly LogMessage[], locations?: Locatio
 export class ToolingError extends Error {
   constructor(
     message: string,
-    readonly diagnostics: Diagnostic[],
+    readonly diagnostics: Diagnostic[] = [],
   ) {
     super(message);
     this.name = "ToolingError";

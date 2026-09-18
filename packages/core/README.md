@@ -10,7 +10,7 @@ console.log(parseSource(source).symbols);
 console.log(formatSource(source).source);
 ```
 
-`CompiledModel.begin({ url, source?, connection: {name, dialect} })` returns a job.
+`CompiledModel.begin({ url, source?, documentKind?, connection: {name, dialect} })` returns a job.
 `job.step(fulfilled?)` returns needs or a result. Hosts supply URL text and Malloy
 field definitions for each schema request. The compiler owns language semantics,
 query descriptors, model snapshots, diagnostics, and ordered notebook cells.

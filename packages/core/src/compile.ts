@@ -1,13 +1,14 @@
+import type { DocumentKind } from "./source";
+import { createTranslator, createModel, createParse, connectionProblems } from "./upstream";
 import {
-  MalloyTranslator,
-  Model,
-  Parse,
+  type MalloyTranslator,
+  type Model,
   sqlKey,
   type ModelDef,
   type DocumentLocation,
   type PreparedQuery,
 } from "@malloydata/malloy";
-import { documentSource, sqlParts } from "./document";
+import { RUN_PREFIX, documentSource, sqlParts } from "./document";
 import { diagnostics, ToolingError, offsetDiagnostics } from "./diagnostics";
 import type { Task, SchemaNeed } from "./job";
 
@@ -17,6 +18,7 @@ type ParseUpdate = Parameters<MalloyTranslator["update"]>[0];
 export interface LoadOptions {
   url: URL;
   source?: string;
+  documentKind?: DocumentKind;
   connection: { name: string; dialect: string };
 }
 /** @title Translation */
@@ -33,7 +35,12 @@ export interface PreparedSQL {
   queries: PreparedQuery[];
 }
 
-export function* loadSource({ url, source: inputSource, connection }: LoadOptions) {
+export function* loadSource({
+  url,
+  source: inputSource,
+  connection,
+  documentKind = "model",
+}: LoadOptions) {
   function* read(url: string): Task<string> {
     const answers = yield { urls: [url], schemas: [] };
     const answer = answers.urls[url];
@@ -43,7 +50,7 @@ export function* loadSource({ url, source: inputSource, connection }: LoadOption
   }
   const document = inputSource ?? (yield* read(url.href));
   const imports = new Map<string, string>();
-  const { source, statements } = documentSource(document, url);
+  const { source, statements } = documentSource(document, url, documentKind);
   const locations = new Map<string, string>();
   let sequence = 0;
   function* compile(input: {
@@ -56,30 +63,20 @@ export function* loadSource({ url, source: inputSource, connection }: LoadOption
       root && inputSource === undefined ? url.href : `memory://pymalloy/compile-${sequence}.malloy`;
     const origin = root ? url.href : (input.location?.url ?? "memory://pymalloy/query.malloy");
     locations.set(identity, origin);
-    const translator = new MalloyTranslator(identity, url.href, {
+    const translator = createTranslator(identity, url.href, {
       urls: { ...Object.fromEntries(imports), [identity]: input.source },
     });
     const missingConnections = new Set<string>();
     for (;;) {
       const response = translator.translate(input.base?.definition);
       if (response.final) {
-        let problems = diagnostics(response.problems ?? [], locations).map((problem) =>
-          problem.code === "failed-to-fetch-table-schema" &&
-          problem.message === "import reference failure" &&
-          missingConnections.size
-            ? {
-                ...problem,
-                message: [...missingConnections]
-                  .map(
-                    (name) =>
-                      `Connection '${name}' is unavailable. This session provides '${connection.name}'.`,
-                  )
-                  .join("\n"),
-                data: { connections: [...missingConnections] },
-              }
-            : problem,
+        let problems = connectionProblems(
+          diagnostics(response.problems ?? [], locations),
+          missingConnections,
+          connection.name,
         );
-        if (input.location) problems = offsetDiagnostics(problems, input.location, 5);
+        if (input.location)
+          problems = offsetDiagnostics(problems, input.location, RUN_PREFIX.length);
         if (!response.modelDef || problems.some((p) => p.severity === "error")) {
           throw new ToolingError(
             problems.map((p) => p.message).join("\n") || "Malloy compilation failed",
@@ -87,7 +84,7 @@ export function* loadSource({ url, source: inputSource, connection }: LoadOption
           );
         }
         return {
-          model: new Model(
+          model: createModel(
             response.modelDef,
             response.problems ?? [],
             [...(input.base?.model.fromSources ?? []), ...(response.fromSources ?? [])],
@@ -114,9 +111,9 @@ export function* loadSource({ url, source: inputSource, connection }: LoadOption
           (errors.tables ??= {})[key] = rejectConnection(table.connectionName);
         else
           schemas.push({
+            kind: "table",
             key,
             connection: connection.name,
-            sql: `SELECT * FROM ${table.tablePath}`,
             tablePath: table.tablePath,
           });
       }
@@ -125,7 +122,8 @@ export function* loadSource({ url, source: inputSource, connection }: LoadOption
         const key = sqlKey(request.connection, request.selectStr);
         if (request.connection && request.connection !== connection.name)
           (errors.compileSQL ??= {})[key] = rejectConnection(request.connection);
-        else schemas.push({ key, connection: connection.name, sql: request.selectStr });
+        else
+          schemas.push({ kind: "sql", key, connection: connection.name, sql: request.selectStr });
       }
       const urls = response.urls ?? [];
       if (urls.length || schemas.length) {
@@ -142,9 +140,9 @@ export function* loadSource({ url, source: inputSource, connection }: LoadOption
         for (const need of schemas) {
           const answer = fulfilled.schemas[need.key];
           if (!answer) throw new Error(`Missing schema answer for '${need.key}'`);
-          const category = need.tablePath === undefined ? "compileSQL" : "tables";
+          const category = need.kind === "sql" ? "compileSQL" : "tables";
           if ("error" in answer) (errors[category] ??= {})[need.key] = answer.error;
-          else if (need.tablePath !== undefined)
+          else if (need.kind === "table")
             (update.tables ??= {})[need.key] = {
               type: "table",
               name: need.key,
@@ -182,7 +180,7 @@ export function* loadSource({ url, source: inputSource, connection }: LoadOption
     const queries: PreparedQuery[] = [];
     for (const embedded of statement.embeddedMalloyQueries) {
       const validated = yield* compile({
-        source: `run: ${embedded.query}`,
+        source: `${RUN_PREFIX}${embedded.query}`,
         base: translation,
         location: { url: url.href, range: embedded.malloyRange },
       });
@@ -203,8 +201,9 @@ export function* loadSource({ url, source: inputSource, connection }: LoadOption
     locations,
     url,
     document,
+    documentKind,
     imports,
-    parse: new Parse(translation.translator),
+    parse: createParse(translation.translator),
     connection,
   };
 }

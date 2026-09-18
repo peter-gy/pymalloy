@@ -11,6 +11,8 @@ export { ToolingError } from "./diagnostics";
 export {
   syntaxSource,
   type SyntaxNode,
+  type SyntaxOperation,
+  type SyntaxOperationKind,
   type ConcreteSyntax,
   type ScalarSyntax,
   type TableSyntax,

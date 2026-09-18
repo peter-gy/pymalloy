@@ -35,15 +35,13 @@ export interface QueryDescriptor {
 }
 export type QuerySelection = string | { malloy: string };
 /** @title QueryOptions */
-export interface QueryOptions {
+export interface QueryOptions extends OperationOptions {
   givens?: Record<string, GivenValue>;
 }
 /** @title OperationOptions */
 export interface OperationOptions {
   signal?: AbortSignal;
 }
-/** @title RunOptions */
-export interface RunOptions extends QueryOptions, OperationOptions {}
 /** @title DocumentOptions */
 export interface DocumentOptions extends QueryOptions {
   queries?: string[];
@@ -60,3 +58,5 @@ export type {
   GivenInfo,
   ImportInfo,
 } from "./metadata";
+
+export type { DocumentKind } from "./source";

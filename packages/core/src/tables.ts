@@ -1,8 +1,7 @@
-import { Parse, type MalloyTranslator } from "@malloydata/malloy";
-import type { ParserRuleContext } from "antlr4ts";
-import type { ParseTreeListener } from "antlr4ts/tree/ParseTreeListener.js";
+import { type MalloyTranslator } from "@malloydata/malloy";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
 import type { SourceRange } from "./metadata";
+import { createParse, parseTree, type NativeListener } from "./upstream";
 
 interface TableReference {
   connection: string;
@@ -14,18 +13,18 @@ interface TableReference {
 
 /** Native decoding paired with ANTLR offsets; upstream end ranges mix UTF-16 and codepoints. */
 export function tableReferences(translator: MalloyTranslator): TableReference[] {
-  const parsed = translator.parseStep.step(translator).parse;
+  const parsed = parseTree(translator);
   if (!parsed) return [];
   const metadata = new Map(
-    new Parse(translator).tablePathInfo.map((table) => {
+    createParse(translator).tablePathInfo.map((table) => {
       const start = table.range.toJSON().start;
       return [`${start.line}:${start.character}`, table];
     }),
   );
   if (!metadata.size) return [];
   const tables: TableReference[] = [];
-  const listener: ParseTreeListener & { enterExploreTable(context: ParserRuleContext): void } = {
-    enterExploreTable(context: ParserRuleContext) {
+  const listener: NativeListener = {
+    enterExploreTable(context) {
       const first = context.start;
       const last = context.stop!;
       const table = metadata.get(`${first.line - 1}:${first.charPositionInLine}`);

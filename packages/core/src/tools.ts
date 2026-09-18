@@ -1,21 +1,27 @@
+import { defaultSourceURL, type DocumentKind } from "./source";
 import { tableReferences } from "./tables";
-import { Malloy, MalloyTranslator, Parse } from "@malloydata/malloy";
-import type { ParserRuleContext } from "antlr4ts";
+import { Malloy } from "@malloydata/malloy";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
-import type { ParseTreeListener } from "antlr4ts/tree/ParseTreeListener.js";
-import { formatMalloy } from "./upstream";
+import {
+  formatMalloy,
+  createTranslator,
+  createParse,
+  parseTree,
+  type NativeListener,
+} from "./upstream";
 import type { SourcePosition, SourceRange, ImportInfo } from "./metadata";
 import { diagnostics, ToolingError, offsetDiagnostics, type Diagnostic } from "./diagnostics";
 
-import { documentSource } from "./document";
+import { RUN_PREFIX, documentSource } from "./document";
 
 export const compilerVersion = Malloy.version;
 export type { SourcePosition } from "./metadata";
-const sourceURL = new URL("memory://pymalloy/model.malloy");
+const sourceURL = new URL(defaultSourceURL);
 
 /** @title ParseOptions */
 export interface ParseOptions {
   url?: URL;
+  documentKind?: DocumentKind;
   position?: SourcePosition;
 }
 
@@ -68,7 +74,7 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
   if (options.position) validatePosition(options.position);
   let document;
   try {
-    document = documentSource(source, url);
+    document = documentSource(source, url, options.documentKind);
   } catch (error) {
     if (!(error instanceof ToolingError)) throw error;
     return {
@@ -82,10 +88,10 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
       help: null,
     };
   }
-  const translator = new MalloyTranslator(url.href, url.href, {
+  const translator = createTranslator(url.href, url.href, {
     urls: { [url.href]: document.source },
   });
-  const parsed = new Parse(translator);
+  const parsed = createParse(translator);
   const symbol = (value: (typeof parsed.symbols)[number]): SymbolInfo => ({
     name: value.name,
     type: value.type,
@@ -113,7 +119,7 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
     imports.map((value) => `${value.range.start.line}:${value.range.start.character}`),
   );
   const importReferences = new Map<string, ParsedImport["reference"]>();
-  const syntax = translator.parseStep.step(translator).parse;
+  const syntax = parseTree(translator);
   if (syntax && imports.length) {
     const authoredOffsets = [0];
     let offset = 0;
@@ -121,10 +127,8 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
       offset += 1;
       if (character === "\n") authoredOffsets.push(offset);
     }
-    const listener: ParseTreeListener & {
-      enterImportStatement(context: ParserRuleContext & { importURL(): ParserRuleContext }): void;
-    } = {
-      enterImportStatement: (context: ParserRuleContext & { importURL(): ParserRuleContext }) => {
+    const listener: NativeListener = {
+      enterImportStatement: (context) => {
         const start = `${context.start.line - 1}:${context.start.charPositionInLine}`;
         if (!importStarts.has(start)) return;
         const target = context.importURL();
@@ -145,16 +149,16 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
   for (const statement of document.statements ?? []) {
     if (statement.type !== "sql") continue;
     for (const embedded of statement.embeddedMalloyQueries) {
-      const child = new MalloyTranslator(url.href, url.href, {
-        urls: { [url.href]: `run: ${embedded.query}` },
+      const child = createTranslator(url.href, url.href, {
+        urls: { [url.href]: `${RUN_PREFIX}${embedded.query}` },
       });
-      const query = new Parse(child);
+      const query = createParse(child);
       void query.symbols;
       problems.push(
         ...offsetDiagnostics(
           diagnostics(child.problems()),
           { url: url.href, range: embedded.malloyRange },
-          5,
+          RUN_PREFIX.length,
         ),
       );
     }

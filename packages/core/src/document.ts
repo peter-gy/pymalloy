@@ -1,9 +1,12 @@
+import type { DocumentKind } from "./source";
 import type { DocumentRange } from "@malloydata/malloy";
 import { MalloySQLParser } from "@malloydata/malloy-sql";
 import { diagnostics, ToolingError } from "./diagnostics";
 
-export function documentSource(document: string, url: URL) {
-  if (!/\.(malloynb|malloysql)$/.test(url.pathname)) return { source: document };
+export const RUN_PREFIX = "run: ";
+
+export function documentSource(document: string, url: URL, kind: DocumentKind = "model") {
+  if (kind === "model") return { source: document };
   const sourceLines = document.split(/\r?\n/);
   // The document parser counts UTF-16 units, while Malloy reports Unicode code points.
   const range = (value: DocumentRange): DocumentRange => {

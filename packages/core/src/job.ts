@@ -1,12 +1,21 @@
 import type { FieldDef } from "@malloydata/malloy";
 
-/** @title SchemaNeed */
-export interface SchemaNeed {
+/** @title TableSchemaNeed */
+export interface TableSchemaNeed {
+  kind: "table";
+  key: string;
+  connection: string;
+  tablePath: string;
+}
+/** @title SQLSchemaNeed */
+export interface SQLSchemaNeed {
+  kind: "sql";
   key: string;
   connection: string;
   sql: string;
-  tablePath?: string;
 }
+/** @title SchemaNeed */
+export type SchemaNeed = TableSchemaNeed | SQLSchemaNeed;
 /** @title Needs */
 export interface Needs {
   urls: string[];

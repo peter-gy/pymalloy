@@ -16,10 +16,18 @@ export type {
   QueryOptions,
   DocumentOptions,
   OperationOptions,
-  RunOptions,
   ModelSource,
 } from "./types";
-export { Job, type Needs, type Fulfilled, type Step, type Task } from "./job";
+export {
+  Job,
+  type Needs,
+  type SchemaNeed,
+  type TableSchemaNeed,
+  type SQLSchemaNeed,
+  type Fulfilled,
+  type Step,
+  type Task,
+} from "./job";
 export type { GivenValue } from "@malloydata/malloy";
 export type {
   SourcePosition,
@@ -42,3 +50,5 @@ export type {
 export type { NativeMetadata, AnnotatedObject, RoutedAnnotation } from "./upstream";
 export { Model, Query, type ModelDriver } from "./runtime";
 export { Operations } from "./operations";
+
+export { defaultSourceURL, defaultSourceFilename, documentKind, type DocumentKind } from "./source";

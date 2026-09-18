@@ -1,4 +1,5 @@
-import { isMalloyText } from "./selection";
+import type { DocumentKind } from "./source";
+import { isMalloyText, selectQuery } from "./selection";
 import type { Result as MalloyResult } from "@malloydata/malloy-interfaces";
 import { type GivenValue, type PreparedQuery, type PreparedResult } from "@malloydata/malloy";
 import { Job, type Task } from "./job";
@@ -6,7 +7,7 @@ import type { QueryDescriptor, QuerySelection, QueryOptions, DocumentOptions } f
 import { loadSource, type LoadOptions, type LoadedSource, type PreparedSQL } from "./compile";
 import { ToolingError, toolingError, plain } from "./diagnostics";
 import { inspectModel, referenceAt, type Inspection, type ReferenceInfo } from "./inspect";
-import type { NativeMetadata } from "./upstream";
+import { exportedViews, type NativeMetadata } from "./upstream";
 import { compilerVersion, parseSource, type ParseReport, type SourcePosition } from "./tools";
 
 export interface MarkdownCell {
@@ -22,6 +23,7 @@ export type DocumentCell = MarkdownCell | QueryCell;
 
 /** @title ModelSource */
 export interface ModelSource {
+  documentKind: DocumentKind;
   url: string;
   text: string;
   imports: Record<string, string>;
@@ -40,7 +42,7 @@ export class CompiledModel {
     const { model, sqlQueries } = details;
     const add = (name: string, entry: QueryEntry) => {
       if (this.entries.has(name)) {
-        throw new Error(
+        throw new ToolingError(
           `Ambiguous query selector '${name}'. Rename the conflicting query, source, or view.`,
         );
       }
@@ -51,14 +53,8 @@ export class CompiledModel {
       add(`run:${index}`, { kind: "run", query: model.getPreparedQueryByIndex(index) });
     for (const name of named)
       add(name, { kind: "named", query: model.getPreparedQueryByName(name) });
-    for (const source of model.exportedExplores) {
-      for (const field of source.structDef.fields) {
-        if (field.type === "turtle" && field.accessModifier === undefined) {
-          const view = field.as ?? field.name;
-          add(`${source.name}.${view}`, { kind: "view", source: source.name, view });
-        }
-      }
-    }
+    for (const { source, view } of exportedViews(model))
+      add(`${source}.${view}`, { kind: "view", source, view });
     for (const [index, prepared] of sqlQueries.entries())
       add(`sql:${index}`, { kind: "sql", prepared });
     this.queries = Object.freeze(
@@ -83,6 +79,7 @@ export class CompiledModel {
 
   source(): ModelSource {
     return {
+      documentKind: this.details.documentKind,
       url: this.details.url.href,
       text: this.details.document,
       imports: Object.fromEntries(this.details.imports),
@@ -136,25 +133,12 @@ export class CompiledModel {
       const extended = yield* compile({ base: this.details, source: selection.malloy });
       return this.output("query", extended.model.preparedQuery.getPreparedResult({ givens }));
     }
-    const name =
-      selection ??
-      [...this.entries].findLast(([, entry]) => entry.kind === "run")?.[0] ??
-      (this.entries.size === 1 ? this.entries.keys().next().value : undefined);
-    if (name === undefined) {
-      throw new Error(
-        `Choose a query from: ${this.queries.map((q) => q.name).join(", ") || "the model has no queries"}`,
-      );
-    }
-    const entry = this.entries.get(name);
-    if (!entry) {
-      throw new Error(
-        `Unknown query '${name}'. Choose from: ${this.queries.map((q) => q.name).join(", ")}`,
-      );
-    }
+    const { name } = selectQuery(this.queries, selection);
+    const entry = this.entries.get(name)!;
     if (entry.kind === "sql") {
       const { prepared } = entry;
       if (prepared.connection !== this.details.connection.name)
-        throw new Error(`SQL cell '${name}' requires the session connection`);
+        throw new ToolingError(`SQL cell '${name}' requires the session connection`);
       let sql = prepared.parts[0];
       for (const [index, query] of prepared.queries.entries()) {
         sql += `(${query.getPreparedResult({ givens }).sql})${prepared.parts[index + 1]}`;
@@ -183,7 +167,7 @@ export class CompiledModel {
 
   private output(name: string, result: PreparedResult, line?: number) {
     if (result.connectionName !== this.details.connection.name)
-      throw new Error(`Query '${name}' requires the session connection`);
+      throw new ToolingError(`Query '${name}' requires the session connection`);
     let metadata: MalloyResult | undefined;
     return {
       name,
@@ -211,8 +195,9 @@ export class CompiledModel {
 
   document(options: DocumentOptions = {}): Job<DocumentCell[]> {
     if (options.all && options.queries !== undefined)
-      throw new Error("Choose query names or all: true");
-    return new Job(this.documentCells(structuredClone(options)));
+      throw new ToolingError("Choose query names or all: true");
+    const { queries, all, givens } = options;
+    return new Job(this.documentCells(structuredClone({ queries, all, givens })));
   }
 
   private *documentCells(options: DocumentOptions): Task<DocumentCell[]> {
@@ -278,7 +263,7 @@ function* checkTask(options: CheckOptions): Task<CheckReport> {
   if (source === undefined) {
     const answer = (yield { urls: [options.url.href], schemas: [] }).urls[options.url.href];
     if (!answer || "error" in answer)
-      throw new Error(answer && "error" in answer ? answer.error : "Missing source");
+      throw new ToolingError(answer && "error" in answer ? answer.error : "Missing source");
     source = answer.value;
   }
   const parsed = parseSource(source, options);
@@ -302,7 +287,23 @@ function* checkTask(options: CheckOptions): Task<CheckReport> {
     };
   } catch (error) {
     if (error instanceof ToolingError) {
-      return { ...report, ok: false, diagnostics: error.diagnostics };
+      return {
+        ...report,
+        ok: false,
+        diagnostics: error.diagnostics.length
+          ? error.diagnostics
+          : [
+              {
+                code: "model-error",
+                severity: "error",
+                message: error.message,
+                location: null,
+                replacement: null,
+                errorTag: null,
+                data: null,
+              },
+            ],
+      };
     }
     throw error;
   }

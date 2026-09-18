@@ -1,3 +1,4 @@
+import type { Diagnostic } from "./diagnostics";
 import type { Annotation, ModelInfo, SourceInfo, FieldInfo } from "@malloydata/malloy-interfaces";
 import {
   Model,
@@ -6,12 +7,47 @@ import {
   routeOf,
   payloadOf,
   type SourceDef,
-  type MalloyTranslator,
+  MalloyTranslator,
+  Parse,
   type ModelDef,
   type FieldDef,
   type AtomicTypeDef,
 } from "@malloydata/malloy";
-import { prettify } from "@malloydata/malloy/internal";
+import { prettify, type MalloyParserListener } from "@malloydata/malloy/internal";
+
+/** Pinned generated listener types; grammar changes fail type checking here. */
+export type NativeListener = MalloyParserListener;
+export type NativeContext<Event extends keyof NativeListener> = Parameters<
+  NonNullable<NativeListener[Event]>
+>[0];
+
+export function parseTree(
+  translator: MalloyTranslator,
+): ReturnType<MalloyTranslator["parseStep"]["step"]>["parse"] {
+  return translator.parseStep.step(translator).parse;
+}
+
+export function createTranslator(...args: ConstructorParameters<typeof MalloyTranslator>) {
+  return new MalloyTranslator(...args);
+}
+
+export function createModel(...args: ConstructorParameters<typeof Model>) {
+  return new Model(...args);
+}
+
+export function createParse(...args: ConstructorParameters<typeof Parse>) {
+  return new Parse(...args);
+}
+
+export function exportedViews(model: Model): Array<{ source: string; view: string }> {
+  return model.exportedExplores.flatMap((source) =>
+    source.structDef.fields.flatMap((field) =>
+      field.type === "turtle" && field.accessModifier === undefined
+        ? [{ source: source.name, view: field.as ?? field.name }]
+        : [],
+    ),
+  );
+}
 
 // Malloy exposes formatting through its experimental subpath. Keep that dependency
 // pinned while translation and metadata use the public API.
@@ -123,5 +159,29 @@ export function importedModel(translator: MalloyTranslator, url: string): Model 
   const dependency = translator.translatorForDependency(url);
   if (!dependency) return undefined;
   const definition = dependency.translate().modelDef;
-  return definition ? new Model(definition, dependency.problems(), [url]) : undefined;
+  return definition ? createModel(definition, dependency.problems(), [url]) : undefined;
+}
+
+/** Malloy replaces unavailable table-connection details with this fallback diagnostic. */
+export function connectionProblems(
+  problems: Diagnostic[],
+  missing: Set<string>,
+  available: string,
+): Diagnostic[] {
+  return problems.map((problem) =>
+    problem.code === "failed-to-fetch-table-schema" &&
+    problem.message === "import reference failure" &&
+    missing.size
+      ? {
+          ...problem,
+          message: [...missing]
+            .map(
+              (name) =>
+                `Connection '${name}' is unavailable. This session provides '${available}'.`,
+            )
+            .join("\n"),
+          data: { connections: [...missing] },
+        }
+      : problem,
+  );
 }
