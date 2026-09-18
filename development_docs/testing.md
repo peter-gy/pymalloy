@@ -30,7 +30,7 @@ Build the runtime assets and a wheel before starting the browser suite:
 ```sh
 pnpm build
 uv sync --frozen --all-packages --all-extras
-uv build --package pymalloy
+uv build --package pymalloy --no-sources
 pnpm --filter @pymalloy/e2e install-browser
 pnpm e2e
 ```

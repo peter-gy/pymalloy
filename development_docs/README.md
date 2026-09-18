@@ -23,6 +23,31 @@ runtime assets, and builds the public site.
 | Validate behavior across runtimes     | [Testing and compatibility](testing.md)       |
 | Build distributions or publish        | [Build and release](releasing.md)             |
 
+## TypeScript imports
+
+Use extensionless relative imports in bundled TypeScript:
+
+```ts
+import { documentSource, sqlParts } from "./document";
+```
+
+Package and application configs inherit `tsconfig.base.json`. It uses
+`moduleResolution: "Bundler"` and `module: "ESNext"` because Vite+ builds the
+runtime code. Each package declares its own host types and libraries. The root
+Oxlint configuration enforces the convention for relative module imports and
+exports, including type imports.
+
+Keep workspace dependencies as package names with `workspace:*` versions.
+`vp pack` emits the public JavaScript and declarations referenced by package
+exports, including their runtime file extensions. `pnpm canary` checks installed
+packages under both NodeNext and Bundler resolution without skipping declaration
+checks, then executes Node and builds a browser consumer.
+
+Explicit extensions remain on real assets, external package subpaths, and the
+anti-slop tooling executed directly by Node/Oxlint. Those paths resolve actual
+files. Python schema generation uses source paths relative to its own config to
+keep protocol records independent of declaration bundling.
+
 ## Validate a change
 
 ```sh

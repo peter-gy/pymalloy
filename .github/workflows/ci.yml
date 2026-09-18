@@ -49,7 +49,7 @@ jobs:
           pnpm records
           git diff --exit-code -- packages/python/schema/protocol.json packages/python/src/pymalloy/_records.py
       - name: Build Python distributions
-        run: uv build --package pymalloy
+        run: uv build --package pymalloy --no-sources
       - name: Check distribution metadata
         run: uv run --frozen --only-group release twine check dist/pymalloy-*.whl dist/pymalloy-*.tar.gz
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
