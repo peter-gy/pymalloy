@@ -15,12 +15,12 @@ Python, and uv versions from `.node-version`, `.python-version`, and
 Build before syncing the Python workspace. The build compiles JavaScript, stages Python
 runtime assets, and builds the public site.
 
-| Task                              | Start here                                    |
-| --------------------------------- | --------------------------------------------- |
-| Choose the owner for a change     | [Architecture and ownership](architecture.md) |
-| Change widget or process messages | [Protocols and lifecycle](protocol.md)        |
-| Validate behavior across runtimes | [Testing and compatibility](testing.md)       |
-| Build distributions or publish    | [Build and release](releasing.md)             |
+| Task                               | Start here                                    |
+| ---------------------------------- | --------------------------------------------- |
+| Choose the owner for a change      | [Architecture and ownership](architecture.md) |
+| Change widget or compiler messages | [Protocols and lifecycle](protocol.md)        |
+| Validate behavior across runtimes  | [Testing and compatibility](testing.md)       |
+| Build distributions or publish     | [Build and release](releasing.md)             |
 
 ## Validate a change
 
@@ -42,6 +42,9 @@ Build first to provide workspace package declarations.
 Keep the anti-slop rules and license together in `tools/oxlint/anti-slop`.
 `vite.config.ts` documents exceptions for runtime decoding. Fix findings at their
 owning boundary before adding exceptions.
+
+Run `pnpm records` after changing compiler or widget records and commit both
+the generated schema and Python records. CI checks generation for drift.
 
 Rebuild after changes to generated-asset inputs. Browser, widget, lifecycle, and
 cross-language changes also require the [browser suite](testing.md#browser-tests).

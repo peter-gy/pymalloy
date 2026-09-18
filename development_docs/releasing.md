@@ -8,7 +8,7 @@ uv build --package pymalloy
 ```
 
 pnpm builds in dependency order. `packages/python/build.mjs` copies the widget,
-compiler bridge, and production dependency notices into `pymalloy/_assets`.
+compiler, and production dependency notices into `pymalloy/_assets`.
 Hatch includes them in the wheel and source archive. Rebuild after JavaScript
 source or dependency changes.
 
@@ -18,10 +18,14 @@ To build just Python's JavaScript dependencies:
 pnpm --filter '@pymalloy/python...' build
 ```
 
+The widget build emits one minified module with its default export preserved.
+Exported notebooks and Pyodide consume this self-contained module. Keep the
+renderer features and stylesheet in the wheel when changing bundling options.
+
 ## Validate distributions
 
 CI tests isolated installs of the wheel and a wheel rebuilt from the source
-archive. It checks base imports, a native query, and
+archive. It checks base imports, a server query, and
 [browser behavior against the built wheel](testing.md#browser-tests).
 
 Check distribution metadata:

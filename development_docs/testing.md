@@ -5,22 +5,22 @@ Use the smallest boundary that proves the contract, then check affected runtimes
 
 ## Choose tests by contract
 
-| Contract                                                     | Primary evidence                                   | Additional boundary                                |
-| ------------------------------------------------------------ | -------------------------------------------------- | -------------------------------------------------- |
-| Malloy parsing, imports, query selection, and document order | `packages/core/tests`                              | Python tooling and export tests                    |
-| Source coordinates, diagnostics, inspection, and formatting  | Core tooling tests and Python `test_tooling.py`    | Widget error recovery in a browser                 |
-| Native file resolution and database identifiers              | Node session tests and Python `test_runtime.py`    | Exported notebook execution from another directory |
-| Nested values, exact integers, dates, and nulls              | Node/Python result tests and browser Arrow tests   | Pyodide numeric readback                           |
-| Model reuse, queued calls, close, and borrowed transactions  | Node session tests and Python runtime tests        | Widget multiple-view and worker lifecycle cases    |
-| Input revisions, state snapshots, and trait validation       | Python `test_widget.py` and widget lifecycle tests | marimo, JupyterLab, and Pyodide synchronization    |
-| Ordered Markdown/SQL cells and COPY writes                   | Python document, marimo, and Jupyter tests         | Executed notebooks and upstream samples            |
-| Bundled assets, optional imports, and distribution contents  | Isolated wheel/source-archive installs             | Browser tests against the installed wheel          |
+| Contract                                                     | Primary evidence                                   | Additional boundary                                   |
+| ------------------------------------------------------------ | -------------------------------------------------- | ----------------------------------------------------- |
+| Malloy parsing, imports, query selection, and document order | `packages/core/tests`                              | Python tooling and export tests                       |
+| Source coordinates, diagnostics, inspection, and formatting  | Core tooling tests and Python `test_tooling.py`    | MalloyWidget error recovery in a browser              |
+| Native file resolution and database identifiers              | Node session tests and Python `test_runtime.py`    | Exported notebook execution from another directory    |
+| Nested values, exact integers, dates, and nulls              | Node/Python result tests and browser Arrow tests   | Pyodide numeric readback                              |
+| Model reuse, queued calls, close, and borrowed transactions  | Node session tests and Python runtime tests        | MalloyWidget multiple-view and worker lifecycle cases |
+| Input revisions, state snapshots, and trait validation       | Python `test_widget.py` and widget lifecycle tests | marimo, JupyterLab, and Pyodide synchronization       |
+| Ordered Markdown/SQL cells and COPY writes                   | Python document, marimo, and Jupyter tests         | Executed notebooks and upstream samples               |
+| Bundled assets, optional imports, and distribution contents  | Isolated wheel/source-archive installs             | Browser tests against the installed wheel             |
 
 For lifecycle races, control when work settles and assert which result survives.
 Avoid sleeps, private field layouts, and mirrored implementation constants.
 
 `pnpm test` covers core, Node, Arrow conversion, and widget lifecycle. `pytest`
-runs `packages/python/tests`, including native processes and exported notebooks.
+runs `packages/python/tests`, including compiler processes and exported notebooks.
 Build assets and install Python extras first.
 
 ## Browser tests
@@ -55,7 +55,7 @@ Playwright starts and stops three servers defined in
 
 | Host               | Port  | Boundary exercised                                                                                |
 | ------------------ | ----- | ------------------------------------------------------------------------------------------------- |
-| marimo             | 28441 | Widget rendering, reactive Python readback, and input updates                                     |
+| marimo             | 28441 | MalloyWidget rendering, reactive Python readback, and input updates                               |
 | JupyterLab         | 28442 | Kernel communication, several views of one widget, recovery, and close                            |
 | Standalone Pyodide | 28443 | Base-wheel installation in browser Python, binary inputs, precise readback, and browser execution |
 
@@ -107,7 +107,7 @@ uv run python packages/python/tests/check_samples.py /path/to/malloy-samples \
 
 `results.json` records the checkout revision and per-source outcomes. The checker
 verifies deterministic exports, executes marimo and Jupyter notebooks, and
-compares results by query selector against native-model SQL. `--runtime` also
+compares results by query selector against server-model SQL. `--runtime` also
 compares `Model.run()`. Each query records which consumers passed.
 
 Comparisons preserve column names, row and nested-list order, and exact floats.
