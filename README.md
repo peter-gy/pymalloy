@@ -10,9 +10,9 @@ pip install pymalloy
 Display a query in a Jupyter or marimo notebook:
 
 ```python
-from pymalloy import Malloy
+from pymalloy import MalloyWidget
 
-query = Malloy("""
+query = MalloyWidget("""
     run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }
 """)
 query
@@ -22,7 +22,7 @@ The widget shows `42`. It runs in the browser and downloads DuckDB WebAssembly
 on first use.
 
 - [Explore files and read widget results](https://peter-gy.github.io/pymalloy/guide/widget)
-- [Query files, dataframes, and databases from Python](https://peter-gy.github.io/pymalloy/guide/native-python)
+- [Query files, dataframes, and databases from Python](https://peter-gy.github.io/pymalloy/guide/server-python)
 - [Export marimo or Jupyter notebooks](https://peter-gy.github.io/pymalloy/guide/export)
 - [Check and inspect source](https://peter-gy.github.io/pymalloy/guide/language-tools)
 - [Use the JavaScript APIs](https://peter-gy.github.io/pymalloy/reference/browser)

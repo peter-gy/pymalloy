@@ -1,19 +1,22 @@
 # PyMalloy
 
-PyMalloy runs Malloy in a browser widget, in native Python or Node sessions, and
+PyMalloy runs Malloy in a browser widget, in server-side Python or native Node sessions, and
 in exported notebooks. Malloy owns language semantics. Runtime adapters own
 DuckDB execution, data access, and resource lifetime.
 
 ## Ownership
 
-- `packages/core` holds compiler contracts and ordered document cells. Inject URL
-  readers and schema discovery. Keep filesystem and database runtime APIs in adapters.
-- `packages/node` owns native Node sessions and file-path binding.
+- `packages/core` holds compiler jobs and ordered document cells. Hosts fulfil source
+  and field-schema requests. Keep filesystem and database runtime APIs in adapters.
+- `packages/duckdb` owns shared DuckDB type conversion and result materialization.
+- `packages/node` owns native Node sessions and native DuckDB data access.
   `packages/browser` owns DuckDB WebAssembly workers and virtual files.
-- `packages/widget` owns anywidget synchronization and rendering. `Malloy` in
+- `packages/widget` owns anywidget synchronization and rendering. `MalloyWidget` in
   `packages/python` owns Python inputs and detached state snapshots.
-- `pymalloy.server` owns native Python dependencies, connections, deadlines, and
-  the Deno compiler process. Keep the base widget import usable with its base dependencies.
+- `packages/protocol` owns Python wire records shared by the widget and server.
+- `packages/server` owns the bundled Deno compiler service and framed stdin/stdout.
+- `pymalloy._server` owns optional server dependencies, the Deno process, Python
+  DuckDB connections, and deadlines. Keep the base widget import Deno-free.
 - Exporters own format-specific serialization and reproducible notebook data access.
 - `apps` compose packages. Public guides and reference live in `docs`, contributor
   guidance in `development_docs`, and the public site's configuration in `apps/docs`.
@@ -26,7 +29,8 @@ DuckDB execution, data access, and resource lifetime.
 - Give connections, workers, models, processes, and listeners explicit owners.
   Preserve caller ownership of borrowed connections and their transactions.
 - Bind asynchronous widget results to the input revision that produced them.
-  Closing a widget or session must settle work and release its owned resources.
+  Closing a widget, Python model, or TypeScript session must settle work and
+  release its owned resources.
 - Preserve integer precision and nested values across runtime and widget boundaries.
 - Generated notebook bytes must be deterministic for the same inputs, schemas,
   options, output path, and dependency versions. Keep COPY ordering intact.
