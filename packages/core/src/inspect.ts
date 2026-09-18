@@ -1,7 +1,14 @@
-import type { Model, Parse } from "@malloydata/malloy";
+import type { QueryDescriptor } from "./types.js";
+import type { Model, MalloyTranslator, ModelDef } from "@malloydata/malloy";
 import { diagnostics, plain, type Locations, type Diagnostic } from "./diagnostics.js";
 import { validatePosition } from "./tools.js";
-import type { AnnotationInfo, GivenInfo, ImportInfo, Location, Position } from "./metadata.js";
+import type {
+  AnnotationInfo,
+  GivenInfo,
+  ImportInfo,
+  SourceLocation,
+  SourcePosition,
+} from "./metadata.js";
 import {
   givenDetails,
   importedModel,
@@ -10,25 +17,29 @@ import {
   type NativeMetadata,
 } from "./upstream.js";
 
+/** @title Inspection */
 export interface Inspection {
-  native: NativeMetadata;
-  queries: string[];
+  reference?: ReferenceInfo["reference"];
+  import?: ReferenceInfo["import"];
+  model: NativeMetadata;
+  queries: QueryDescriptor[];
   givens: GivenInfo[];
   annotations: AnnotationInfo[];
-  model_annotations: AnnotationInfo[];
+  modelAnnotations: AnnotationInfo[];
   dependencies: string[];
   imports: ImportInfo[];
   diagnostics: Diagnostic[];
 }
 
+/** @title ReferenceInfo */
 export interface ReferenceInfo {
   reference: {
     text: string;
     kind: string;
-    location: Location;
-    definition_location: Location | null;
-    definition_type: string;
-    default_text: string | null;
+    location: SourceLocation;
+    definitionLocation: SourceLocation | null;
+    definitionType: string;
+    defaultText: string | null;
     annotations: AnnotationInfo[];
   } | null;
   import: ImportInfo | null;
@@ -45,26 +56,27 @@ function annotations(value: Model["annotations"]): AnnotationInfo[] {
 
 export function inspectModel(
   model: Model,
-  queries: readonly string[],
+  queries: readonly QueryDescriptor[],
   locations: Locations,
   url: URL,
+  definition: ModelDef,
 ): Inspection {
   return plain(
     {
-      native: nativeMetadata(model),
+      model: nativeMetadata(model, definition),
       queries: [...queries],
       givens: [...model.givens.values()].map((given) => ({
         name: given.name,
-        ...givenDetails(model, given.name),
+        ...givenDetails(model, definition, given.name),
         location: given.location ?? null,
         annotations: annotations(given.annotations),
       })),
       annotations: annotations(model.annotations),
-      model_annotations: annotations(model.modelAnnotations),
+      modelAnnotations: annotations(model.modelAnnotations),
       dependencies: [
         ...new Set(model.fromSources.map((source) => locations.get(source) ?? source)),
       ].filter((source) => source !== url.href),
-      imports: modelImports(model),
+      imports: modelImports(definition),
       diagnostics: diagnostics(model.problems, locations),
     },
     locations,
@@ -73,15 +85,15 @@ export function inspectModel(
 
 export function referenceAt(
   model: Model,
-  parse: Parse,
-  position: Position & { url?: URL },
+  translator: MalloyTranslator,
+  position: SourcePosition & { url?: URL },
   locations: Locations,
   url: URL,
 ): ReferenceInfo {
   validatePosition(position);
   const requestedURL = position.url?.href ?? url.href;
   if (requestedURL !== url.href) {
-    const imported = importedModel(parse, requestedURL);
+    const imported = importedModel(translator, requestedURL);
     if (!imported) return { reference: null, import: null };
     model = imported;
   }
@@ -94,9 +106,9 @@ export function referenceAt(
             text: reference.text,
             kind: reference.kind,
             location: reference.location,
-            definition_location: reference.definitionLocation ?? null,
-            definition_type: reference.definitionType,
-            default_text: reference.defaultText ?? null,
+            definitionLocation: reference.definitionLocation ?? null,
+            definitionType: reference.definitionType,
+            defaultText: reference.defaultText ?? null,
             annotations: annotations(reference.annotations),
           }
         : null,

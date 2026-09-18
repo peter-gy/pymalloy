@@ -1,71 +1,87 @@
-import { type GivenValue, type PreparedQuery } from "@malloydata/malloy";
-import { loadSource, type LoadOptions } from "./compile.js";
-import { ToolingError, toolingError } from "./diagnostics.js";
+import { isMalloyText } from "./selection.js";
+import type { Result as MalloyResult } from "@malloydata/malloy-interfaces";
+import { type GivenValue, type PreparedQuery, type PreparedResult } from "@malloydata/malloy";
+import { Job, type Task } from "./job.js";
+import type { QueryDescriptor, QuerySelection, QueryOptions, DocumentOptions } from "./types.js";
+import { loadSource, type LoadOptions, type LoadedSource, type PreparedSQL } from "./compile.js";
+import { ToolingError, toolingError, plain } from "./diagnostics.js";
 import { inspectModel, referenceAt, type Inspection, type ReferenceInfo } from "./inspect.js";
 import type { NativeMetadata } from "./upstream.js";
-import { compilerVersion, parseSource, type ParseReport, type Position } from "./tools.js";
+import { compilerVersion, parseSource, type ParseReport, type SourcePosition } from "./tools.js";
 
-export type Cell =
-  | { kind: "markdown"; text: string }
-  | {
-      kind: "query";
-      name: string;
-      sql: string;
-    };
+export interface MarkdownCell {
+  kind: "markdown";
+  text: string;
+}
+export interface QueryCell {
+  kind: "query";
+  name: string;
+  sql: string;
+}
+export type DocumentCell = MarkdownCell | QueryCell;
 
-export interface SourceBundle {
+/** @title ModelSource */
+export interface ModelSource {
   url: string;
   text: string;
   imports: Record<string, string>;
 }
 
-export class CompiledModel {
-  private readonly runs: string[];
-  private readonly named: string[];
-  private readonly views = new Map<string, { source: string; view: string }>();
-  private readonly sqlStatements;
-  private readonly sqlNames: string[];
-  readonly queries: readonly string[];
+type QueryEntry =
+  | { kind: "run" | "named"; query: PreparedQuery }
+  | { kind: "view"; source: string; view: string; query?: PreparedQuery }
+  | { kind: "sql"; prepared: PreparedSQL };
 
-  private constructor(private readonly details: Awaited<ReturnType<typeof loadSource>>) {
-    const { model, statements } = details;
-    const { named, unnamed } = model.queries();
-    this.named = named;
-    this.runs = Array.from({ length: unnamed }, (_, i) => `run:${i + 1}`);
-    const selectors = new Set<string>();
-    const addSelector = (selector: string) => {
-      if (selectors.has(selector)) {
+export class CompiledModel {
+  private readonly entries = new Map<string, QueryEntry>();
+  readonly queries: readonly QueryDescriptor[];
+
+  private constructor(private readonly details: LoadedSource) {
+    const { model, sqlQueries } = details;
+    const add = (name: string, entry: QueryEntry) => {
+      if (this.entries.has(name)) {
         throw new Error(
-          `Ambiguous query selector '${selector}'. Rename the conflicting query, source, or view.`,
+          `Ambiguous query selector '${name}'. Rename the conflicting query, source, or view.`,
         );
       }
-      selectors.add(selector);
+      this.entries.set(name, entry);
     };
-    for (const selector of [...this.runs, ...named]) addSelector(selector);
+    const { named, unnamed } = model.queries();
+    for (let index = 0; index < unnamed; index++)
+      add(`run:${index}`, { kind: "run", query: model.getPreparedQueryByIndex(index) });
+    for (const name of named)
+      add(name, { kind: "named", query: model.getPreparedQueryByName(name) });
     for (const source of model.exportedExplores) {
       for (const field of source.structDef.fields) {
         if (field.type === "turtle" && field.accessModifier === undefined) {
           const view = field.as ?? field.name;
-          const selector = `${source.name}.${view}`;
-          addSelector(selector);
-          this.views.set(selector, {
-            source: source.name,
-            view,
-          });
+          add(`${source.name}.${view}`, { kind: "view", source: source.name, view });
         }
       }
     }
-    this.sqlStatements = statements?.filter((statement) => statement.type === "sql") ?? [];
-    this.sqlNames = this.sqlStatements.map((_, i) => `sql:${i + 1}`);
-    for (const selector of this.sqlNames) addSelector(selector);
-    this.queries = Object.freeze([...selectors]);
+    for (const [index, prepared] of sqlQueries.entries())
+      add(`sql:${index}`, { kind: "sql", prepared });
+    this.queries = Object.freeze(
+      [...this.entries].map(([name, entry]) => {
+        const location =
+          entry.kind === "run" || entry.kind === "named" ? entry.query.location : undefined;
+        return {
+          name,
+          kind: entry.kind,
+          location: location ? plain(location, details.locations) : null,
+        };
+      }),
+    );
   }
 
-  static async load(options: LoadOptions): Promise<CompiledModel> {
-    return new CompiledModel(await loadSource(options));
+  static begin(options: LoadOptions): Job<CompiledModel> {
+    return new Job(CompiledModel.compileTask(options));
+  }
+  static *compileTask(options: LoadOptions): Task<CompiledModel> {
+    return new CompiledModel(yield* loadSource(options));
   }
 
-  source(): SourceBundle {
+  source(): ModelSource {
     return {
       url: this.details.url.href,
       text: this.details.document,
@@ -74,129 +90,136 @@ export class CompiledModel {
   }
 
   inspect(): Inspection {
-    return inspectModel(this.details.model, this.queries, this.details.locations, this.details.url);
+    return inspectModel(
+      this.details.model,
+      this.queries,
+      this.details.locations,
+      this.details.url,
+      this.details.definition,
+    );
   }
 
-  reference(position: Position & { url?: URL }): ReferenceInfo {
+  reference(position: SourcePosition & { url?: URL }): ReferenceInfo {
     return referenceAt(
       this.details.model,
-      this.details.parse,
+      this.details.translator,
       position,
       this.details.locations,
       this.details.url,
     );
   }
 
-  async query(
-    selector?: string | null,
-    source?: string | null,
+  prepare(
+    selection?: QuerySelection,
+    options: QueryOptions = {},
+  ): Job<{ name: string; sql: string; line?: number; malloy?: MalloyResult }> {
+    return new Job(this.prepareQuery(selection, structuredClone(options.givens)));
+  }
+
+  private *prepareQuery(
+    selection?: QuerySelection,
     givens?: Record<string, GivenValue>,
-  ): Promise<{ name: string; sql: string; line?: number }> {
+  ): Task<{ name: string; sql: string; line?: number; malloy?: MalloyResult }> {
     try {
-      return await this.prepareQuery(selector, source, structuredClone(givens));
+      return yield* this.compileQuery(selection, givens);
     } catch (error) {
       toolingError(error, this.details.locations);
     }
   }
 
-  private async prepareQuery(
-    selector?: string | null,
-    source?: string | null,
+  private *compileQuery(
+    selection?: QuerySelection,
     givens?: Record<string, GivenValue>,
-  ) {
-    const { model, compile } = this.details;
-    if (source !== undefined && source !== null) {
-      const extended = await compile({ model, source });
-      return {
-        name: "query",
-        sql: extended.preparedQuery.getPreparedResult({ givens }).sql,
-      };
+  ): Task<{ name: string; sql: string; line?: number; malloy?: MalloyResult }> {
+    const { compile } = this.details;
+    if (isMalloyText(selection)) {
+      const extended = yield* compile({ base: this.details, source: selection.malloy });
+      return this.output("query", extended.model.preparedQuery.getPreparedResult({ givens }));
     }
     const name =
-      selector ?? this.runs.at(-1) ?? (this.queries.length === 1 ? this.queries[0] : undefined);
+      selection ??
+      [...this.entries].findLast(([, entry]) => entry.kind === "run")?.[0] ??
+      (this.entries.size === 1 ? this.entries.keys().next().value : undefined);
     if (name === undefined) {
       throw new Error(
-        `Choose a query from: ${this.queries.join(", ") || "the model has no queries"}`,
+        `Choose a query from: ${this.queries.map((q) => q.name).join(", ") || "the model has no queries"}`,
       );
     }
-    if (this.sqlNames.includes(name)) {
-      const statement = this.sqlStatements[this.sqlNames.indexOf(name)];
-      if (statement.config?.connection !== "duckdb") {
-        throw new Error(`SQL cell '${name}' requires the duckdb connection`);
+    const entry = this.entries.get(name);
+    if (!entry) {
+      throw new Error(
+        `Unknown query '${name}'. Choose from: ${this.queries.map((q) => q.name).join(", ")}`,
+      );
+    }
+    if (entry.kind === "sql") {
+      const { prepared } = entry;
+      if (prepared.connection !== this.details.connection.name)
+        throw new Error(`SQL cell '${name}' requires the session connection`);
+      let sql = prepared.parts[0];
+      for (const [index, query] of prepared.queries.entries()) {
+        sql += `(${query.getPreparedResult({ givens }).sql})${prepared.parts[index + 1]}`;
       }
-      const characters = Array.from(statement.text);
-      const lineOffsets = [0];
-      for (const [index, character] of characters.entries()) {
-        if (character === "\n") lineOffsets.push(index + 1);
-      }
-      const offset = (position: Position) => {
-        const line = position.line - statement.range.start.line;
-        return (
-          lineOffsets[line] +
-          position.character -
-          (line === 0 ? statement.range.start.character : 0)
-        );
-      };
-      const replacements = [];
-      for (const embedded of statement.embeddedMalloyQueries) {
-        const extended = await compile({
-          model,
-          source: `run: ${embedded.query}`,
-          location: { url: this.details.url.href, range: embedded.malloyRange },
-        });
-        replacements.push({
-          start: offset(embedded.range.start),
-          end: offset(embedded.range.end),
-          sql: `(${extended.preparedQuery.getPreparedResult({ givens }).sql})`,
-        });
-      }
-      for (const replacement of replacements.reverse()) {
-        characters.splice(replacement.start, replacement.end - replacement.start, replacement.sql);
-      }
-      return { name, sql: characters.join(""), line: statement.range.start.line };
+      return { name, sql, line: prepared.line };
     }
     let query: PreparedQuery;
-    if (this.runs.includes(name)) {
-      query = model.getPreparedQueryByIndex(this.runs.indexOf(name));
-    } else if (this.named.includes(name)) {
-      query = model.getPreparedQueryByName(name);
-    } else if (this.views.has(name)) {
-      const { source, view } = this.views.get(name)!;
-      const quote = (value: string) => "`" + value.replaceAll("`", "\\`") + "`";
-      const extended = await compile({
-        model,
-        source: `run: ${quote(source)} -> ${quote(view)}`,
-      });
-      query = extended.preparedQuery;
-    } else {
-      throw new Error(`Unknown query '${name}'. Choose from: ${this.queries.join(", ")}`);
-    }
-    const result = query.getPreparedResult({ givens });
-    if (result.connectionName !== "duckdb") {
-      throw new Error(`Query '${name}' requires the duckdb connection`);
-    }
-    return { name, sql: result.sql, line: query.location?.range.start.line };
+    if (entry.kind === "view") {
+      if (!entry.query) {
+        const quote = (value: string) => "`" + value.replaceAll("`", "\\`") + "`";
+        const extended = yield* compile({
+          base: this.details,
+          source: `run: ${quote(entry.source)} -> ${quote(entry.view)}`,
+        });
+        entry.query = extended.model.preparedQuery;
+      }
+      query = entry.query;
+    } else query = entry.query;
+    return this.output(name, query.getPreparedResult({ givens }), query.location?.range.start.line);
   }
 
-  async document(selectors: string[], givens?: Record<string, GivenValue>): Promise<Cell[]> {
+  private output(name: string, result: PreparedResult, line?: number) {
+    if (result.connectionName !== this.details.connection.name)
+      throw new Error(`Query '${name}' requires the session connection`);
+    let metadata: MalloyResult | undefined;
+    return {
+      name,
+      sql: result.sql,
+      line,
+      get malloy() {
+        return (metadata ??= result.toStableResult());
+      },
+    };
+  }
+
+  defaultQueries(): string[] {
+    const entries = [...this.entries];
+    const preferred =
+      entries.find(([, entry]) => entry.kind === "run" || entry.kind === "named")?.[1].kind ??
+      "view";
+    return entries
+      .filter(([, entry]) =>
+        this.details.statements
+          ? entry.kind === "run" || entry.kind === "sql"
+          : entry.kind === preferred,
+      )
+      .map(([name]) => name);
+  }
+
+  document(options: DocumentOptions = {}): Job<DocumentCell[]> {
+    if (options.all && options.queries !== undefined)
+      throw new Error("Choose query names or all: true");
+    return new Job(this.documentCells(structuredClone(options)));
+  }
+
+  private *documentCells(options: DocumentOptions): Task<DocumentCell[]> {
     const { model, statements } = this.details;
-    selectors = [...selectors];
-    givens = structuredClone(givens);
-    const selected = selectors.includes("*")
-      ? this.queries
-      : selectors.length
-        ? selectors
-        : statements
-          ? [...this.runs, ...this.sqlNames]
-          : this.runs.length
-            ? this.runs
-            : this.named.length
-              ? this.named
-              : [...this.views.keys()];
+    const { givens } = options;
+    const selected = options.all
+      ? this.queries.map((q) => q.name)
+      : (options.queries ?? this.defaultQueries());
     const compiled = [];
-    for (const selector of selected) compiled.push(await this.query(selector, undefined, givens));
-    const cells: Cell[] = [];
-    if (statements && !selectors.length) {
+    for (const selector of selected) compiled.push(yield* this.prepareQuery(selector, givens));
+    const cells: DocumentCell[] = [];
+    if (statements && !options.queries?.length && !options.all) {
       for (const statement of statements) {
         if (statement.type === "markdown") {
           cells.push({ kind: "markdown", text: statement.text });
@@ -228,37 +251,48 @@ export class CompiledModel {
   }
 }
 
+/** @title CheckOptions */
 export interface CheckOptions extends LoadOptions {
-  position?: Position;
+  position?: SourcePosition;
   syntaxOnly?: boolean;
 }
 
+/** @title CheckReport */
 export interface CheckReport extends ParseReport {
   ok: boolean;
-  compiler_version: string;
-  native: NativeMetadata;
-  queries: string[];
+  compilerVersion: string;
+  model: NativeMetadata;
+  queries: QueryDescriptor[];
 }
 
-export async function checkSource(options: CheckOptions): Promise<CheckReport> {
-  const source = options.source ?? (await options.readURL(options.url));
+export function checkSource(options: CheckOptions): Job<CheckReport> {
+  return new Job(checkTask(options));
+}
+function* checkTask(options: CheckOptions): Task<CheckReport> {
+  let source = options.source;
+  if (source === undefined) {
+    const answer = (yield { urls: [options.url.href], schemas: [] }).urls[options.url.href];
+    if (!answer || "error" in answer)
+      throw new Error(answer && "error" in answer ? answer.error : "Missing source");
+    source = answer.value;
+  }
   const parsed = parseSource(source, options);
   const report = {
     ...parsed,
     ok: !parsed.diagnostics.some((problem) => problem.severity === "error"),
-    compiler_version: compilerVersion,
-    native: { model: null, sources: [] },
+    compilerVersion: compilerVersion,
+    model: { model: null, sources: [] },
     queries: [],
   };
   if (options.syntaxOnly || !report.ok) return report;
   try {
-    const compiled = await CompiledModel.load({ ...options, source });
+    const compiled = yield* CompiledModel.compileTask({ ...options, source });
     const inspection = compiled.inspect();
     return {
       ...report,
       ok: true,
       diagnostics: inspection.diagnostics,
-      native: inspection.native,
+      model: inspection.model,
       queries: [...compiled.queries],
     };
   } catch (error) {

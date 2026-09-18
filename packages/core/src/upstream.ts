@@ -1,26 +1,27 @@
+import type { ModelInfo, SourceInfo } from "@malloydata/malloy-interfaces";
 import {
   Model,
   modelDefToModelInfo,
   sourceDefToSourceInfo,
   type SourceDef,
-  type Parse,
+  type MalloyTranslator,
+  type ModelDef,
   type FieldDef,
   type AtomicTypeDef,
 } from "@malloydata/malloy";
 import { prettify } from "@malloydata/malloy/internal";
 
-// Malloy's private metadata and experimental formatter are isolated here so a
-// compiler upgrade has one boundary to review against the pinned dependency.
+// Malloy exposes formatting through its experimental subpath. Keep that dependency
+// pinned while translation and metadata use the public API.
 export const formatMalloy = prettify;
-export const parseURL = (parse: Parse): string => parse._translator.sourceURL;
-export const parseProblems = (parse: Parse) => parse._translator.logger.getLog();
 
+/** @title NativeMetadata */
 export interface NativeMetadata {
-  model: ReturnType<typeof modelDefToModelInfo> | null;
-  sources: ReturnType<typeof sourceDefToSourceInfo>[];
+  model: ModelInfo | null;
+  sources: SourceInfo[];
 }
 
-export function nativeMetadata(model: Model): NativeMetadata {
+export function nativeMetadata(model: Model, definition: ModelDef): NativeMetadata {
   const { named, unnamed } = model.queries();
   const queries = [
     ...named.map((name) => model.getPreparedQueryByName(name)),
@@ -30,7 +31,7 @@ export function nativeMetadata(model: Model): NativeMetadata {
     [...query.givens.values()].some((given) => given.default === undefined),
   );
   return {
-    model: required ? null : modelDefToModelInfo(model._modelDef),
+    model: required ? null : modelDefToModelInfo(definition),
     sources: model.exportedExplores.map((explore) =>
       // SAFETY: Malloy builds exportedExplores from source definitions in model contents.
       sourceDefToSourceInfo(model.getContent(explore.name) as SourceDef),
@@ -38,19 +39,19 @@ export function nativeMetadata(model: Model): NativeMetadata {
   };
 }
 
-export function modelImports(model: Model) {
-  return (model._modelDef.imports ?? []).map((value) => ({
+export function modelImports(definition: ModelDef) {
+  return (definition.imports ?? []).map((value) => ({
     url: value.importURL,
     location: value.location,
   }));
 }
 
-export function givenDetails(model: Model, name: string) {
+export function givenDetails(model: Model, definition: ModelDef, name: string) {
   const given = model.givens.get(name)!;
   return {
     type: givenType(given.type),
     required: given.default === undefined,
-    default_text: model._modelDef.givens?.[given.id]?.defaultText ?? null,
+    defaultText: definition.givens?.[given.id]?.defaultText ?? null,
   };
 }
 
@@ -67,20 +68,9 @@ function givenType(value: Given["type"] | AtomicTypeDef | FieldDef): string {
   return value.type;
 }
 
-export function importedModel(parse: Parse, url: string): Model | undefined {
-  const pending = [...parse._translator.childTranslators.values()];
-  for (const translator of pending) {
-    if (translator.sourceURL === url) {
-      return new Model(
-        {
-          ...translator.modelDef,
-          references: translator.references.toArray(),
-          imports: translator.imports,
-        },
-        [],
-        [url],
-      );
-    }
-    pending.push(...translator.childTranslators.values());
-  }
+export function importedModel(translator: MalloyTranslator, url: string): Model | undefined {
+  const dependency = translator.translatorForDependency(url);
+  if (!dependency) return undefined;
+  const definition = dependency.translate().modelDef;
+  return definition ? new Model(definition, dependency.problems(), [url]) : undefined;
 }

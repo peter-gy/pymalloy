@@ -45,3 +45,30 @@ export function documentSource(document: string, url: URL) {
   }
   return { source: lines.join("\n"), statements: parsed.statements };
 }
+
+export function sqlParts(
+  statement: Extract<
+    ReturnType<typeof MalloySQLParser.parse>["statements"][number],
+    { type: "sql" }
+  >,
+): string[] {
+  const characters = Array.from(statement.text);
+  const lineOffsets = [0];
+  for (const [index, character] of characters.entries()) {
+    if (character === "\n") lineOffsets.push(index + 1);
+  }
+  const offset = (position: DocumentRange["start"]) => {
+    const line = position.line - statement.range.start.line;
+    return (
+      lineOffsets[line] + position.character - (line === 0 ? statement.range.start.character : 0)
+    );
+  };
+  const parts: string[] = [];
+  let previous = 0;
+  for (const embedded of statement.embeddedMalloyQueries) {
+    parts.push(characters.slice(previous, offset(embedded.range.start)).join(""));
+    previous = offset(embedded.range.end);
+  }
+  parts.push(characters.slice(previous).join(""));
+  return parts;
+}
