@@ -8,11 +8,11 @@ then compiles them to SQL. [DuckDB](https://duckdb.org/) executes that SQL.
 
 | Task                                   | Use                                      | Result                                        |
 | -------------------------------------- | ---------------------------------------- | --------------------------------------------- |
-| Explore in Jupyter or marimo           | [Widget](/guide/getting-started)         | Interactive table and Python result snapshots |
-| Query files, dataframes, or a database | [Native Python](/guide/native-python)    | Polars dataframe                              |
+| Explore in Jupyter or marimo           | [MalloyWidget](/guide/getting-started)   | Interactive table and Python result snapshots |
+| Query files, dataframes, or a database | [Server Python](/guide/server-python)    | Result with optional dataframe conversion     |
 | Share an executable analysis           | [Notebook export](/guide/export)         | marimo `.py` or Jupyter `.ipynb`              |
 | Build a web application                | [Browser JavaScript](/reference/browser) | Rows, columns, and SQL                        |
-| Query from Node                        | [Node](/reference/node)                  | JavaScript row objects                        |
+| Query from Node                        | [Node](/reference/node)                  | Rows, columns, SQL, and Malloy metadata       |
 
 **Native execution** uses DuckDB in Python or Node. Browser execution uses
 WebAssembly, compiled database code running in a background browser worker.
@@ -21,25 +21,25 @@ supply a file the browser can read.
 
 ## Explore in a notebook
 
-Install `pymalloy` and display a `Malloy` widget. Select queries, change parameters,
-and inspect SQL. The table previews 100 rows, while `widget.state` receives the
-complete result asynchronously. First use downloads DuckDB WebAssembly and needs
+Install `pymalloy` and display a `MalloyWidget`. Select queries, change parameters,
+and inspect SQL. Malloy's renderer displays nested tables and chart tags, while
+`widget.state` receives the complete result asynchronously. First use downloads DuckDB WebAssembly and needs
 permission to create browser workers.
 
 [Run your first widget query](/guide/getting-started).
 
 ## Run from Python
 
-Install `pymalloy[server]` and create a `pymalloy.server.Session` to query files,
-dataframes, or a DuckDB connection. Queries return [Polars](https://docs.pola.rs/)
-dataframes. Despite its name, `server` runs within your program, not as an HTTP service.
+Install `pymalloy[server,dataframes]` and call `pymalloy.run` or `pymalloy.model` to query files,
+dataframes, or a DuckDB connection. Queries return `Result` objects with rows,
+SQL, and optional Arrow or Polars conversion. Python executes queries locally and owns a Deno compiler process.
 
-[Run a native Python query](/guide/native-python).
+[Run a server-side Python query](/guide/server-python).
 
 ## Share a notebook
 
 Export a Malloy file as marimo or Jupyter. Choose `precompiled` for SQL that runs
-without PyMalloy, `native` for an editable Python model, or `widget` for browser
+without PyMalloy, `server` for an editable Python model, or `widget` for browser
 widgets. Recipients need the notebook's dependencies and referenced data.
 
 [Export a notebook](/guide/export).

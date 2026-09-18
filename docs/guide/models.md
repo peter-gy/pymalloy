@@ -1,65 +1,33 @@
 # Reuse models and select queries
 
-A `Model` retains definitions and schemas for repeated queries. Create one with
-a [native Python session](/guide/native-python):
+Compile a model once and run its queries against current data:
 
 ```python
-from pymalloy.server import Session
+from pathlib import Path
+import pymalloy as pm
 
-with Session() as session:
-    numbers = session.model("""
-        source: numbers is duckdb.sql('SELECT unnest([40, 2]) AS value') extend {
-          view: entries is { select: value order_by: value }
-          view: total is { aggregate: total is value.sum() }
-        }
-    """)
-    print(numbers.queries)
-    result = numbers.run(query="numbers.total")
-
-assert result.item() == 42
+model = pm.model(Path("examples/orders.malloy"), data_root="examples")
+for query in model.queries:
+    print(query.name, query.kind, query.location)
+result = model.query("orders.by_region").run()
+print(result.rows())
 ```
 
-The selectors are `('numbers.entries', 'numbers.total')`. Pass full query source,
-including `run:`, to extend a retained model for one call:
+`model.queries` contains typed `QueryDescriptor` records. Kinds are `run`, `named`,
+`view`, and `sql`. Names identify queries within the model. `run:0` and `sql:0`
+identify the first run and SQL cell respectively. All source coordinates and
+ordinal query names are zero-based. Inserting a cell can change ordinal names.
 
-```python
-with Session() as session:
-    numbers = session.model("source: numbers is duckdb.sql('SELECT 42 AS value')")
-    result = numbers.run("run: numbers -> { select: value }")
+`model.query()` selects the final run, or the single available query. Otherwise,
+choose a name. An ad hoc query uses
+`model.query(malloy="run: orders -> by_region")` in Python and
+`model.query({ malloy: "run: orders -> by_region" })` in TypeScript.
 
-assert result.item() == 42
-```
+A model snapshots imports and schemas. Its queries read current data. Compile a
+new model after a schema or source change. Python models clean up when their last
+reference is released. `model.close()` releases the compiler and owned connection
+early. Other models remain usable.
 
-`session.run(source)` loads, executes, and releases a temporary model in one call.
-
-## Load a file
-
-Use `session.load(path)` for `.malloy`, `.malloynb`, or `.malloysql` files.
-Imports resolve beside the file. Data paths use the same directory unless the
-session sets `data_root`. For inline imports, use `session.model(source, base_dir="models")`.
-
-## Select a query
-
-Pass an entry from `model.queries` as `query=`:
-
-| Selector           | Selects                                       |
-| ------------------ | --------------------------------------------- |
-| `orders.by_region` | Public view on an exported source             |
-| `regional_totals`  | Named query (`query: regional_totals is ...`) |
-| `run:1`            | First run statement, numbered from one        |
-| `sql:1`            | First document SQL cell                       |
-
-`model.run()` defaults to the final run statement. With no run statements, it
-uses the sole available query or requires `query=` if there are several.
-
-Pass either new query source or a selector, not both.
-
-## Keep schemas current
-
-New rows are visible on the next query. Reload the model after changing column
-names, types, or imported definitions.
-
-Closing a session invalidates its models. Use `model.close()` or a model context
-manager to release one early. See the [native Python API](/reference/server) for
-timeouts and errors. [Node](/reference/node) and [browser](/reference/browser)
-models use the same selectors.
+`model.source()` returns a `ModelSource` with the root URL, text, and captured
+imports. `pm.model(snapshot)` hydrates it in Python. TypeScript uses
+`session.model({ source: snapshot })`. Pass data options when hydrating a snapshot.

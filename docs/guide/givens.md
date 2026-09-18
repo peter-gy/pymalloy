@@ -1,66 +1,25 @@
 # Parameterize queries with givens
 
-Givens are typed Malloy parameters. Use them to change query inputs without
-rewriting the model. Declarations require `##! experimental.givens`.
-
-With the [native Python runtime](/guide/native-python), supply overrides to
-`model.run()`:
+Givens are typed inputs declared in Malloy:
 
 ```python
-from pymalloy.server import Session
+import pymalloy as pm
 
-with Session() as session:
-    numbers = session.model("""
-        ##! experimental.givens
-        given: minimum :: number is 10
-        source: numbers is duckdb.sql('SELECT unnest([2, 12, 42]) AS value')
-        run: numbers -> {
-          where: value >= $minimum
-          select: value
-          order_by: value
-        }
-    """)
-    assert numbers.run()["value"].to_list() == [12, 42]
-    assert numbers.run(givens={"minimum": 20})["value"].to_list() == [42]
-    assert numbers.run()["value"].to_list() == [12, 42]
+source = """##! experimental.givens
+given: minimum :: number is 10
+source: orders is duckdb.sql('SELECT 42 AS amount')
+run: orders -> { select: amount where: amount >= $minimum }
+"""
+query = pm.model(source).query()
+print(query.run(givens={"minimum": 20}).rows())
+print(query.sql(givens={"minimum": 50}))
 ```
 
-Overrides apply to one call. Later calls use the model's declared defaults.
+Bindings apply to one call. Defaults remain available to subsequent calls.
+Malloy validates types and required inputs. Python integers and JavaScript
+bigints preserve exact integer values. Python also accepts dates, datetimes,
+Decimals, arrays, and string-keyed mappings through the compiler value protocol.
 
-For notebooks, see [exporting with givens](/guide/export#set-given-values).
-
-## Choose values
-
-Native Python givens accept strings, booleans, integers, finite floats, `None`, lists,
-records, dates, datetimes, and decimals. Integers cross the compiler connection
-exactly. Dates and datetimes use ISO strings, and decimals use numeric strings
-accepted by Malloy. Numeric evaluation follows Malloy's number semantics. Use
-timezone-aware datetimes for `timestamptz` givens.
-
-## Update a displayed query
-
-Pass `givens` to the widget, then assign a new dictionary to rerun it:
-
-```python
-from pymalloy import Malloy
-
-filtered = Malloy(
-    """
-    ##! experimental.givens
-    given: minimum :: number is 10
-    source: numbers is duckdb.sql('SELECT unnest([2, 12, 42]) AS value')
-    run: numbers -> { where: value >= $minimum select: value order_by: value }
-    """,
-    givens={"minimum": 20},
-)
-filtered
-```
-
-The widget displays `42`. Assign `filtered.givens = {"minimum": 10}` to display
-`12` and `42`. Widget givens accept strings, booleans, integers, finite floats,
-`None`, lists, and string-keyed dictionaries. Assign complete dictionaries to
-notify the browser. Given changes reuse the compiled model.
-
-See Malloy's
-[language documentation](https://docs.malloydata.dev/documentation/) for type
-declarations and the [native Python API](/reference/server) for call signatures.
+Widgets accept finite JSON values, including Python integers larger than the
+JavaScript safe-integer range. Assign a complete `widget.givens` mapping to
+publish an update. Exporters accept `givens=` and the CLI accepts `--givens JSON`.

@@ -18,7 +18,7 @@ features:
   - title: Read results in Python
     details: Receive rows, columns, SQL, and errors, with nested values and exact integers preserved.
   - title: Choose your runtime
-    details: Run native Python or Node sessions, or export an executable marimo or Jupyter notebook.
+    details: Run server-side Python or Node sessions, or export an executable marimo or Jupyter notebook.
 ---
 
 ## Display a query
@@ -31,9 +31,9 @@ pip install pymalloy
 ```
 
 ```python
-from pymalloy import Malloy
+from pymalloy import MalloyWidget
 
-query = Malloy("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
+query = MalloyWidget("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
 query
 ```
 

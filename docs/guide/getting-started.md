@@ -2,7 +2,7 @@
 
 Run a Malloy query in Jupyter or marimo with Python 3.12 or newer. The widget
 uses [DuckDB](https://duckdb.org/docs/stable/) in your browser. For scripts, use
-[native Python](/guide/native-python).
+[server-side Python](/guide/server-python).
 
 ## Install
 
@@ -18,9 +18,9 @@ Use a [Jupyter](https://docs.jupyter.org/) notebook or install the
 ## Display a query
 
 ```python
-from pymalloy import Malloy
+from pymalloy import MalloyWidget
 
-query = Malloy("""
+query = MalloyWidget("""
     run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }
 """)
 query
@@ -36,7 +36,7 @@ from jsDelivr. The page must allow that download and browser workers.
 Pass file contents under the name used by the Malloy source:
 
 ```python
-orders = Malloy(
+orders = MalloyWidget(
     """
     run: duckdb.table('orders.csv') -> {
       select: region, amount
@@ -50,7 +50,7 @@ orders
 
 The table shows amounts `40`, `30`, and `2`. These are **virtual files**: the
 browser reads supplied contents under their assigned names. `files` accepts
-text, bytes, and [remote URLs](/guide/widget#files-and-imports).
+text, bytes, and [remote URLs](/guide/widget).
 
 ## Read results from Python
 

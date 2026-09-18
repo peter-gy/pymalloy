@@ -8,7 +8,7 @@ const sections = [
     items: [
       { text: "What is PyMalloy?", link: "/guide/overview" },
       { text: "Your first widget", link: "/guide/getting-started" },
-      { text: "Run queries from Python", link: "/guide/native-python" },
+      { text: "Run queries from Python", link: "/guide/server-python" },
       { text: "Models, queries, and execution", link: "/guide/concepts" },
     ],
   },
@@ -28,7 +28,7 @@ const sections = [
     text: "Reference",
     items: [
       { text: "Python widget API", link: "/reference/python" },
-      { text: "Native Python API", link: "/reference/server" },
+      { text: "Server Python API", link: "/reference/server" },
       { text: "Analysis records", link: "/reference/analysis" },
       { text: "Browser JavaScript API", link: "/reference/browser" },
       { text: "Node API", link: "/reference/node" },
@@ -42,7 +42,7 @@ const sections = [
 export default defineConfig({
   title: "PyMalloy",
   description:
-    "Run Malloy in a Python notebook widget. Query in the browser, use native sessions, or export runnable notebooks.",
+    "Run Malloy in a Python notebook widget. Query in the browser, query from Python or Node, or export runnable notebooks.",
   lang: "en-US",
   srcDir: "../../docs",
   base: baseName ? `/${baseName}/` : "/",
