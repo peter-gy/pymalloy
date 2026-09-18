@@ -12,3 +12,6 @@ node_modules/
 _assets/
 playwright-report/
 test-results/
+
+**/.vitepress/cache/
+nogit/
