@@ -2,6 +2,28 @@
   "$ref": "#/definitions/Records",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "AnnotatedObject": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/RoutedAnnotation"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "path": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["path", "kind", "annotations"],
+      "type": "object"
+    },
     "Annotation": {
       "additionalProperties": false,
       "properties": {
@@ -472,7 +494,7 @@
         },
         "imports": {
           "items": {
-            "$ref": "#/definitions/ImportInfo"
+            "$ref": "#/definitions/ParsedImport"
           },
           "type": "array"
         },
@@ -1640,6 +1662,9 @@
     "ModelReady": {
       "additionalProperties": false,
       "properties": {
+        "compilerVersion": {
+          "type": "string"
+        },
         "kind": {
           "const": "model",
           "type": "string"
@@ -1649,9 +1674,12 @@
             "$ref": "#/definitions/QueryDescriptor"
           },
           "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/ModelSource"
         }
       },
-      "required": ["kind", "queries"],
+      "required": ["kind", "queries", "compilerVersion", "source"],
       "type": "object"
     },
     "ModelSource": {
@@ -1677,6 +1705,12 @@
     "NativeMetadata": {
       "additionalProperties": false,
       "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/AnnotatedObject"
+          },
+          "type": "array"
+        },
         "model": {
           "anyOf": [
             {
@@ -1694,7 +1728,7 @@
           "type": "array"
         }
       },
-      "required": ["model", "sources"],
+      "required": ["model", "sources", "annotations"],
       "title": "NativeMetadata",
       "type": "object"
     },
@@ -1957,6 +1991,9 @@
     "ParseReport": {
       "additionalProperties": false,
       "properties": {
+        "compilerVersion": {
+          "type": "string"
+        },
         "completions": {
           "items": {
             "additionalProperties": false,
@@ -2001,7 +2038,7 @@
         },
         "imports": {
           "items": {
-            "$ref": "#/definitions/ImportInfo"
+            "$ref": "#/definitions/ParsedImport"
           },
           "type": "array"
         },
@@ -2034,8 +2071,34 @@
           "type": "string"
         }
       },
-      "required": ["url", "diagnostics", "symbols", "tables", "imports", "completions", "help"],
+      "required": [
+        "url",
+        "compilerVersion",
+        "diagnostics",
+        "symbols",
+        "tables",
+        "imports",
+        "completions",
+        "help"
+      ],
       "title": "ParseReport",
+      "type": "object"
+    },
+    "ParsedImport": {
+      "additionalProperties": false,
+      "description": "The compiler-selected string literal, including delimiters, in Unicode codepoints.",
+      "properties": {
+        "location": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "reference": {
+          "$ref": "#/definitions/SourceSpan"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": ["location", "reference", "url"],
       "type": "object"
     },
     "Position": {
@@ -2397,6 +2460,23 @@
         }
       },
       "required": ["schema", "connection_name"],
+      "type": "object"
+    },
+    "RoutedAnnotation": {
+      "additionalProperties": false,
+      "description": "Native annotation routes and payloads alongside the untouched stable annotation.",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "route": {
+          "type": ["string", "null"]
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["route", "content", "text"],
       "type": "object"
     },
     "Scalar": {
@@ -2807,6 +2887,21 @@
         }
       },
       "required": ["kind", "source"],
+      "type": "object"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["start", "end"],
       "type": "object"
     },
     "State": {

@@ -3,6 +3,7 @@ import {
   formatSource,
   parseSource,
   syntaxSource,
+  compilerVersion,
 } from "@malloy-runtime/compiler/tooling";
 import { CompiledModel, ToolingError, type Job, type Fulfilled } from "@malloy-runtime/compiler";
 import { connection, fields } from "@malloy-runtime/duckdb";
@@ -61,7 +62,12 @@ export class CompilerService {
             CompiledModel.begin({ url: new URL(input.url), source: input.source, connection }),
             (model) => {
               this.model = model;
-              return { kind: "model", queries: model.queries };
+              return {
+                kind: "model",
+                queries: model.queries,
+                compilerVersion,
+                source: model.source(),
+              };
             },
           );
         case "check":

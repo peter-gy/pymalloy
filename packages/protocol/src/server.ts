@@ -47,6 +47,8 @@ export interface CompileError {
 export interface ModelReady {
   kind: "model";
   queries: readonly QueryDescriptor[];
+  compilerVersion: string;
+  source: ModelSource;
 }
 export interface QueryReady {
   kind: "query";

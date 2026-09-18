@@ -181,6 +181,12 @@ class Range(Record):
 type Relationship = Literal["one", "many", "cross"]
 
 
+class RoutedAnnotation(Record):
+    content: str
+    route: str | None
+    text: str
+
+
 class ScalarField(Record, tag_field="kind", tag="field"):
     path: Sequence[str]
 
@@ -219,6 +225,11 @@ class SourceReady(Record, tag_field="kind", tag="source"):
     source: ModelSource
 
 
+class SourceSpan(Record):
+    end: Annotated[int, Meta(ge=0)]
+    start: Annotated[int, Meta(ge=0)]
+
+
 class SymbolInfo(Record):
     children: Sequence[SymbolInfo]
     lens_range: SourceRange = field(name="lensRange")
@@ -234,6 +245,12 @@ type TimestampTimeframe = Literal[
 
 class ViewOperationWithLimit(Record, tag_field="kind", tag="limit"):
     limit: float
+
+
+class AnnotatedObject(Record):
+    annotations: Sequence[RoutedAnnotation]
+    kind: str
+    path: Sequence[str]
 
 
 class AtomicTypeWithDateType(Record, tag_field="kind", tag="date_type"):
@@ -400,13 +417,9 @@ class ParameterValue(Record):
     value: LiteralValue
 
 
-class ParseReport(Record):
-    completions: Sequence[Completion]
-    diagnostics: Sequence[Diagnostic]
-    help: Help | None
-    imports: Sequence[ImportInfo]
-    symbols: Sequence[SymbolInfo]
-    tables: Sequence[Table]
+class ParsedImport(Record):
+    location: SourceLocation
+    reference: SourceSpan
     url: str
 
 
@@ -477,7 +490,20 @@ class ExpressionWithTimeTruncation(Record, tag_field="kind", tag="time_truncatio
 
 
 class ModelReady(Record, tag_field="kind", tag="model"):
+    compiler_version: str = field(name="compilerVersion")
     queries: Sequence[QueryDescriptor]
+    source: ModelSource
+
+
+class ParseReport(Record):
+    compiler_version: str = field(name="compilerVersion")
+    completions: Sequence[Completion]
+    diagnostics: Sequence[Diagnostic]
+    help: Help | None
+    imports: Sequence[ParsedImport]
+    symbols: Sequence[SymbolInfo]
+    tables: Sequence[Table]
+    url: str
 
 
 class ParseReady(Record, tag_field="kind", tag="parse"):
@@ -548,7 +574,7 @@ class CheckReport(Record):
     completions: Sequence[Completion]
     diagnostics: Sequence[Diagnostic]
     help: Help | None
-    imports: Sequence[ImportInfo]
+    imports: Sequence[ParsedImport]
     model: NativeMetadata
     ok: bool
     queries: Sequence[QueryDescriptor]
@@ -702,6 +728,7 @@ class ModelInfo(Record):
 
 
 class NativeMetadata(Record):
+    annotations: Sequence[AnnotatedObject]
     model: ModelInfo | None
     sources: Sequence[SourceInfo]
 
