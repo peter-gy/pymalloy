@@ -156,3 +156,17 @@ Generated Python is retained under `sources/`. The command returns nonzero for
 compilation failures, mismatches, skipped writes, and timeouts. Inspect per-source
 outcomes before interpreting an incomplete corpus as a regression. `--match`
 restricts the run to paths containing the supplied text.
+
+## Measure authoring and dataframe costs
+
+```sh
+uv run python tools/benchmark_authoring.py --samples 7 --output nogit/authoring-timings.json
+uv run python tools/benchmark_data_inputs.py --rows 1000000 --samples 7 --output nogit/dataframe-timings.json
+```
+
+The dataframe benchmark measures contiguous and fragmented Arrow snapshots,
+Parquet materialization with verification, and bundles with 100, 1,000, and 5,000
+table references. Results include dependency versions and every timing sample.
+Compare medians using the same interpreter, dependencies, input size, and machine.
+Run benchmarks separately from tests and builds. Keep timing thresholds out of
+behavior tests.
