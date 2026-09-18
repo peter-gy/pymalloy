@@ -97,7 +97,7 @@ def test_generated_and_parsed_models_share_scoped_edits_and_preserve_annotations
             pm.col("amount").sum().text, pm.col("amount").avg().text
         )
         assert original["orders"]["revenue"].equals(pm.col("amount").sum())
-        assert "#(doc) Revenue in USD." in revised.text
+        assert '#" Revenue in USD.' in revised.text
         documented = candidate.define(
             orders=candidate["orders"].replace(
                 revenue=pm.col("amount").avg().doc("Mean amount in USD.")
@@ -114,7 +114,7 @@ def test_generated_and_parsed_models_share_scoped_edits_and_preserve_annotations
             )
             measure = next(f for f in source.schema.fields if f.name == "revenue")
             assert [note.value.strip() for note in measure.annotations] == [
-                "#(doc) Mean amount in USD."
+                '#" Mean amount in USD.'
             ]
         finally:
             runtime.close()
@@ -160,7 +160,7 @@ def test_python_roundtrip_retains_semantics_unicode_imports_and_parameters(
             "##! experimental.parameters",
             "given: threshold :: number is 2",
             "import {base} from 'base.malloy'",
-            "#(doc) Authored description",
+            '#" Authored description',
             "source: `a\\`b`(p :: number is 1) is # note=kept",
             'duckdb.sql("SELECT 42 AS value") extend { dimension: `path\\\\name` is value }, other is base;',
             "query: answer is other -> {select: value}",
@@ -182,7 +182,7 @@ def test_python_roundtrip_retains_semantics_unicode_imports_and_parameters(
         "// 😀 source with Python-looking content: __import__('os')\r\n",
         "given: threshold :: number is 2\r\n",
         "import {base} from 'base.malloy'\r\n",
-        "#(doc) Authored description\r\n",
+        '#" Authored description\r\n',
         "# note=kept\r\n",
         "// keep final trivia\r\n",
     ]:
@@ -246,7 +246,7 @@ def test_validation_counterexamples_refuse_writes_of_failed_models(tmp_path):
 
 def test_compiler_and_documentation_findings_share_one_report(tmp_path):
     candidate = pm.draft().define(
-        orders=pm.sql("SELECT '#(doc) not documentation' note, 1 amount").extend(
+        orders=pm.sql("SELECT '#\" not documentation' note, 1 amount").extend(
             pm.measure(revenue=pm.col("amount").sum()),
             pm.view(summary=pm.query(pm.aggregate(pm.col("revenue")))),
         )
@@ -496,3 +496,45 @@ def test_batch_edits_preserve_warmed_text_and_scopes():
     ambiguous = pm.draft(original.syntax, updated.syntax)
     with pytest.raises(ValueError, match="ambiguous"):
         ambiguous["second"]
+
+
+def test_native_descriptions_structural_routes_and_explicit_documentation_policy():
+    from pymalloy.validation import DocumentationPolicy
+
+    candidate = pm.read_model("""
+#" Order lines, one row per id.
+source: orders is duckdb.sql('SELECT 1 id, 12 amount') extend {
+  measure:
+    #" Revenue in USD.
+    #[research] unit=USD
+    revenue is amount.sum()
+}
+""")
+    report = candidate.check()
+    assert not report.diagnostics
+    notes = next(
+        item
+        for item in report.model.annotations
+        if list(item.path) == ["orders", "revenue"]
+    )
+    assert [(note.route, note.content.strip()) for note in notes.annotations] == [
+        ('"', "Revenue in USD."),
+        ("research", "unit=USD"),
+    ]
+    assert candidate.check(
+        documentation=DocumentationPolicy(routes=("research",), kinds=("measure",))
+    ).ok
+    strict = DocumentationPolicy(routes=("business",), severity="error")
+    assert not candidate.check(documentation=strict).ok
+    assert not candidate.validate(documentation=strict).ok
+    assert candidate.check(documentation=None).ok
+    revised = candidate.define(
+        orders=candidate["orders"].replace(
+            revenue=pm.col("amount").avg().doc("Mean line amount in USD.")
+        )
+    )
+    assert "#[research] unit=USD" in revised.text
+    assert "Revenue in USD." not in revised.text
+    assert "Mean line amount in USD." in revised.text
+    assert not revised.check().diagnostics
+

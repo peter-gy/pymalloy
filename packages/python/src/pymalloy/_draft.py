@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Unpack
 from pymalloy._persistence import write_text
 from pymalloy._source import ModelSource, freeze_imports, resolve_source, validate_url
 from pymalloy._syntax import Fragment, Kind, expression, from_wire, named_clause, syntax
+from pymalloy.validation import _DEFAULT_DOCUMENTATION, DocumentationPolicy
 
 if TYPE_CHECKING:
     from pymalloy._server.api import _RuntimeOptions
@@ -113,12 +114,19 @@ class Draft:
             else ModelSource(self.url, self.text, self.imports)
         )
 
-    def check(self, **options: Unpack[_RuntimeOptions]) -> CheckReport:
+    def check(
+        self,
+        *,
+        documentation: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION,
+        **options: Unpack[_RuntimeOptions],
+    ) -> CheckReport:
         """Compile and return language diagnostics plus documentation warnings."""
         from pymalloy._server import load_api
         from pymalloy.validation import _checked
 
-        return _checked(load_api().check(self._input(), url=self.url, **options))
+        return _checked(
+            load_api().check(self._input(), url=self.url, **options), documentation
+        )
 
     def compile(self, **options: Unpack[_RuntimeOptions]) -> Model:
         from pymalloy._server import load_api
@@ -130,12 +138,15 @@ class Draft:
         checks: Mapping[str, Fragment] | None = None,
         *,
         givens: Mapping[str, Any] | None = None,
+        documentation: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION,
         **options: Unpack[_RuntimeOptions],
     ) -> Validation:
         """Compile once and execute named queries that must return no counterexamples."""
         from pymalloy._server import load_api
 
-        return load_api().validate(self, checks or {}, givens=givens, **options)
+        return load_api().validate(
+            self, checks or {}, givens=givens, documentation=documentation, **options
+        )
 
     def save(self, path: str | Path | None = None, *, overwrite: bool = False) -> Path:
         target = Path(path).resolve() if path is not None else self.path

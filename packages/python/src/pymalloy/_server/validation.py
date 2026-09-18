@@ -11,7 +11,13 @@ import duckdb
 
 from pymalloy._errors import CompilationError, ModelError
 from pymalloy._syntax import Fragment
-from pymalloy.validation import DataCheck, Validation, _documentation
+from pymalloy.validation import (
+    _DEFAULT_DOCUMENTATION,
+    DataCheck,
+    DocumentationPolicy,
+    Validation,
+    _documentation,
+)
 
 if TYPE_CHECKING:
     from pymalloy._draft import Draft
@@ -24,6 +30,7 @@ def validate(
     checks: Mapping[str, Fragment],
     *,
     givens: Mapping[str, Any] | None,
+    documentation: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION,
     **options: Unpack[_RuntimeOptions],
 ) -> Validation:
     # One budget covers compilation, metadata, and every data assertion.
@@ -57,7 +64,9 @@ def validate(
         captured = model.source(timeout=remaining())
         frozen = replace(draft, url=captured.url, imports=captured.imports)
         inspection = model.inspect(timeout=remaining())
-        diagnostics = tuple(inspection.diagnostics) + _documentation(inspection.model)
+        diagnostics = tuple(inspection.diagnostics) + _documentation(
+            inspection.model, documentation
+        )
         results = []
         for name, query in selected:
             try:

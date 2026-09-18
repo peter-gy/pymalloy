@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import unquote, urlsplit
 
-from msgspec import UNSET, structs
+from msgspec import structs
 
-from pymalloy._records import FieldInfoWithMeasure, FieldInfoWithView, NativeMetadata
+from pymalloy._records import NativeMetadata
 from pymalloy._source import read_text
 from pymalloy.analysis import CheckReport, Diagnostic
 from pymalloy.result import Result
@@ -18,39 +18,65 @@ if TYPE_CHECKING:
     from pymalloy._draft import Draft
 
 
-def _documentation(metadata: NativeMetadata) -> tuple[Diagnostic, ...]:
-    issues = []
-    for source in metadata.sources:
-        items = [(source.name, "source", source.annotations)]
-        for field in source.schema.fields:
-            if isinstance(field, (FieldInfoWithMeasure, FieldInfoWithView)):
-                kind = "measure" if isinstance(field, FieldInfoWithMeasure) else "view"
-                items.append((f"{source.name}.{field.name}", kind, field.annotations))
-        for name, kind, notes in items:
-            if notes is not UNSET and any(
-                a.value.strip().startswith("#(doc)") and a.value.strip()[6:].strip()
-                for a in notes
+@dataclass(frozen=True)
+class DocumentationPolicy:
+    """Routes and object kinds required by authoring checks. Malloy owns route parsing."""
+
+    routes: tuple[str, ...] = ('"',)
+    kinds: tuple[str, ...] = ("source", "measure", "view")
+    severity: Literal["warning", "error"] = "warning"
+
+    def __post_init__(self) -> None:
+        for values in (self.routes, self.kinds):
+            if not isinstance(values, tuple) or not all(
+                isinstance(v, str) for v in values
             ):
-                continue
-            issues.append(
-                Diagnostic(
-                    code=f"missing-{kind}-doc",
-                    severity="warning",
-                    message=f"Document {kind} '{name}' with #(doc), including its meaning and grain or units.",
-                    location=None,
-                    replacement=None,
-                    error_tag=None,
-                    data={"name": name},
+                raise TypeError(
+                    "Documentation routes and kinds must be tuples of strings"
                 )
+        if self.severity not in {"warning", "error"}:
+            raise ValueError("Documentation severity must be warning or error")
+
+
+_DEFAULT_DOCUMENTATION = DocumentationPolicy()
+
+
+def _documentation(
+    metadata: NativeMetadata,
+    policy: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION,
+) -> tuple[Diagnostic, ...]:
+    if policy is None:
+        return ()
+    issues = []
+    for item in metadata.annotations:
+        if item.kind not in policy.kinds or any(
+            note.route in policy.routes and note.content.strip()
+            for note in item.annotations
+        ):
+            continue
+        name = ".".join(item.path)
+        issues.append(
+            Diagnostic(
+                code=f"missing-{item.kind}-doc",
+                severity=policy.severity,
+                message=f"Document {item.kind} '{name}' using one of the annotation routes {policy.routes!r}, including its meaning and grain or units.",
+                location=None,
+                replacement=None,
+                error_tag=None,
+                data={"path": list(item.path), "routes": list(policy.routes)},
             )
+        )
     return tuple(issues)
 
 
-def _checked(report: CheckReport) -> CheckReport:
+def _checked(
+    report: CheckReport, policy: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION
+) -> CheckReport:
+    notes = _documentation(report.model, policy) if report.ok else ()
     return structs.replace(
         report,
-        diagnostics=tuple(report.diagnostics)
-        + (_documentation(report.model) if report.ok else ()),
+        ok=report.ok and not any(note.severity == "error" for note in notes),
+        diagnostics=tuple(report.diagnostics) + notes,
     )
 
 

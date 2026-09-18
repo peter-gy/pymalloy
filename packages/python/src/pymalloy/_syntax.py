@@ -51,9 +51,9 @@ class Fragment:
                     "A binding requires one expression and optional annotations"
                 )
         elif self.kind == "annotation":
-            if self.name != "doc" or not all(isinstance(p, str) for p in self.parts):
+            if self.name != '"' or not all(isinstance(p, str) for p in self.parts):
                 raise ValueError(
-                    "An annotation requires its doc route and literal text"
+                    "An annotation requires the native description route and literal text"
                 )
         elif self.name is not None:
             raise ValueError("Only a binding has a name")
@@ -224,9 +224,9 @@ def scalar_expression(value: Fragment | Expr) -> Expr:
 
 def _annotation(text: str) -> Fragment:
     return syntax(
-        "".join(f"#(doc) {line}\n" for line in text.splitlines()),
+        "".join(f'#" {line}\n' for line in text.splitlines()),
         kind="annotation",
-        name="doc",
+        name='"',
     )
 
 

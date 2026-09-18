@@ -399,7 +399,7 @@ def test_documented_scalars_remain_composable_and_bind_once(tmp_path):
         assert model.query("result").run().rows() == [{"total": 83}]
         source = next(s for s in model.inspect().model.sources if s.name == "data")
         total = next(f for f in source.schema.fields if f.name == "total")
-        assert [note.value.strip() for note in total.annotations] == ["#(doc) Revenue"]
+        assert [note.value.strip() for note in total.annotations] == ['#" Revenue']
     finally:
         model.close()
 
