@@ -4,8 +4,17 @@ from typing import Any
 
 from pymalloy._document import Document, Markdown, Profile, Query
 from pymalloy._selection import query_names
+from pymalloy.export._bundle import SourceBundle, bundle
 
-__all__ = ["Document", "Markdown", "Profile", "Query", "compile"]
+__all__ = [
+    "Document",
+    "Markdown",
+    "Profile",
+    "Query",
+    "SourceBundle",
+    "bundle",
+    "compile",
+]
 
 
 def compile(
