@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import math
 from collections.abc import Mapping
-from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlsplit
@@ -11,18 +9,21 @@ from urllib.parse import urlsplit
 import anywidget
 import traitlets as t
 
+from pymalloy._givens import encode_givens
+from pymalloy._snapshot import snapshot
 from pymalloy._source import ModelSource
 from pymalloy.browser import Runtime
 
 
 class _Snapshot(t.Dict):
     def get(self, obj: Any, cls: Any = None) -> dict[str, Any]:
-        return deepcopy(cast(dict[str, Any], super().get(obj, cls)))
+        return snapshot(cast(dict[str, Any], super().get(obj, cls)))
 
 
 def _empty_state(status: str = "idle") -> dict[str, Any]:
     return {
         "status": status,
+        "result": None,
         "queries": [],
         "sql": None,
         "columns": [],
@@ -45,157 +46,17 @@ def _json_value(value: Any) -> Any:
 
 
 def _decode_state(wire: dict[str, Any]) -> dict[str, Any]:
-    state: dict[str, Any] = {key: deepcopy(wire.get(key)) for key in _empty_state()}
-    if not isinstance(state["status"], str) or state["status"] not in {
-        "idle",
-        "loading",
-        "ready",
-        "error",
-        "closed",
-    }:
-        raise t.TraitError("Browser state has an invalid status")
-    for name in ("queries", "columns"):
-        if not isinstance(state[name], list) or not all(
-            isinstance(item, str) for item in state[name]
-        ):
-            raise t.TraitError(f"Browser state {name} must be a list of strings")
-    for name in ("sql", "error"):
-        if state[name] is not None and not isinstance(state[name], str):
-            raise t.TraitError(f"Browser state {name} must be a string or None")
-    state["diagnostics"] = _diagnostics(state["diagnostics"])
-    rows = state["rows"]
-    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
-        raise t.TraitError("Browser state rows must be a list of records")
-    paths = wire.get("integer_paths", [])
-    if not isinstance(paths, list):
-        raise t.TraitError("Browser integer paths must be a list")
-    for path in paths:
-        container, key = _result_path(rows, path)
-        value = container[key]
-        if (
-            not isinstance(value, str)
-            or not value.isascii()
-            or not value.removeprefix("-").isdecimal()
-        ):
-            raise t.TraitError("Browser integer path must address an integer string")
-        container[key] = int(value)
-    numbers = wire.get("number_paths", [])
-    if not isinstance(numbers, list):
-        raise t.TraitError("Browser number paths must be a list")
-    for item in numbers:
-        if (
-            not isinstance(item, dict)
-            or not isinstance(item.get("value"), str)
-            or item["value"] not in {"nan", "inf", "-inf"}
-        ):
-            raise t.TraitError("Browser number paths must describe NaN or infinity")
-        container, key = _result_path(rows, item.get("path"))
-        if container[key] is not None:
-            raise t.TraitError("Browser number path must address a null placeholder")
-        container[key] = float(item["value"])
-    return state
+    from msgspec import ValidationError
 
+    from pymalloy._wire import decode_state
 
-def _diagnostics(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        raise t.TraitError("Browser diagnostics must be a list")
-    for item in value:
-        if not isinstance(item, dict):
-            raise t.TraitError("Browser diagnostics must contain records")
-        if not all(
-            isinstance(item.get(key), str) for key in ("code", "message", "severity")
-        ):
-            raise t.TraitError(
-                "Browser diagnostic code, message, and severity must be strings"
-            )
-        if item["severity"] not in {"error", "warning", "debug"}:
-            raise t.TraitError(
-                "Browser diagnostic severity must be error, warning, or debug"
-            )
-        if "replacement" not in item or not (
-            item["replacement"] is None or isinstance(item["replacement"], str)
-        ):
-            raise t.TraitError(
-                "Browser diagnostic replacement must be a string or None"
-            )
-        if "data" not in item or "error_tag" not in item:
-            raise t.TraitError("Browser diagnostics require data and error_tag fields")
-        if item["error_tag"] is not None and not isinstance(item["error_tag"], str):
-            raise t.TraitError("Browser diagnostic error_tag must be a string or None")
-        if "location" not in item:
-            raise t.TraitError("Browser diagnostics must include a location or None")
-        location = item["location"]
-        if location is not None:
-            if (
-                not isinstance(location, dict)
-                or not isinstance(location.get("url"), str)
-                or not isinstance(location.get("range"), dict)
-            ):
-                raise t.TraitError(
-                    "Browser diagnostic locations require a URL and range"
-                )
-            positions = []
-            for name in ("start", "end"):
-                point = location["range"].get(name)
-                if not isinstance(point, dict) or not all(
-                    type(point.get(key)) is int and point[key] >= 0
-                    for key in ("line", "character")
-                ):
-                    raise t.TraitError(
-                        "Browser diagnostic ranges require nonnegative line and character positions"
-                    )
-                positions.append((point["line"], point["character"]))
-            if positions[1] < positions[0]:
-                raise t.TraitError("Browser diagnostic range ends before it starts")
-        try:
-            json.dumps(item, allow_nan=False)
-        except (TypeError, ValueError) as error:
-            raise t.TraitError(
-                "Browser diagnostics must contain finite JSON values"
-            ) from error
-    return value
-
-
-def _result_path(rows: list[dict[str, Any]], path: Any) -> tuple[Any, Any]:
-    if not isinstance(path, list) or not path:
-        raise t.TraitError("Browser value paths must address a result value")
-    container: Any = rows
     try:
-        for index, key in enumerate(path):
-            if not (
-                isinstance(container, dict)
-                and isinstance(key, str)
-                or isinstance(container, list)
-                and type(key) is int
-                and 0 <= key < len(container)
-            ):
-                raise ValueError
-            value = container[key]
-            if index == len(path) - 1:
-                return container, key
-            container = value
-    except (KeyError, IndexError, TypeError, ValueError) as error:
-        raise t.TraitError("Browser value path must address a result value") from error
-    raise t.TraitError("Browser value path must address a result value")
+        return decode_state(wire)
+    except (ValidationError, ValueError, TypeError, KeyError) as error:
+        raise t.TraitError(f"Invalid browser state: {error}") from error
 
 
-def _encode_givens(values: dict[str, Any]) -> tuple[dict[str, Any], list[list[Any]]]:
-    paths: list[list[Any]] = []
-
-    def encode(value: Any, path: list[Any]) -> Any:
-        if type(value) is int and abs(value) > 2**53 - 1:
-            paths.append(path)
-            return str(value)
-        if isinstance(value, dict):
-            return {key: encode(item, [*path, key]) for key, item in value.items()}
-        if isinstance(value, list):
-            return [encode(item, [*path, index]) for index, item in enumerate(value)]
-        return value
-
-    return encode(values, []), paths
-
-
-class Malloy(anywidget.AnyWidget):
+class MalloyWidget(anywidget.AnyWidget):
     """Run a Malloy model in a browser widget.
 
     Assign `source`, `query`, `givens`, or `files` to run an updated model.
@@ -223,7 +84,9 @@ class Malloy(anywidget.AnyWidget):
         sync=True
     )
     _input = t.Dict(default_value=None, allow_none=True, read_only=True).tag(sync=True)
-    _state = t.Dict(default_value=None, allow_none=True).tag(sync=True)
+    _state = t.Dict(default_value=None, allow_none=True).tag(
+        sync=True, echo_update=False
+    )
 
     def __init__(
         self,
@@ -238,6 +101,7 @@ class Malloy(anywidget.AnyWidget):
         self._closed = False
         self._revision = 0
         self._definition_revision = 0
+        self._accepted_wire: dict[str, Any] | None = None
         for name, value in (("files", files), ("givens", givens)):
             if value is not None and not isinstance(value, Mapping):
                 raise t.TraitError(f"{name} must be a mapping")
@@ -255,7 +119,7 @@ class Malloy(anywidget.AnyWidget):
     @t.validate("source", "query", "files", "givens")
     def _validate_input(self, proposal: t.Bunch) -> Any:
         if self._closed:
-            raise t.TraitError("The widget is closed. Create a new Malloy widget")
+            raise t.TraitError("The widget is closed. Create a new MalloyWidget")
         name, value = proposal.trait.name, proposal.value
         if name == "query" and value is not None and not value.strip():
             raise t.TraitError("Query must be a nonempty name or None")
@@ -299,7 +163,7 @@ class Malloy(anywidget.AnyWidget):
 
     def _publish_input(self, *, definition_changed: bool = False) -> None:
         self._revision += 1
-        givens, integer_paths = _encode_givens(self.givens)
+        givens = encode_givens(self.givens)
         self.set_trait("state", _empty_state())
         with self.hold_sync():
             if definition_changed:
@@ -323,10 +187,9 @@ class Malloy(anywidget.AnyWidget):
                 "_input",
                 {
                     "revision": self._revision,
-                    "definition_revision": self._definition_revision,
+                    "definitionRevision": self._definition_revision,
                     "query": self.query,
                     "givens": givens,
-                    "integer_paths": integer_paths,
                 },
             )
 
@@ -334,11 +197,14 @@ class Malloy(anywidget.AnyWidget):
     def _validate_state(self, proposal: t.Bunch) -> dict[str, Any] | None:
         wire = proposal.value
         if not wire or self._closed or wire.get("revision") != self._revision:
-            return self._state
+            return self._accepted_wire
         if type(wire.get("revision")) is not int:
             raise t.TraitError("Browser state revision must be an integer")
-        self._decoded_state = _decode_state(wire)
-        return deepcopy(wire)
+        decoded = _decode_state(wire)
+        accepted = snapshot(wire)
+        self._decoded_state = decoded
+        self._accepted_wire = accepted
+        return accepted
 
     @t.observe("_state")
     def _state_changed(self, change: t.Bunch) -> None:
@@ -352,8 +218,9 @@ class Malloy(anywidget.AnyWidget):
     def notify_change(self, change: t.Bunch) -> None:
         if change.name in {"state", "files", "givens"}:
             change = t.Bunch(change)
-            change.old = deepcopy(change.old)
-            change.new = deepcopy(change.new)
+            if change.old is not t.Undefined:
+                change.old = snapshot(change.old)
+            change.new = snapshot(change.new)
         super().notify_change(change)
 
     def close(self) -> None:
