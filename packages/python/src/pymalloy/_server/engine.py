@@ -47,7 +47,7 @@ class Engine:
         try:
             rows = self.connection.execute("DESCRIBE " + sql).fetchall()
         except duckdb.Error as error:
-            raise SchemaError(str(error)) from error
+            raise SchemaError(str(error), sql="DESCRIBE " + sql) from error
         return [{"name": row[0], "type": row[1]} for row in rows]
 
     def run(self, sql: str) -> Result:

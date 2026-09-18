@@ -12,6 +12,7 @@ from msgspec import structs
 from pymalloy._records import NativeMetadata
 from pymalloy._source import read_text
 from pymalloy.analysis import CheckReport, Diagnostic
+from pymalloy.execution import ExecutionContext
 from pymalloy.result import Result
 
 if TYPE_CHECKING:
@@ -87,6 +88,7 @@ class DataCheck:
     result: Result | None = None
     error: str | None = None
     diagnostics: tuple[Diagnostic, ...] = ()
+    execution: ExecutionContext | None = None
 
 
 @dataclass(frozen=True)

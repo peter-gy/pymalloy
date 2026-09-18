@@ -18,6 +18,7 @@ class Compiler:
 
     def __init__(self, *, memory_mb: int = 256, timeout: float = 30) -> None:
         self._process = Process(memory_mb=memory_mb, timeout=timeout)
+        self.sources: dict[str, str] = {}
 
     def parse(self, source: str, *, url: str, deadline: float) -> ParseReport:
         return self.request(
@@ -44,19 +45,23 @@ class Compiler:
             if imports is not None:
                 if url not in imports:
                     raise ValueError(f"Source bundle is missing '{url}'")
-                return imports[url]
-            parsed = urlsplit(url)
-            if parsed.scheme != "file" or parsed.netloc not in {"", "localhost"}:
-                raise ValueError(f"Import '{url}' must be a local file")
-            return read_text(Path(unquote(parsed.path)))
+                text = imports[url]
+            else:
+                parsed = urlsplit(url)
+                if parsed.scheme != "file" or parsed.netloc not in {"", "localhost"}:
+                    raise ValueError(f"Import '{url}' must be a local file")
+                text = read_text(Path(unquote(parsed.path)))
+            self.sources[url] = text
+            return text
 
+        schema_error = None
         while True:
             check_deadline()
             response = self._process.call(request, deadline)
             if isinstance(response, CompileError):
                 raise CompilationError(
                     response.message, diagnostics=response.diagnostics
-                )
+                ) from schema_error
             if not isinstance(response, CompileNeeds):
                 if not isinstance(response, response_type):
                     self.close()
@@ -76,6 +81,7 @@ class Compiler:
                 try:
                     fulfilled["schemas"][need.key] = {"value": describe(need.sql)}
                 except SchemaError as error:
+                    schema_error = error
                     fulfilled["schemas"][need.key] = {"error": str(error)}
             request = {"op": "step", "fulfilled": fulfilled}
 

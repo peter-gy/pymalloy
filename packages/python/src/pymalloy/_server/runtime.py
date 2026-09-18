@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import threading
 import time
@@ -12,7 +13,7 @@ from typing import Any
 import duckdb
 
 from pymalloy._errors import ModelError
-from pymalloy._givens import encode_givens
+from pymalloy._givens import encode_givens, given_values
 from pymalloy._records import (
     CheckReady,
     DocumentCell,
@@ -31,6 +32,7 @@ from pymalloy.analysis import (
     QueryDescriptor,
     SourcePosition,
 )
+from pymalloy.execution import ExecutionContext, ExecutionError
 from pymalloy.result import Result
 
 from .compiler import Compiler
@@ -181,6 +183,10 @@ class _Runtime:
                 self,
                 tuple(result.queries),
                 imports,
+                ModelSource(
+                    result.source.url, result.source.text, result.source.imports
+                ),
+                result.compiler_version,
             )
 
     def check(
@@ -238,7 +244,11 @@ class Model:
         runtime: _Runtime,
         queries: tuple[QueryDescriptor, ...],
         imports: Mapping[str, str] | None,
+        source: ModelSource,
+        compiler_version: str,
     ) -> None:
+        self._source = source
+        self.compiler_version = compiler_version
         self._owner = runtime
         self.queries = queries
         self._imports = imports
@@ -370,6 +380,7 @@ class Query:
         self._model = model
         self._selection = selection
         self.name, self.kind, self.location = info.name, info.kind, info.location
+        self._info = info
 
     def _sql(self, givens: Mapping[str, Any] | None, deadline: float) -> str:
         return self._model._owner.request(
@@ -389,15 +400,44 @@ class Query:
         with self._model._owner.operation(timeout) as deadline:
             return self._sql(givens, deadline)
 
+    def _execute(
+        self, givens: Mapping[str, Any] | None, timeout: float | None, limit: int | None
+    ) -> Result:
+        runtime = self._model._owner
+        # Freeze the bindings before compilation, so caller mutation cannot change evidence.
+        encoded = encode_givens(givens)
+        with runtime.operation(timeout) as deadline:
+            sql = self._sql(given_values(encoded), deadline)
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Query execution exceeded its deadline")
+            try:
+                return (
+                    runtime._engine.run(sql)
+                    if limit is None
+                    else runtime._engine.preview(sql, limit)
+                )
+            except duckdb.Error as error:
+                context = ExecutionContext(
+                    source=ModelSource(
+                        self._model._source.url,
+                        self._model._source.text,
+                        {**self._model._source.imports, **runtime._compiler.sources},
+                    ),
+                    query=self._info,
+                    malloy=self._selection.get("malloy")
+                    if isinstance(self._selection, dict)
+                    else None,
+                    sql=sql,
+                    compiler_version=self._model.compiler_version,
+                    preview_limit=limit,
+                    _givens_json=json.dumps(encoded),
+                )
+                raise ExecutionError(context, error) from error
+
     def run(
         self, *, givens: Mapping[str, Any] | None = None, timeout: float | None = None
     ) -> Result:
-        runtime = self._model._owner
-        with runtime.operation(timeout) as deadline:
-            sql = self._sql(givens, deadline)
-            if time.monotonic() >= deadline:
-                raise TimeoutError("Query execution exceeded its deadline")
-            return runtime._engine.run(sql)
+        return self._execute(givens, timeout, None)
 
     def preview(
         self,
@@ -409,9 +449,4 @@ class Query:
         """Execute a SELECT with an outer row limit. COPY is rejected before execution."""
         if type(limit) is not int or not 1 <= limit <= 10000:
             raise ValueError("Preview limit must be an integer from 1 to 10000")
-        runtime = self._model._owner
-        with runtime.operation(timeout) as deadline:
-            sql = self._sql(givens, deadline)
-            if time.monotonic() >= deadline:
-                raise TimeoutError("Query preview exceeded its deadline")
-            return runtime._engine.preview(sql, limit)
+        return self._execute(givens, timeout, limit)

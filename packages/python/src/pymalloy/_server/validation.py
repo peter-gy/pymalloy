@@ -11,6 +11,7 @@ import duckdb
 
 from pymalloy._errors import CompilationError, ModelError
 from pymalloy._syntax import Fragment
+from pymalloy.execution import ExecutionError
 from pymalloy.validation import (
     _DEFAULT_DOCUMENTATION,
     DataCheck,
@@ -82,12 +83,16 @@ def validate(
                 TimeoutError,
                 ValueError,
                 duckdb.Error,
+                ExecutionError,
             ) as error:
                 results.append(
                     DataCheck(
                         name,
                         "error",
                         error=str(error),
+                        execution=error.context
+                        if isinstance(error, ExecutionError)
+                        else None,
                         diagnostics=tuple(error.diagnostics)
                         if isinstance(error, CompilationError)
                         else (),
