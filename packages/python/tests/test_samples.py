@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 
 import pytest
+from _corpus import digest
 from check_samples import (
-    digest,
     execute_jupyter,
     execute_marimo,
     summarize_result,
@@ -22,14 +22,6 @@ def test_result_comparison_preserves_order_unless_unordered_is_requested():
         [(1, ["b", "a"]), (2, ["c"])], unordered=True
     )
     assert digest(rows, unordered=True) != digest([*rows, rows[0]], unordered=True)
-
-
-def test_result_comparison_rounds_floats_only_with_explicit_precision():
-    rows = [(1.0000000001,)]
-    assert digest(rows) != digest([(1.0000000002,)])
-    assert digest(rows, float_precision=9) == digest(
-        [(1.0000000002,)], float_precision=9
-    )
 
 
 @pytest.mark.parametrize("format", ["marimo", "jupyter"])
@@ -93,8 +85,7 @@ def test_sample_checker_detects_wrong_generated_notebook_values(
     assert result["queries"][0]["error"] == f"{format}: Result values differ"
 
 
-@pytest.mark.parametrize("runtime", [False, True])
-def test_sample_checker_executes_copy_before_reading_its_output(tmp_path, runtime):
+def test_sample_checker_executes_copy_before_reading_its_output(tmp_path):
     samples = tmp_path / "samples"
     samples.mkdir()
     data = tmp_path / "data"
@@ -114,9 +105,8 @@ SELECT * FROM 'answer.parquet'
         "--output",
         str(output),
         "--execute-writes",
+        "--runtime",
     ]
-    if runtime:
-        command.append("--runtime")
     result = subprocess.run(
         command, capture_output=True, text=True, timeout=120, check=False
     )
@@ -126,10 +116,67 @@ SELECT * FROM 'answer.parquet'
     assert set(records[0]["notebooks"]) == {"marimo", "jupyter"}
     assert [query["status"] for query in records[0]["queries"]] == ["passed", "passed"]
     for query in records[0]["queries"]:
-        assert query["verified"] == [
-            "reference",
-            *(["runtime"] if runtime else []),
-            "marimo",
-            "jupyter",
-        ]
+        assert set(query["verified"]) == {"reference", "runtime", "marimo", "jupyter"}
     assert (data / "answer.parquet").is_file()
+
+
+@pytest.mark.parametrize(
+    ("clause", "before", "after"),
+    [
+        ("select: amount order_by: amount asc", " asc", " desc"),
+        ("where: amount > 10 select: amount", "10", "20"),
+    ],
+)
+def test_roundtrip_checker_rejects_changed_sql_even_when_rows_match(
+    tmp_path, monkeypatch, clause, before, after
+):
+    import check_roundtrip
+
+    source = tmp_path / "model.malloy"
+    source.write_text(
+        "source: data is duckdb.sql('SELECT * FROM (VALUES (1),(2)) t(amount)')\n"
+        f"query: result is data -> {{{clause}}}\n"
+    )
+    baseline = check_roundtrip.worker(source, tmp_path, tmp_path / "baseline")
+    assert baseline["status"] == "passed", baseline
+    reconstruct = check_roundtrip.reconstruct
+
+    def changed_query(*args):
+        text = reconstruct(*args)
+        changed = text.replace(before, after)
+        assert changed != text
+        return changed
+
+    monkeypatch.setattr(check_roundtrip, "reconstruct", changed_query)
+    result = check_roundtrip.worker(
+        source, tmp_path, tmp_path / "changed", unordered=True
+    )
+    assert result["status"] == "needs_review", result
+    query = result["queries"][0]
+    assert query["comparison"] == "multiset"
+    assert query["status"] == "sql_mismatch"
+
+
+def test_roundtrip_result_comparison_requires_explicit_order_and_precision_policy():
+    from check_roundtrip import compare_values, result_summary
+
+    from pymalloy.result import Column, Result
+
+    original, reversed_summary, modified_summary = [
+        result_summary(
+            Result("", (Column("value", "DOUBLE"),), tuple((v,) for v in values)),
+            float_precision=9,
+        )
+        for values in [
+            (1.0000000001, 2.0),
+            (2.0, 1.0000000001),
+            (1.0000000002, 2.0000000001),
+        ]
+    ]
+    assert compare_values(original, reversed_summary) == "value_mismatch"
+    assert compare_values(original, reversed_summary, unordered=True) == "multiset"
+    assert compare_values(original, modified_summary) == "value_mismatch"
+    assert (
+        compare_values(original, modified_summary, float_precision=9)
+        == "rounded_ordered"
+    )

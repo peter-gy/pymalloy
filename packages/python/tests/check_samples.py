@@ -4,41 +4,13 @@ import argparse
 import hashlib
 import importlib.util
 import json
-import math
-import os
-import signal
-import subprocess
 import sys
 import time
 from importlib.metadata import version
 from pathlib import Path
 from urllib.parse import urlsplit
 
-
-def digest(rows, *, unordered=False, float_precision=None):
-    def normalize(value):
-        if isinstance(value, dict):
-            return {
-                "object": {key: normalize(item) for key, item in sorted(value.items())}
-            }
-        if isinstance(value, (tuple, list)):
-            return [normalize(item) for item in value]
-        if isinstance(value, float):
-            if not math.isfinite(value):
-                number = str(value)
-            elif float_precision is not None:
-                number = format(value, f".{float_precision}g")
-            else:
-                number = value.hex()
-            return {"float": number}
-        if value is None or isinstance(value, (str, bool, int)):
-            return value
-        return {type(value).__name__: str(value)}
-
-    normalized = [normalize(row) for row in rows]
-    if unordered:
-        normalized.sort(key=lambda row: json.dumps(row, sort_keys=True))
-    return hashlib.sha256(json.dumps(normalized, sort_keys=True).encode()).hexdigest()
+from _corpus import checkout_revision, digest, run_worker, sample_paths
 
 
 def summarize_result(frame, *, unordered=False, float_precision=None):
@@ -288,22 +260,11 @@ def main():
         return
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    samples = sorted(
-        path
-        for path in root.rglob("*")
-        if path.suffix in {".malloy", ".malloynb", ".malloysql"}
-        and "node_modules" not in path.parts
-    )
-    revision = subprocess.run(
-        ["git", "-C", str(root), "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    samples = sample_paths(root, args.match)
     metadata = {
         "root": str(root),
         "data_root": str(data_root),
-        "revision": revision.stdout.strip() if revision.returncode == 0 else None,
+        "revision": checkout_revision(root),
         "discovered": len(samples),
         "runtime": args.runtime,
         "versions": {
@@ -327,8 +288,6 @@ def main():
     records = []
     for model in samples:
         relative = str(model.relative_to(root))
-        if args.match not in relative:
-            continue
         target = (
             output
             / "notebooks"
@@ -358,25 +317,7 @@ def main():
         if args.float_precision is not None:
             command.extend(["--float-precision", str(args.float_precision)])
         started = time.monotonic()
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=workdir,
-            start_new_session=True,
-        )
-        try:
-            stdout, stderr = process.communicate(timeout=180)
-            record = (
-                json.loads(stdout)
-                if process.returncode == 0
-                else {"status": "worker_failed", "error": stderr}
-            )
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.communicate()
-            record = {"status": "timeout", "error": "Sample exceeded 180 seconds"}
+        record = run_worker(command, cwd=workdir, timeout=180)
         record.update(
             file=relative,
             source_sha256=hashlib.sha256(model.read_bytes()).hexdigest(),
