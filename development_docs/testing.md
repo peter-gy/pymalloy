@@ -162,6 +162,7 @@ restricts the run to paths containing the supplied text.
 ```sh
 uv run python tools/benchmark_authoring.py --samples 7 --output nogit/authoring-timings.json
 uv run python tools/benchmark_data_inputs.py --rows 1000000 --samples 7 --output nogit/dataframe-timings.json
+pnpm bench:compiler --samples 7 --output nogit/compiler-timings.json
 ```
 
 The dataframe benchmark measures contiguous and fragmented Arrow snapshots,
@@ -170,3 +171,10 @@ table references. Results include dependency versions and every timing sample.
 Compare medians using the same interpreter, dependencies, input size, and machine.
 Run benchmarks separately from tests and builds. Keep timing thresholds out of
 behavior tests.
+
+Build the packages before running the compiler benchmark. It measures model
+inspection, fresh model checks, and batches of 100 SQL preparations through the
+shared host driver with synthetic schemas. It excludes database execution and
+compiler process startup. `--compiler path/to/dist` selects another compiler build
+for comparison. The Python authoring benchmark measures process and execution
+costs separately, including warm SQL-only calls.

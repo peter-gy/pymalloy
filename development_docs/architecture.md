@@ -102,8 +102,17 @@ by the job, rather than private fields on parsed or compiled objects.
 A compiled model owns one typed query registry. Embedded queries retain their
 validated preparation and SQL fragments, so first execution uses the schemas
 already discovered during compilation. Each call binds its own givens
-and executes against current data. SQL-only calls leave rendering metadata
-unevaluated. Ad hoc source is translated for each request.
+and executes against current data. Named queries, runs, and retained source views
+keep one native `PreparedResult` for calls without supplied values, following
+Malloy's `QueryMaterializer` default-compilation policy. Nonempty givens and ad hoc
+source compile per request. Query rows are always fetched from the engine.
+SQL-only calls leave rendering metadata unevaluated, and each result publication
+gets fresh stable metadata.
+
+Inspection traverses Malloy's given objects once and reuses source schemas from
+its stable `ModelInfo`. Queries needing runtime givens still expose source-only
+metadata through Malloy's source converter. Native table discovery can skip the
+coordinate-repair walk when Malloy reports no table references.
 
 Browser models keep a bounded output-schema cache keyed by SQL and the returned
 Arrow schema. Schema changes invalidate the entry. Dictionary schemas and large

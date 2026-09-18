@@ -13,7 +13,8 @@
     "format": "vp fmt",
     "e2e": "pnpm --filter @pymalloy/e2e test",
     "canary": "node tools/consumer-canary.mjs",
-    "records": "uv run python tools/generate-records.py"
+    "records": "uv run python tools/generate-records.py",
+    "bench:compiler": "node tools/benchmark_compiler.mjs"
   },
   "devDependencies": {
     "@oxlint/plugins": "catalog:",

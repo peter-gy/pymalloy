@@ -119,6 +119,7 @@ def benchmark(samples: int) -> dict:
                         "execute_generated_sql_fetch",
                         lambda: connection.execute(sql).fetchall(),
                     )
+                    measure("warm_named_query_sql", lambda: model.query("totals").sql())
                     result = measure(
                         "warm_named_query_run", lambda: model.query("totals").run()
                     )
