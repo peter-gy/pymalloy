@@ -1,11 +1,10 @@
-import { isMalloyText } from "./selection";
+import { isMalloyText, selectQuery } from "./selection";
 import type { CompiledModel } from "./model";
 import type { Job } from "./job";
 import type { SourcePosition } from "./metadata";
 import type {
   QueryDescriptor,
   QuerySelection,
-  RunOptions,
   QueryOptions,
   DocumentOptions,
   Result,
@@ -19,10 +18,10 @@ type Prepared = ReturnType<CompiledModel["prepare"]> extends Job<infer T> ? T : 
 
 /** @title ModelDriver */
 export interface ModelDriver {
-  assertActive(): void;
+  assertAvailable(): void;
   compile<T>(job: Job<T>): Promise<T>;
   run(sql: string, malloy?: Result["malloy"]): Promise<Result>;
-  submit<T>(task: () => Promise<T>, options?: RunOptions): Promise<T>;
+  submit<T>(task: () => Promise<T>, options?: QueryOptions): Promise<T>;
   release(): void;
 }
 
@@ -36,7 +35,7 @@ export class Model {
   }
   private current() {
     if (!this.compiled || !this.driver) throw new Error("Model is closed");
-    this.driver.assertActive();
+    this.driver.assertAvailable();
     return { compiled: this.compiled, driver: this.driver };
   }
   source() {
@@ -55,21 +54,12 @@ export class Model {
     let info: QueryDescriptor;
     if (isMalloyText(selection)) info = { name: "query", kind: "run", location: null };
     else {
-      const selected =
-        selection ??
-        this.queries.findLast((q) => q.kind === "run")?.name ??
-        (this.queries.length === 1 ? this.queries[0].name : undefined);
-      const found = this.queries.find((q) => q.name === selected);
-      if (!found)
-        throw new Error(
-          `Choose a query from: ${this.queries.map((q) => q.name).join(", ") || "the model has no queries"}`,
-        );
-      info = found;
-      selection = found.name;
+      info = selectQuery(this.queries, selection);
+      selection = info.name;
     }
     const selected = structuredClone(selection);
     const execute = <T>(
-      options: RunOptions,
+      options: QueryOptions,
       finish: (prepared: Prepared, driver: ModelDriver) => T | Promise<T>,
     ) => {
       const { driver } = this.current();
@@ -89,8 +79,11 @@ export class Model {
   }
   document(options: DocumentOptions = {}) {
     const { driver } = this.current();
-    const captured = structuredClone(options);
-    return driver.submit(() => driver.compile(this.current().compiled.document(captured)));
+    const { signal, ...document } = options;
+    const captured = structuredClone(document);
+    return driver.submit(() => driver.compile(this.current().compiled.document(captured)), {
+      signal,
+    });
   }
   close(): void {
     this.compiled = undefined;
@@ -106,7 +99,7 @@ export class Query implements QueryDescriptor {
   constructor(
     info: QueryDescriptor,
     private readonly compile: (options: QueryOptions) => Promise<string>,
-    private readonly execute: (options: RunOptions) => Promise<Result>,
+    private readonly execute: (options: QueryOptions) => Promise<Result>,
   ) {
     this.name = info.name;
     this.kind = info.kind;
@@ -115,7 +108,7 @@ export class Query implements QueryDescriptor {
   async sql(options: QueryOptions = {}): Promise<string> {
     return this.compile(options);
   }
-  async run(options: RunOptions = {}): Promise<Result> {
+  async run(options: QueryOptions = {}): Promise<Result> {
     return this.execute(options);
   }
 }

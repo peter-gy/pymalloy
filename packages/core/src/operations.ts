@@ -1,18 +1,29 @@
 import type { OperationOptions } from "./types";
+
+/** Serialize work until both the operation and its interrupt have settled. */
 export class Operations {
   private pending: Promise<void> = Promise.resolve();
   private accepting = true;
+  private active?: AbortController;
   private failure?: Error;
-  private readonly cancellations = new Set<(error: Error) => void>();
 
-  constructor(private readonly interrupt: () => void) {}
+  constructor(private readonly interrupt: () => void | Promise<void>) {}
 
   get closed(): boolean {
     return !this.accepting;
   }
 
-  assertActive(): void {
+  get signal(): AbortSignal | undefined {
+    return this.active?.signal;
+  }
+
+  assertHealthy(): void {
     if (this.failure) throw this.failure;
+  }
+
+  assertActive(): void {
+    this.assertHealthy();
+    this.active?.signal.throwIfAborted();
   }
 
   run<T>(task: () => Promise<T>, options: OperationOptions = {}): Promise<T> {
@@ -24,30 +35,29 @@ export class Operations {
     }
     const signal = options.signal;
     return new Promise<T>((resolve, reject) => {
-      let active = false;
+      let controller: AbortController | undefined;
+      let interrupted: Promise<void> | undefined;
       let settled = false;
-      const cleanup = () => {
-        signal?.removeEventListener("abort", aborted);
-        this.cancellations.delete(cancel);
-      };
-      const cancel = (error: Error) => {
+      const aborted = () => {
         if (settled) return;
         settled = true;
-        cleanup();
-        reject(error);
-        if (active) this.stop(error);
+        const reason = signal?.reason ?? new DOMException("Operation was aborted", "AbortError");
+        reject(reason);
+        if (controller) {
+          controller.abort(reason);
+          interrupted = Promise.resolve().then(() => this.interrupt());
+          // The queue observes this promise after the active task settles.
+          void interrupted.catch(() => undefined);
+        }
       };
-      const aborted = () =>
-        cancel(
-          signal?.reason instanceof Error
-            ? signal.reason
-            : new DOMException("Operation was aborted", "AbortError"),
-        );
-      this.cancellations.add(cancel);
       signal?.addEventListener("abort", aborted, { once: true });
       this.pending = this.pending.then(async () => {
-        if (settled) return;
-        active = true;
+        if (settled) {
+          signal?.removeEventListener("abort", aborted);
+          return;
+        }
+        controller = new AbortController();
+        this.active = controller;
         try {
           this.assertActive();
           const result = await task();
@@ -55,20 +65,21 @@ export class Operations {
         } catch (error) {
           if (!settled) reject(error);
         } finally {
-          active = false;
           settled = true;
-          cleanup();
+          signal?.removeEventListener("abort", aborted);
+          try {
+            await interrupted;
+          } finally {
+            this.active = undefined;
+          }
         }
       });
+      // A failed interrupt is terminal. Ordinary operation errors leave the queue healthy.
+      this.pending = this.pending.catch((error) => {
+        this.failure = error instanceof Error ? error : new Error(String(error));
+        this.accepting = false;
+      });
     });
-  }
-
-  private stop(error: Error): void {
-    if (this.failure) return;
-    this.failure = error;
-    this.accepting = false;
-    this.interrupt();
-    for (const cancel of this.cancellations) cancel(error);
   }
 
   close(): Promise<void> {
