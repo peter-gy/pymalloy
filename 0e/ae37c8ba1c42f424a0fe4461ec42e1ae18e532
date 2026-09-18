@@ -1,0 +1,46 @@
+tools/benchmark_authoring.py
+  s_eb8331ad77ae5f::t_ea3bb31b0e75a9 122
+packages/node/tests/session.test.ts
+  s_eb8331ad77ae5f::t_2e2622af5d4011 515-516,522
+  s_eb8331ad77ae5f::t_ea3bb31b0e75a9 520-521,527-531
+development_docs/architecture.md
+  s_eb8331ad77ae5f::t_f334622bb65ea5 105-115
+packages/core/src/model.ts
+  s_eb8331ad77ae5f::t_bfbcd5af9ed316 31-32,177,181
+  s_eb8331ad77ae5f::t_ea3bb31b0e75a9 176,178-180
+tools/benchmark_compiler.mjs
+  s_eb8331ad77ae5f::t_871bac1e64bcbe 53
+  s_eb8331ad77ae5f::t_a3e7ce35eff71b 56
+  s_eb8331ad77ae5f::t_c75edb0572ca50 64-66,68-69,72-73
+  s_eb8331ad77ae5f::t_aabe12a34c6165 2-3,23,67,70,75-85,89,97
+  s_eb8331ad77ae5f::t_dfe3e23393724b 4-22,24-52,54,74,86-88,90-96,98-112
+  s_eb8331ad77ae5f::t_ae47a7b1f6d9e0 57-63,71
+packages/core/src/inspect.ts
+  s_eb8331ad77ae5f::t_c43a5e9ca5cb04 70
+packages/core/tests/tools.test.ts
+  s_eb8331ad77ae5f::t_a3e7ce35eff71b 317-319
+development_docs/testing.md
+  s_eb8331ad77ae5f::t_f334622bb65ea5 165,174-180
+packages/core/src/upstream.ts
+  s_eb8331ad77ae5f::t_c43a5e9ca5cb04 76-83,85-86,88,101
+package.json
+  s_eb8331ad77ae5f::t_aabe12a34c6165 16-17
+packages/core/src/tables.ts
+  s_eb8331ad77ae5f::t_bfbcd5af9ed316 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0eae37c8ba1c42f424a0fe4461ec42e1ae18e532",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
