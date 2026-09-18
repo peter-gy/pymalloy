@@ -1,0 +1,20 @@
+.github/workflows/ci.yml
+  s_eb8331ad77ae5f::t_834baace6268d1 111-114,126,130-134,137,139
+  s_eb8331ad77ae5f::t_f127c92bd4d9dc 135-136,138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "23da2181753772cd6d2d90b52ee09f53f227b3d8",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
