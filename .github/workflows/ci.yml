@@ -1,0 +1,201 @@
+name: CI
+"on":
+  pull_request: null
+  push:
+    branches:
+      - main
+  workflow_call: null
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  docs:
+    uses: ./.github/workflows/pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/setup
+        with:
+          node: "false"
+      - name: Check dependency locks
+        run: uv lock --check
+      - name: Install static-check dependencies
+        run: uv sync --frozen --all-packages --all-extras --no-install-workspace
+      - name: Check source
+        run: |
+          uv run --frozen --no-sync ruff format --check packages/python examples apps/e2e
+          uv run --frozen --no-sync ruff check packages/python examples apps/e2e
+          uv run --frozen --no-sync ty check
+          git diff --check
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/setup
+      - name: Build runtime packages
+        run: pnpm --filter '!@pymalloy/docs' -r --if-present build
+      - name: Build Python distributions
+        run: uv build --package pymalloy
+      - name: Check distribution metadata
+        run: uv run --frozen --only-group release twine check dist/pymalloy-*.whl dist/pymalloy-*.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: javascript-packages
+          path: |
+            packages/core/dist/
+            packages/browser/dist/
+            packages/node/dist/
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: python-assets
+          path: packages/python/src/pymalloy/_assets/
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: python-dist
+          path: |
+            dist/pymalloy-*.whl
+            dist/pymalloy-*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+  test-javascript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: build
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/setup
+        with:
+          python: "false"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: javascript-packages
+          path: packages/
+      - name: Check JavaScript quality and test package contracts
+        run: |
+          pnpm check
+          pnpm test
+  test-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.12"
+          - "3.13"
+          - "3.14"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/setup
+        with:
+          node: "false"
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: python-assets
+          path: packages/python/src/pymalloy/_assets/
+      - name: Test Python contracts
+        run: |
+          uv sync --frozen --all-packages --all-extras
+          uv run --frozen pytest -q
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: build
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/setup
+        with:
+          node: "false"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: python-dist
+          path: dist/
+      - name: Verify wheel and source distribution
+        run: |
+          uv build --wheel dist/pymalloy-*.tar.gz --out-dir dist/from-sdist
+          for wheel in dist/pymalloy-*.whl dist/from-sdist/pymalloy-*.whl; do
+            uv run --no-project --isolated --with "$wheel" python -c 'from pymalloy import Malloy; Malloy("").close()'
+            uv run --no-project --isolated --with "${wheel}[server]" python - <<'PY'
+          from pymalloy.server import Session
+          with Session() as session:
+              assert session.run("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }").item() == 42
+          PY
+          done
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: build
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: python-assets
+          path: packages/python/src/pymalloy/_assets/
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: python-dist
+          path: dist/
+      - name: Install the built wheel for notebook hosts
+        run: |
+          uv sync --frozen --all-packages --all-extras
+          uv pip install --no-deps --reinstall-package pymalloy dist/pymalloy-*.whl
+      - name: Install Chromium
+        run: pnpm --filter @pymalloy/e2e exec playwright install --with-deps chromium
+      - name: Test marimo, JupyterLab, and Pyodide
+        run: pnpm e2e
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-results
+          path: |
+            apps/e2e/playwright-report/
+            apps/e2e/test-results/
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+        if: always()
+  required:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - docs
+      - check
+      - build
+      - test-javascript
+      - test-python
+      - package
+      - e2e
+    steps:
+      - name: Verify required jobs
+        run: |
+          if [ "$DOCS" != success ] || [ "$CHECK" != success ] || [ "$BUILD" != success ] || [ "$JAVASCRIPT" != success ] || [ "$PYTHON" != success ] || [ "$PACKAGE" != success ] || [ "$E2E" != success ]; then
+            printf 'Required jobs: docs=%s check=%s build=%s javascript=%s python=%s package=%s e2e=%s\n' "$DOCS" "$CHECK" "$BUILD" "$JAVASCRIPT" "$PYTHON" "$PACKAGE" "$E2E" >&2
+            exit 1
+          fi
+        env:
+          DOCS: ${{ needs.docs.result }}
+          CHECK: ${{ needs.check.result }}
+          BUILD: ${{ needs.build.result }}
+          JAVASCRIPT: ${{ needs.test-javascript.result }}
+          PYTHON: ${{ needs.test-python.result }}
+          PACKAGE: ${{ needs.package.result }}
+          E2E: ${{ needs.e2e.result }}
