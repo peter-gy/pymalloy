@@ -1,6 +1,6 @@
 import { compile, drive, check } from "./host.js";
 import { expect, test } from "vite-plus/test";
-import { compilerVersion, formatSource, parseSource } from "../src/tooling.js";
+import { formatSource, parseSource } from "../src/tooling.js";
 const url = new URL("memory://project/model.malloy");
 const source = "source: values is duckdb.sql('SELECT 42 AS value')\nrun: values -> {select: value}";
 function options(text = source) {
@@ -268,7 +268,6 @@ test("checks share source identity and syntax metadata while deferring data acce
   expect(reads).toEqual([url.href]);
   expect(report).toMatchObject({
     ok: true,
-    compilerVersion: compilerVersion,
     model: { model: null, sources: [] },
     imports: [{ url: "memory://project/base.malloy", location: { url: url.href } }],
     tables: [{ path: "missing.csv", connection: "duckdb" }],

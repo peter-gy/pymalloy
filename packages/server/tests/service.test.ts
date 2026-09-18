@@ -21,7 +21,7 @@ function finish(service: CompilerService, first: Response): Response {
   return response;
 }
 
-test("a process replaces abandoned work and retains its model after rejected operations", () => {
+test("a compiler service replaces abandoned work and retains its model after rejected operations", () => {
   const service = new CompilerService();
   const begin = {
     op: "begin",
