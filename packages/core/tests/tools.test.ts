@@ -156,7 +156,9 @@ test("document diagnostics preserve authored lines and Unicode codepoint columns
   const document =
     ">>>markdown\n# Values\n>>>malloy\nsource: values is duckdb.sql('SELECT 42 AS value')\n>>>sql connection:duckdb\nSELECT '😀', * FROM %{ values -> {select: missing} }%";
   const documentURL = new URL("memory://project/report.malloynb");
-  expect(parseSource(document, { url: documentURL }).diagnostics).toEqual([]);
+  expect(parseSource(document, { url: documentURL, documentKind: "notebook" }).diagnostics).toEqual(
+    [],
+  );
   const checked = await check({ ...options(document), url: documentURL });
   expect(checked.ok).toBe(false);
   expect(checked.diagnostics[0]).toMatchObject({
@@ -166,7 +168,10 @@ test("document diagnostics preserve authored lines and Unicode codepoint columns
       range: { start: { line: 5, character: 41 }, end: { line: 5, character: 48 } },
     },
   });
-  const syntax = parseSource(document.replace("select: missing", "select:"), { url: documentURL });
+  const syntax = parseSource(document.replace("select: missing", "select:"), {
+    url: documentURL,
+    documentKind: "notebook",
+  });
   expect(syntax.diagnostics[0].location?.range.start.line).toBe(5);
 });
 test("formatting preserves executable meaning and keeps invalid source unchanged", async () => {
@@ -297,7 +302,10 @@ test("incomplete imports return native diagnostics instead of failing metadata e
 
 test("import literal spans address authored Unicode and CRLF notebook text", () => {
   const authored = '>>>markdown\r\n😀 Source notes\r\n>>>malloy\r\nimport "base.malloy"\r\n';
-  const parsed = parseSource(authored, { url: new URL("memory://project/model.malloynb") });
+  const parsed = parseSource(authored, {
+    url: new URL("memory://project/model.malloynb"),
+    documentKind: "notebook",
+  });
   expect(parsed.diagnostics).toEqual([]);
   const span = parsed.imports[0].reference;
   expect(Array.from(authored).slice(span.start, span.end).join("")).toBe('"base.malloy"');
@@ -319,4 +327,22 @@ test("inspection keeps source schemas distinct from named query outputs and call
   expect(model.inspect().model.sources[0].schema.fields.map((field) => field.name)).toEqual([
     "value",
   ]);
+});
+
+test("query name collisions remain explainable in check reports", async () => {
+  const report = await check(
+    options(`
+    source: values is duckdb.sql('SELECT 42 AS value') extend {
+      view: detail is {select: value}
+    }
+    query: \`values.detail\` is values -> detail
+  `),
+  );
+  expect(report.ok).toBe(false);
+  expect(report.diagnostics).toContainEqual(
+    expect.objectContaining({
+      severity: "error",
+      message: expect.stringContaining("Ambiguous query selector"),
+    }),
+  );
 });

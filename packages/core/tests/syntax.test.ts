@@ -15,6 +15,19 @@ function children(node: SyntaxNode): SyntaxNode[] {
   return node.type === "syntax" ? node.parts.filter(isNode) : [];
 }
 
+function scopeChildren(node: SyntaxNode): SyntaxNode[] {
+  return children(node).flatMap((child) =>
+    child.type === "syntax" && child.kind === "expression"
+      ? scopeChildren(child)
+      : node.type === "syntax" &&
+          node.kind === "document" &&
+          child.type === "syntax" &&
+          child.kind === "annotation"
+        ? []
+        : [child],
+  );
+}
+
 function expression(node: SyntaxNode): SyntaxNode {
   const values = children(node).filter(
     (part) => part.type !== "syntax" || part.kind === "expression",
@@ -62,12 +75,12 @@ test("syntax roundtrips unsupported constructs, annotations, Unicode, and CRLF e
   ].join("\r\n");
   const syntax = syntaxSource(source);
   expect(text(syntax)).toBe(source);
-  const [first, second] = children(syntax);
+  const [first, second] = scopeChildren(syntax);
   expect([name(first), name(second)]).toEqual(["a`b", "other"]);
   const rhs = expression(first);
   expect(text(rhs)).toMatch(/^duckdb\.sql/);
   expect(
-    children(rhs).map((node) => [node.type === "syntax" ? node.kind : "scalar", name(node)]),
+    scopeChildren(rhs).map((node) => [node.type === "syntax" ? node.kind : "scalar", name(node)]),
   ).toEqual([
     ["field", "path\\name"],
     ["query", "detail"],
@@ -89,11 +102,11 @@ test("edits target one binding without crossing nested source and query scopes",
     "run: result",
   ].join("\n");
   const syntax = syntaxSource(source);
-  const [namedSource, query] = children(syntax);
+  const [namedSource, query] = scopeChildren(syntax);
   expect(query).toMatchObject({ kind: "query", name: "result" });
-  const [field, join, view] = children(expression(namedSource));
+  const [field, join, view] = scopeChildren(expression(namedSource));
   expect([name(field), name(join), name(view)]).toEqual(["doubled", "other", "detail"]);
-  expect(children(expression(join)).map((node) => name(node))).toEqual(["doubled"]);
+  expect(scopeChildren(expression(join)).map((node) => name(node))).toEqual(["doubled"]);
   replaceText(expression(field), "value * 4");
   const edited = text(syntax);
   expect(edited).toBe(source.replace("value * 2", "value * 4"));
@@ -111,15 +124,16 @@ test("edits target one binding without crossing nested source and query scopes",
   );
 });
 
-test("malformed Malloy and notebook inputs are rejected before exposing editable bindings", () => {
+test("malformed Malloy is rejected while plain model parsing is independent of its URL suffix", () => {
   expect(() => syntaxSource("source: incomplete is")).toThrowError(
     expect.objectContaining({
       name: "ToolingError",
       diagnostics: expect.arrayContaining([expect.objectContaining({ severity: "error" })]),
     }),
   );
-  expect(() => syntaxSource("", new URL("file:///model.malloynb"))).toThrow(/\.malloy document/);
-  expect(() => syntaxSource("", new URL("file:///model.malloysql"))).toThrow(/\.malloy document/);
+  expect(text(syntaxSource("source: s is base", new URL("file:///model.malloynb")))).toBe(
+    "source: s is base",
+  );
 });
 
 test("named nests own their fields while anonymous nests and runs remain opaque", () => {
@@ -135,18 +149,18 @@ test("named nests own their fields while anonymous nests and runs remain opaque"
   ].join("\n");
   const syntax = syntaxSource(source);
   expect(text(syntax)).toBe(source);
-  const sources = children(syntax);
+  const sources = scopeChildren(syntax);
   expect(sources.map((node) => name(node))).toEqual(["s"]);
-  const [view] = children(expression(sources[0]));
-  const members = children(expression(view));
+  const [view] = scopeChildren(expression(sources[0]));
+  const members = scopeChildren(expression(view));
   expect(
     members.map((node) => [node.type === "syntax" ? node.kind : "scalar", name(node)]),
   ).toEqual([
     ["field", "outer_value"],
     ["query", "named"],
   ]);
-  expect(children(expression(members[1])).map((node) => name(node))).toEqual(["inner_value"]);
-  expect(scalarValue(expression(children(expression(members[1]))[0]))).toEqual({
+  expect(scopeChildren(expression(members[1])).map((node) => name(node))).toEqual(["inner_value"]);
+  expect(scalarValue(expression(scopeChildren(expression(members[1]))[0]))).toEqual({
     kind: "field",
     path: ["value"],
   });
@@ -168,19 +182,19 @@ test("owned doc annotations are editable without changing shared tags, formattin
   ].join("\r\n");
   const syntax = syntaxSource(source);
   expect(text(syntax)).toBe(source);
-  const [orders, query] = children(syntax);
-  const docs = children(orders).filter(
+  const [orders, query] = scopeChildren(syntax);
+  const docs = scopeChildren(orders).filter(
     (part) => part.type === "syntax" && part.kind === "annotation",
   );
   expect(docs.map(text)).toEqual(['#" Before the name\r\n', '#" Before is\r\n', '#" After is\r\n']);
-  const [field] = children(expression(orders));
+  const [field] = scopeChildren(expression(orders));
   expect(
-    children(field)
+    scopeChildren(field)
       .filter((part) => part.type === "syntax" && part.kind === "annotation")
       .map(text),
-  ).toEqual(['#" Field documentation\r\n']);
+  ).toEqual(['#" Field documentation\r\n', "# currency=USD\r\n"]);
   expect(
-    children(query)
+    scopeChildren(query)
       .filter((part) => part.type === "syntax" && part.kind === "annotation")
       .map(text),
   ).toEqual(['#" Query documentation\r\n']);
@@ -193,7 +207,7 @@ function scalar(authored: string): Scalar | undefined {
   const source = `source: s is duckdb.sql('SELECT 1') extend {dimension: x is ${authored}}`;
   const syntax = syntaxSource(source);
   expect(text(syntax)).toBe(source);
-  const [field] = children(expression(children(syntax)[0]));
+  const [field] = scopeChildren(expression(scopeChildren(syntax)[0]));
   return scalarValue(expression(field));
 }
 
@@ -337,7 +351,7 @@ test("where, having, and join predicates retain their named owner and exact surr
   ].join("\r\n");
   const syntax = syntaxSource(source);
   expect(text(syntax)).toBe(source);
-  const [sourceWhere, join, view] = children(expression(children(syntax)[0]));
+  const [sourceWhere, join, view] = scopeChildren(expression(scopeChildren(syntax)[0]));
   expect(sourceWhere).toMatchObject({ type: "syntax", kind: "clause" });
   expect(children(sourceWhere).map(scalarValue)).toMatchObject([
     { kind: "binary", operator: ">" },
@@ -353,9 +367,9 @@ test("where, having, and join predicates retain their named owner and exact surr
     right: { kind: "field", path: ["other", "value"] },
   });
   expect(
-    children(expression(join)).map((node) => (node.type === "syntax" ? node.kind : "scalar")),
+    scopeChildren(expression(join)).map((node) => (node.type === "syntax" ? node.kind : "scalar")),
   ).toEqual(["clause"]);
-  const members = children(expression(view));
+  const members = scopeChildren(expression(view));
   expect(
     members.map((node) => [node.type === "syntax" ? node.kind : "scalar", name(node)]),
   ).toEqual([
@@ -373,7 +387,9 @@ test("where, having, and join predicates retain their named owner and exact surr
     code: "value.sum() {where: value > 0} > 0",
   });
   expect(
-    children(expression(members[3])).map((node) => (node.type === "syntax" ? node.kind : "scalar")),
+    scopeChildren(expression(members[3])).map((node) =>
+      node.type === "syntax" ? node.kind : "scalar",
+    ),
   ).toEqual(["field", "clause"]);
   replaceText(children(sourceWhere)[0], "value > 1");
   expect(text(syntax)).toBe(source.replace("where: value > 0,", "where: value > 1,"));
@@ -412,4 +428,27 @@ test("native table leaves preserve file identity and authored spelling across sc
       source: 'duckdb.table("inline.parquet")',
     },
   ]);
+});
+
+test("annotation routes preserve model flags, renderer tags, and app metadata", () => {
+  const source = [
+    "##! experimental.givens",
+    "source: #(research) source=fixture",
+    "  s is duckdb.sql('SELECT 1 value') extend {",
+    '    measure: #" Revenue',
+    "      total is # currency=USD",
+    "      value.sum()",
+    "  }",
+  ].join("\n");
+  const syntax = syntaxSource(source);
+  expect(text(syntax)).toBe(source);
+  function annotations(node: SyntaxNode): SyntaxNode[] {
+    return node.type === "syntax" && node.kind === "annotation"
+      ? [node]
+      : children(node).flatMap(annotations);
+  }
+  expect(annotations(syntax).map(name)).toEqual(["!", "research", '"', ""]);
+  const renderer = annotations(syntax)[3];
+  replaceText(renderer, "# currency=EUR\n");
+  expect(text(syntax)).toBe(source.replace("# currency=USD", "# currency=EUR"));
 });

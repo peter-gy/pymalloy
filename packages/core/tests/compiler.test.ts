@@ -134,7 +134,12 @@ SELECT * FROM %{ numbers -> { select: value } }%
   const cells = await drive(original.document({}));
   const bundle = original.source();
   files.delete(url.href);
-  expect(bundle).toEqual({ url: url.href, text: source, imports: Object.fromEntries(files) });
+  expect(bundle).toEqual({
+    documentKind: "notebook",
+    url: url.href,
+    text: source,
+    imports: Object.fromEntries(files),
+  });
   files.clear();
   const replay = await compile({
     url: new URL(bundle.url),
@@ -229,7 +234,12 @@ test("inline source and an imported physical file can share a URL in a replay bu
     readURL: async () => imported,
   });
   const bundle = original.source();
-  expect(bundle).toEqual({ url: url.href, text: source, imports: { [url.href]: imported } });
+  expect(bundle).toEqual({
+    documentKind: "model",
+    url: url.href,
+    text: source,
+    imports: { [url.href]: imported },
+  });
   const replay = await compile({
     url: new URL(bundle.url),
     source: bundle.text,
