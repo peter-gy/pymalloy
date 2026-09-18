@@ -2,7 +2,7 @@ import pytest
 from test_compile import run_notebook
 
 from pymalloy import CompilationError
-from pymalloy.export import compile, marimo
+from pymalloy.export import marimo, prepare
 
 
 def test_widget_export_preserves_files_for_full_model_and_sql_cells(tmp_path):
@@ -20,7 +20,7 @@ run: selected -> { select: value }
 >>>sql connection:duckdb
 SELECT * FROM query_table(['three.csv'])
 """)
-    document = compile(
+    document = prepare(
         model,
         data_root=data,
         profile="widget",
@@ -45,19 +45,22 @@ SELECT * FROM query_table(['three.csv'])
 
 
 @pytest.mark.parametrize(
-    "source,message",
+    "source,message,error",
     [
         (
             "run: duckdb.table('*.csv') -> { select: value }",
             "explicit local file",
+            ValueError,
         ),
         (
             "run: duckdb.table('numbers#one.csv') -> { select: value }",
             "explicit local file",
+            ValueError,
         ),
         (
             "run: duckdb.table('s3://bucket/numbers.csv') -> { select: value }",
             "local file or HTTP",
+            ValueError,
         ),
         (
             (
@@ -65,6 +68,7 @@ SELECT * FROM query_table(['three.csv'])
                 " -> { select: value }"
             ),
             "Cannot use NULL",
+            CompilationError,
         ),
         (
             (
@@ -72,14 +76,17 @@ SELECT * FROM query_table(['three.csv'])
                 "COPY (SELECT 1 AS value) TO 'output.csv' (FORMAT CSV)"
             ),
             "cannot execute COPY",
+            ValueError,
         ),
     ],
 )
-def test_widget_export_rejects_unrepresentable_data_access(tmp_path, source, message):
+def test_widget_export_rejects_unrepresentable_data_access(
+    tmp_path, source, message, error
+):
     path = tmp_path / ("model.malloynb" if source.startswith(">>>") else "model.malloy")
     path.write_text(source)
-    with pytest.raises(CompilationError, match=message):
-        compile(path, profile="widget")
+    with pytest.raises(error, match=message):
+        prepare(path, profile="widget")
 
 
 def test_widget_export_rejects_native_database(tmp_path):
@@ -90,5 +97,5 @@ def test_widget_export_rejects_native_database(tmp_path):
         connection.execute("CREATE TABLE numbers AS SELECT 1 AS value")
     model = tmp_path / "model.malloy"
     model.write_text("run: duckdb.table('numbers') -> { select: value }")
-    with pytest.raises(CompilationError, match="native database"):
-        compile(model, profile="widget", database=database)
+    with pytest.raises(ValueError, match="native database"):
+        prepare(model, profile="widget", database=database)

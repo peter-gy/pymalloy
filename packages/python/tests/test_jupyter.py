@@ -5,7 +5,7 @@ import nbformat
 from nbclient import NotebookClient
 from test_compile import EXAMPLES
 
-from pymalloy.export import Document, Markdown, Query, compile, jupyter
+from pymalloy.export import Document, Markdown, QueryCell, jupyter, prepare
 
 
 def execute_notebook(output: Path, assertions: str = "", *, pymalloy: bool = False):
@@ -30,7 +30,7 @@ def execute_notebook(output: Path, assertions: str = "", *, pymalloy: bool = Fal
 
 
 def test_jupyter_executes_exported_views_with_exact_nested_results(tmp_path):
-    document = compile(EXAMPLES / "orders.malloy")
+    document = prepare(EXAMPLES / "orders.malloy")
     output = tmp_path / "orders.ipynb"
     output.write_text(jupyter.render(document, output_path=output))
     executed = execute_notebook(
@@ -71,7 +71,7 @@ def test_jupyter_serialization_is_deterministic_and_preserves_authored_markdown(
         title="Sales",
         cells=(
             Markdown(title),
-            Query("report", "SELECT '{literal}' AS value", "select"),
+            QueryCell("report", "SELECT '{literal}' AS value", "select"),
         ),
         data_root=tmp_path,
     )
@@ -101,7 +101,7 @@ COPY (SELECT 42 AS value) TO 'answer.parquet' (FORMAT PARQUET)
 >>>sql
 SELECT * FROM 'answer.parquet'
 """)
-    document = compile(model, data_root=data)
+    document = prepare(model, data_root=data)
     assert not (data / "answer.parquet").exists()
     output = tmp_path / "copy.ipynb"
     output.write_text(jupyter.render(document, output_path=output))

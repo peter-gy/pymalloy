@@ -89,15 +89,15 @@ def worker(
     import polars as pl
 
     import pymalloy as pm
-    from pymalloy.export import compile, jupyter, marimo
-    from pymalloy.export._python import query_variables
+    from pymalloy.export import jupyter, marimo, prepare
+    from pymalloy.export._plan import query_variables
 
     policy = {"unordered": unordered, "float_precision": float_precision}
     record = {"status": "compile_failed", "queries": []}
     try:
         all_queries = model.suffix == ".malloy"
-        book = compile(model, data_root=data_root, all=all_queries, timeout=45)
-        second = compile(model, data_root=data_root, all=all_queries, timeout=45)
+        book = prepare(model, data_root=data_root, all=all_queries, timeout=45)
+        second = prepare(model, data_root=data_root, all=all_queries, timeout=45)
         notebooks = {
             "marimo": (marimo, output),
             "jupyter": (jupyter, output.with_suffix(".ipynb")),
@@ -147,6 +147,16 @@ def worker(
                         destination.relative_to(data_root)
                     raw = query.sql
                     item["outputs"] = [str(path) for path in destinations]
+                    if runtime:
+                        native_destination = Path(match[1].replace("''", "'")).resolve()
+                        if not (
+                            native_destination.is_relative_to(Path.cwd())
+                            or native_destination.is_relative_to(data_root)
+                        ):
+                            raise ValueError(
+                                "Runtime COPY destination is outside the worker and data directories"
+                            )
+                        item["runtime_outputs"] = [str(native_destination)]
                     item["comparison"] = "write"
                 else:
                     sampled = bool(
@@ -173,6 +183,11 @@ def worker(
                     compare_results(
                         expected, actual, sampled=query.name in sampled_queries
                     )
+                    for filename in item.get("runtime_outputs", []):
+                        if not Path(filename).is_file():
+                            raise AssertionError(
+                                f"Runtime COPY did not produce {filename}"
+                            )
                     item["verified"].append("runtime")
                 item["status"] = "passed"
         record["status"] = "notebook_failed"
@@ -181,9 +196,19 @@ def worker(
             for filename in {
                 filename
                 for item in record["queries"]
-                for filename in item.get("outputs", [])
+                for filename in [
+                    *item.get("outputs", []),
+                    *item.get("runtime_outputs", []),
+                ]
             }:
-                Path(filename).unlink()
+                path = Path(filename).resolve()
+                if not (
+                    path.is_relative_to(Path.cwd()) or path.is_relative_to(data_root)
+                ):
+                    raise ValueError(
+                        "COPY cleanup is outside the worker and data directories"
+                    )
+                path.unlink(missing_ok=True)
             actual = execute(notebooks[name][1], variables, policy)
             if actual.keys() != reference.keys():
                 raise AssertionError(f"{name} result query identities differ")

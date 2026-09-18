@@ -9,7 +9,7 @@ from test_jupyter import execute_notebook
 
 import pymalloy as pm
 from pymalloy import CompilationError, ModelSource
-from pymalloy.export import compile, jupyter, marimo
+from pymalloy.export import jupyter, marimo, prepare
 
 
 @pytest.mark.parametrize("renderer,suffix", [(marimo, ".py"), (jupyter, ".ipynb")])
@@ -49,11 +49,11 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
 """
     root.write_text(original)
     inputs = {"minimum": 20}
-    document = compile(root, profile="server", givens=inputs, data_root=data)
+    document = prepare(root, profile="server", givens=inputs, data_root=data)
     assert document.profile == "server"
     assert document.source.text == original
     assert set(document.source.imports) == {path.as_uri() for path in (base, schema)}
-    assert document == compile(root, profile="server", givens=inputs, data_root=data)
+    assert document == prepare(root, profile="server", givens=inputs, data_root=data)
     inputs["minimum"] = 0
     with pytest.raises(TypeError):
         document.givens["minimum"] = 1
@@ -107,7 +107,7 @@ COPY (SELECT 42 AS answer) TO 'answer.parquet' (FORMAT PARQUET)
 SELECT * FROM 'answer.parquet'
 """
     )
-    document = compile(source, profile="server")
+    document = prepare(source, profile="server")
     output = tmp_path / ("copy" + suffix)
     output.write_text(renderer.render(document, output_path=output))
     if renderer is marimo:
@@ -240,3 +240,121 @@ with duckdb.connect(str(database)) as writable:
     assert writable.execute('SELECT answer FROM numbers').fetchone() == (42,)
 """,
         )
+
+
+@pytest.mark.parametrize("profile", ["server", "widget"])
+def test_notebook_preserves_configured_connection_name(tmp_path, profile):
+    path = tmp_path / "model.malloy"
+    path.write_text("run: warehouse.sql('SELECT 42 AS value') -> { select: value }")
+    document = prepare(path, profile=profile, connection_name="warehouse")
+    assert document.connection_name == "warehouse"
+    output = tmp_path / "report.py"
+    output.write_text(marimo.render(document, output_path=output))
+    values = run_notebook(output)
+    if profile == "server":
+        try:
+            assert values["run_0"].to_dicts() == [{"value": 42}]
+        finally:
+            values["model"].close()
+    else:
+        widget = values["run_0"]
+        try:
+            assert widget.connection_name == "warehouse"
+        finally:
+            widget.close()
+
+
+@pytest.mark.parametrize("profile", ["precompiled", "server", "widget"])
+@pytest.mark.parametrize("reader", [False, True], ids=["table", "sql-reader"])
+def test_http_inputs_survive_notebook_relocation(
+    tmp_path, monkeypatch, profile, reader
+):
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+
+    served = tmp_path / "served"
+    served.mkdir()
+    (served / "rows.csv").write_text("value\n42\n")
+
+    class Handler(SimpleHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_HEAD(self):
+            if self.path == "/redirect.csv":
+                self.send_response(302)
+                self.send_header("Location", "/rows.csv")
+                self.end_headers()
+            else:
+                super().do_HEAD()
+
+        def do_GET(self):
+            if self.path == "/redirect.csv":
+                self.send_response(302)
+                self.send_header("Location", "/rows.csv")
+                self.end_headers()
+            else:
+                super().do_GET()
+
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0), partial(Handler, directory=str(served))
+    )
+    worker = Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/redirect.csv"
+        table = pm.sql(f"SELECT * FROM read_csv('{url}')") if reader else pm.table(url)
+        source = (
+            pm.draft()
+            .define(rows=table)
+            .queries(answer=pm.ref("rows").pipe(pm.query(pm.select(pm.col("value")))))
+        )
+        path = tmp_path / "model.malloy"
+        path.write_text(source.text)
+        document = prepare(path, profile=profile, remote_files=[url] if reader else ())
+        assert document.remote_files == (url,)
+        original = tmp_path / "original"
+        original.mkdir()
+        output = original / "report.py"
+        output.write_text(marimo.render(document, output_path=output))
+        relocated = tmp_path / "relocated"
+        original.rename(relocated)
+        path.unlink()
+        monkeypatch.chdir(relocated)
+        values = run_notebook(relocated / "report.py")
+        if profile == "widget":
+            widget = values["answer"]
+            try:
+                assert url in widget.source.text
+            finally:
+                widget.close()
+        else:
+            try:
+                assert values["answer"].to_dicts() == [{"value": 42}]
+            finally:
+                if profile == "server":
+                    values["model"].close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join()
+
+
+@pytest.mark.parametrize("profile", ["precompiled", "server"])
+def test_explicit_native_extensions_survive_notebook_export(tmp_path, profile):
+    path = tmp_path / "extensions.malloy"
+    path.write_text(
+        "run: duckdb.sql(\"SELECT current_setting('http_keep_alive') IS NOT NULL AS loaded\") -> { select: loaded }"
+    )
+    document = prepare(path, profile=profile, extensions=["httpfs", "httpfs"])
+    assert document.extensions == ("httpfs",)
+    assert document.remote_files == ()
+    output = tmp_path / "report.py"
+    output.write_text(marimo.render(document, output_path=output))
+    values = run_notebook(output)
+    try:
+        assert values["run_0"].to_dicts() == [{"loaded": True}]
+    finally:
+        if profile == "server":
+            values["model"].close()

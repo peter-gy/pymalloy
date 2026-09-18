@@ -3,7 +3,7 @@ import pytest
 from test_compile import EXAMPLES, run_notebook
 from test_jupyter import execute_notebook
 
-from pymalloy.export import Markdown, compile, jupyter, marimo
+from pymalloy.export import Markdown, jupyter, marimo, prepare
 
 
 def test_notebook_preserves_markdown_and_embedded_sql(tmp_path):
@@ -18,7 +18,7 @@ run: orders -> by_region
 >>>sql connection:duckdb
 SELECT SUM(revenue) AS total FROM (%{{ orders -> by_region }}%)
 ''')
-    book = compile(model, data_root=EXAMPLES)
+    book = prepare(model, data_root=EXAMPLES)
     assert [query.name for query in book.queries] == ["run:0", "sql:0"]
     assert [cell.text for cell in book.cells if isinstance(cell, Markdown)] == [
         "# Regional sales",
@@ -44,7 +44,7 @@ def test_documentation_notebook_keeps_fenced_examples_as_markdown(tmp_path):
   source: example is unknown.table('example')
 ```
 """)
-    book = compile(model)
+    book = prepare(model)
     assert book.queries == ()
     assert "unknown.table" in book.cells[0].text
     output = tmp_path / "guide.py"
@@ -55,7 +55,7 @@ def test_documentation_notebook_keeps_fenced_examples_as_markdown(tmp_path):
 def test_source_only_model_produces_a_source_inventory(tmp_path):
     model = tmp_path / "sources.malloy"
     model.write_text("source: numbers is duckdb.sql('SELECT 1 AS value')")
-    book = compile(model)
+    book = prepare(model)
     assert book.queries == ()
     assert "`numbers`" in book.cells[0].text
 
@@ -68,7 +68,7 @@ source: sales is orders
 query: summary is sales -> by_region
 run: summary
 ''')
-    book = compile(model, data_root=EXAMPLES, all=True)
+    book = prepare(model, data_root=EXAMPLES, all=True)
     assert [query.name for query in book.queries] == [
         "run:0",
         "summary",
@@ -88,7 +88,7 @@ source: entries is duckdb.sql("""
 """)
 run: entries -> { select: row_id, value order_by: row_id }
 ''')
-    book = compile(model)
+    book = prepare(model)
     output = tmp_path / "ordinality.py"
     output.write_text(marimo.render(book, output_path=output))
     assert run_notebook(output)["run_0"].to_dicts() == [
@@ -110,7 +110,7 @@ COPY (SELECT 42 AS value) TO 'output.parquet' (FORMAT PARQUET)
 >>>sql
 SELECT * FROM 'output.parquet'
 """)
-    book = compile(model, data_root=root)
+    book = prepare(model, data_root=root)
     assert not (root / "output.parquet").exists()
     output = tmp_path / "build.py"
     output.write_text(marimo.render(book, output_path=output))
@@ -140,12 +140,12 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
   where: value >= $minimum select: value
 } }%)
 """)
-    document = compile(model, givens={"minimum": 20})
+    document = prepare(model, givens={"minimum": 20})
     assert [query.kind for query in document.queries] == ["select", "select"]
-    selected = compile(model, queries=["sql:0", "run:0"], givens={"minimum": 20})
+    selected = prepare(model, queries=["sql:0", "run:0"], givens={"minimum": 20})
     assert selected.queries == tuple(reversed(document.queries))
-    assert compile(model, givens={"minimum": 10}) != document
-    assert compile(model, givens={"minimum": 20}) == document
+    assert prepare(model, givens={"minimum": 10}) != document
+    assert prepare(model, givens={"minimum": 20}) == document
     output = tmp_path / ("filtered" + suffix)
     output.write_text(renderer.render(document, output_path=output))
     if renderer is marimo:

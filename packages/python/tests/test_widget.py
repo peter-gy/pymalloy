@@ -75,6 +75,7 @@ def test_widget_publishes_source_query_files_and_exact_givens():
     try:
         state = widget.get_state()
         assert state["_definition"]["source"] == "source: orders"
+        assert state["_definition"]["connectionName"] == "duckdb"
         assert state["_definition"]["files"] == {
             "orders.csv": b"region,amount\nNorth,42\n",
             "part.parquet": b"PAR1",
@@ -82,11 +83,15 @@ def test_widget_publishes_source_query_files_and_exact_givens():
         from pymalloy._givens import given_values
 
         assert given_values(state["_input"]["givens"]) == givens
-        assert widget.givens == givens
+        assert widget.givens == {
+            "amount": 9223372036854775807,
+            "options": (True, {"lower": -9007199254740993}),
+        }
+        assert widget.files["part.parquet"] is files["part.parquet"]
         files["part.parquet"] = b"changed"
         givens["options"].append("changed")
         assert widget.files["part.parquet"] == b"PAR1"
-        assert widget.givens["options"] == [True, {"lower": -9007199254740993}]
+        assert widget.givens["options"] == (True, {"lower": -9007199254740993})
         revision = state["_input"]["revision"]
         widget.set_state({"query": "orders.by_region"})
         assert widget.query == "orders.by_region"
@@ -116,6 +121,7 @@ def test_widget_captured_source_preserves_identity_imports_and_revision():
         definition = widget.get_state()["_definition"]
         assert definition["source"] == source.text
         assert definition["url"] == source.url
+        assert definition["documentKind"] == "notebook"
         assert definition["imports"] == dict(source.imports)
         old = browser_state(widget)
         widget.source = ModelSource(source.url, source.text, {})
@@ -123,7 +129,10 @@ def test_widget_captured_source_preserves_identity_imports_and_revision():
         assert widget.get_state()["_definition"]["revision"] > definition["revision"]
         widget.set_state({"_state": old})
         assert widget.state["status"] == "idle"
+        widget.source = ModelSource(source.url, "run: orders", document_kind="model")
+        assert widget.get_state()["_definition"]["documentKind"] == "model"
         widget.source = "run: orders"
+        assert widget.get_state()["_definition"]["documentKind"] == "model"
         assert widget.get_state()["_definition"]["source"] == "run: orders"
         assert widget.get_state()["_definition"]["url"] is None
         assert widget.get_state()["_definition"]["imports"] is None
@@ -131,7 +140,7 @@ def test_widget_captured_source_preserves_identity_imports_and_revision():
         widget.close()
 
 
-def test_widget_readback_preserves_nested_numbers_and_detaches_snapshots():
+def test_widget_readback_preserves_nested_numbers_in_immutable_snapshots():
     widget = MalloyWidget("run: example")
     observed = []
     widget.observe(lambda change: observed.append(change.new), names="state")
@@ -147,17 +156,26 @@ def test_widget_readback_preserves_nested_numbers_and_detaches_snapshots():
             ],
         )
         widget.set_state({"_state": wire})
-        assert widget.state["rows"] == [
+        retained = widget.state
+        assert retained["rows"] == (
             {
                 "value": 9223372036854775807,
-                "nested": [{"small": -9007199254740993}],
+                "nested": ({"small": -9007199254740993},),
                 "ratio": math.inf,
-            }
-        ]
-        assert observed[-1]["status"] == "ready"
-        snapshot = widget.state
-        snapshot["rows"][0]["nested"][0]["small"] = 0
-        assert widget.state["rows"][0]["nested"][0]["small"] == -9007199254740993
+            },
+        )
+        from pymalloy.analysis import to_dict
+
+        assert to_dict(retained)["rows"][0]["nested"] == [{"small": -9007199254740993}]
+        assert observed[-1] is retained
+        assert widget.state is retained
+        with pytest.raises(TypeError):
+            retained["rows"][0]["nested"][0]["small"] = 0
+        wire["result"]["data"]["array_value"].clear()
+        widget.source = "run: changed"
+        assert widget.state["status"] == "idle"
+        assert retained["status"] == "ready"
+        assert retained["rows"][0]["value"] == 9223372036854775807
         with pytest.raises(TraitError, match="read-only"):
             widget.state = {}
     finally:
@@ -166,24 +184,33 @@ def test_widget_readback_preserves_nested_numbers_and_detaches_snapshots():
 
 def test_widget_input_snapshots_require_validated_assignment():
     files = {"data.csv": {"url": "https://example.com/data.csv"}, "part": b"PAR1"}
-    givens = {"options": {"minimum": 9007199254740993}}
+    givens = {"options": {"minimum": 9007199254740993}, "choices": [1, 2]}
     widget = MalloyWidget("run: example", files=files, givens=givens)
     try:
-        draft_files, draft_givens = widget.files, widget.givens
-        draft_files["data.csv"]["url"] = "file:///private/data.csv"
-        draft_files["part"] = b"changed"
-        draft_givens["options"]["minimum"] = float("nan")
+        retained_files, retained_givens = widget.files, widget.givens
+        with pytest.raises(TypeError):
+            retained_files["data.csv"]["url"] = "file:///private/data.csv"
+        with pytest.raises(TypeError):
+            retained_givens["options"]["minimum"] = float("nan")
         with pytest.raises(TraitError):
-            widget.files = draft_files
+            widget.files = {
+                **widget.files,
+                "data.csv": {"url": "file:///private/data.csv"},
+            }
         with pytest.raises(TraitError):
-            widget.givens = draft_givens
-        widget.source = "run: changed"
-        assert widget.files == files
-        assert widget.givens == givens
-        assert widget.get_state()["_definition"]["files"] == files
+            widget.givens = {"options": {"minimum": float("nan")}}
+        widget.files = widget.files
+        widget.givens = widget.givens
+        widget.files = {**widget.files, "part": b"changed"}
+        widget.givens = {**widget.givens, "choices": (3, 4)}
+        assert retained_files == files
+        assert retained_givens["choices"] == (1, 2)
+        assert widget.files["part"] == b"changed"
+        assert widget.givens["choices"] == (3, 4)
+        assert widget.get_state()["_definition"]["files"]["part"] == b"changed"
         from pymalloy._givens import given_values
 
-        assert given_values(widget.get_state()["_input"]["givens"]) == givens
+        assert given_values(widget.get_state()["_input"]["givens"])["choices"] == [3, 4]
     finally:
         widget.close()
 
@@ -214,11 +241,12 @@ def test_widget_runtime_uses_immutable_explicit_asset_urls():
         widget.close()
 
 
-def test_widget_input_observers_receive_detached_mappings():
+def test_widget_input_observers_receive_immutable_mappings():
     widget = MalloyWidget("run: example")
 
     def inspect(change):
-        change.new.clear()
+        with pytest.raises(TypeError):
+            change.new["unexpected"] = 1
 
     widget.observe(inspect, names=["files", "givens"])
     try:
@@ -252,9 +280,9 @@ def test_widget_revision_lifecycle_preserves_state_through_resync_and_close(
 
         latest = browser_state(widget, rows=[{"value": 2}])
         widget.set_state({"_state": latest})
-        assert widget.state["rows"] == [{"value": 2}]
+        assert widget.state["rows"] == ({"value": 2},)
         widget.set_state({"_state": earlier})
-        assert widget.state["rows"] == [{"value": 2}]
+        assert widget.state["rows"] == ({"value": 2},)
 
         messages.clear()
         widget._handle_msg({"content": {"data": {"method": "request_state"}}})
@@ -278,6 +306,9 @@ def test_widget_revision_lifecycle_preserves_state_through_resync_and_close(
     "kwargs",
     [
         {"query": ""},
+        {"connection_name": ""},
+        {"connection_name": None},
+        {"connection_name": 42},
         {"files": {"x": {"url": "file:///private/data.csv"}}},
         {"files": {"x": {"url": 42}}},
         {"files": {"x": 42}},
@@ -332,8 +363,8 @@ from pymalloy import MalloyWidget
 with_widget = MalloyWidget("run: example")
 assert with_widget.state["status"] == "idle"
 with_widget.close()
-from pymalloy.export import Document, Query, jupyter
-query = Query('answer', 'SELECT 42 AS answer', 'select')
+from pymalloy.export import Document, QueryCell, jupyter
+query = QueryCell('answer', 'SELECT 42 AS answer', 'select')
 document = Document('Answer', (query,), Path.cwd())
 notebook = __import__('json').loads(jupyter.render(document, output_path='answer.ipynb'))
 assert notebook['nbformat'] == 4
@@ -376,20 +407,21 @@ main()
     )
     assert result.returncode == 1
     assert result.stdout == ""
-    assert "pip install 'pymalloy[server,marimo]'" in result.stderr
+    assert "pip install 'pymalloy[server]'" in result.stderr
 
 
-def test_widget_state_observers_receive_detached_readback():
+def test_widget_state_observers_receive_immutable_readback():
     widget = MalloyWidget("run: example")
 
     def inspect(change):
         if change.new["status"] == "ready":
-            change.new["rows"][0]["value"] = 999
+            with pytest.raises(TypeError):
+                change.new["rows"][0]["value"] = 999
 
     widget.observe(inspect, names="state")
     try:
         widget.set_state({"_state": browser_state(widget)})
-        assert widget.state["rows"] == [{"value": 42}]
+        assert widget.state["rows"] == ({"value": 42},)
     finally:
         widget.close()
 
@@ -423,20 +455,21 @@ def test_widget_diagnostics_preserve_source_locations_and_clear_on_recovery():
                 )
             }
         )
-        assert widget.state["diagnostics"] == [
+        assert widget.state["diagnostics"] == (
             {
                 **{k: v for k, v in diagnostic.items() if k != "errorTag"},
                 "error_tag": None,
-            }
-        ]
+            },
+        )
         snapshot = widget.state
-        snapshot["diagnostics"][0]["location"]["range"]["start"]["line"] = 99
+        with pytest.raises(TypeError):
+            snapshot["diagnostics"][0]["location"]["range"]["start"]["line"] = 99
         assert widget.state["diagnostics"][0]["location"]["range"]["start"]["line"] == 0
         widget.source = "run: recovered"
-        assert widget.state["diagnostics"] == []
+        assert widget.state["diagnostics"] == ()
         widget.set_state({"_state": browser_state(widget)})
         assert widget.state["status"] == "ready"
-        assert widget.state["diagnostics"] == []
+        assert widget.state["diagnostics"] == ()
     finally:
         widget.close()
 
@@ -477,7 +510,7 @@ def test_widget_rejects_malformed_browser_diagnostics(diagnostic):
             widget.set_state(
                 {"_state": browser_state(widget, diagnostics=[diagnostic])}
             )
-        assert widget.state["diagnostics"] == []
+        assert widget.state["diagnostics"] == ()
     finally:
         widget.close()
 
@@ -566,23 +599,23 @@ def test_widget_decodes_nullable_schema_types_without_losing_exact_values():
             ],
         }
         widget.set_state({"_state": wire})
-        assert widget.state["rows"] == [
+        assert widget.state["rows"] == (
             {
-                "nested": [
+                "nested": (
                     {
                         "name": "Ada",
                         "active": True,
                         "day": "2026-09-18",
                         "instant": "2026-09-18T00:00:00Z",
                         "amount": Decimal("1.2300"),
-                        "metadata": {"tags": ["exact"]},
-                        "bytes": [0, 255],
+                        "metadata": {"tags": ("exact",)},
+                        "bytes": (0, 255),
                     },
                     dict.fromkeys(types_and_cells),
                     None,
-                ]
-            }
-        ]
+                )
+            },
+        )
     finally:
         widget.close()
 
@@ -633,5 +666,21 @@ def test_widget_rejects_cells_that_disagree_with_the_result_schema(invalid):
         with pytest.raises(TraitError, match="Invalid browser state"):
             widget.set_state({"_state": wire})
         assert widget.state == accepted
+    finally:
+        widget.close()
+
+
+def test_widget_connection_name_is_explicit_and_fixed_for_its_lifetime():
+    widget = MalloyWidget(
+        "run: analytics.sql('SELECT 42 AS answer') -> { select: answer }",
+        connection_name="analytics",
+    )
+    try:
+        assert widget.connection_name == "analytics"
+        assert widget.get_state()["_definition"]["connectionName"] == "analytics"
+        with pytest.raises(TraitError, match="read-only"):
+            widget.connection_name = "other"
+        widget.source = "run: analytics.sql('SELECT 1 AS answer') -> { select: answer }"
+        assert widget.get_state()["_definition"]["connectionName"] == "analytics"
     finally:
         widget.close()

@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pyarrow as pa
 import pytest
 from _corpus import digest
 from check_samples import (
@@ -30,17 +31,25 @@ def test_notebook_results_keep_query_identity_nested_values_and_empty_columns(
 ):
     import polars as pl
 
-    from pymalloy.export import Document, Query, jupyter, marimo
-    from pymalloy.export._python import query_variables
+    from pymalloy.export import Document, QueryCell, jupyter, marimo
+    from pymalloy.export._plan import query_variables
 
+    data = tmp_path / "seed.csv"
+    data.write_text("value\n42\n")
+    setup_names = ("remote_files", "check_files", "connection_config", "value", "str")
     document = Document(
         title="Identity",
         cells=(
-            Query("a.b", "SELECT [2, 1] AS values", kind="select"),
-            Query("a_b", "SELECT [1, 2] AS values", kind="select"),
-            Query("empty", "SELECT 1 AS value WHERE false", kind="select"),
+            QueryCell("a.b", "SELECT [2, 1] AS values", kind="select"),
+            QueryCell("a_b", "SELECT [1, 2] AS values", kind="select"),
+            QueryCell("empty", "SELECT 1 AS value WHERE false", kind="select"),
+            *(
+                QueryCell(name, "SELECT * FROM 'seed.csv'", kind="select")
+                for name in setup_names
+            ),
         ),
         data_root=tmp_path,
+        files={"seed.csv": data},
     )
     renderer, execute, suffix = {
         "marimo": (marimo, execute_marimo, ".py"),
@@ -60,6 +69,10 @@ def test_notebook_results_keep_query_identity_nested_values_and_empty_columns(
         "a.b": summarize_result(pl.DataFrame({"values": [[2, 1]]})),
         "a_b": summarize_result(pl.DataFrame({"values": [[1, 2]]})),
         "empty": summarize_result(pl.DataFrame(schema={"value": pl.Int32})),
+        **{
+            name: summarize_result(pl.DataFrame({"value": [42]}))
+            for name in setup_names
+        },
     }
 
 
@@ -118,6 +131,8 @@ SELECT * FROM 'answer.parquet'
     for query in records[0]["queries"]:
         assert set(query["verified"]) == {"reference", "runtime", "marimo", "jupyter"}
     assert (data / "answer.parquet").is_file()
+    for filename in records[0]["queries"][0]["runtime_outputs"]:
+        assert not Path(filename).exists()
 
 
 @pytest.mark.parametrize(
@@ -164,7 +179,7 @@ def test_roundtrip_result_comparison_requires_explicit_order_and_precision_polic
 
     original, reversed_summary, modified_summary = [
         result_summary(
-            Result("", (Column("value", "DOUBLE"),), tuple((v,) for v in values)),
+            Result("", (Column("value", "DOUBLE"),), pa.table({"value": values})),
             float_precision=9,
         )
         for values in [
@@ -180,3 +195,28 @@ def test_roundtrip_result_comparison_requires_explicit_order_and_precision_polic
         compare_values(original, modified_summary, float_precision=9)
         == "rounded_ordered"
     )
+
+
+def test_notebook_scope_matches_python_bindings_with_comprehensions_and_closures(
+    tmp_path,
+):
+    import importlib.util
+
+    from pymalloy.export._scope import scope
+
+    source = """value = 42
+rows = [value for value in range(2)]
+def read():
+    local = value + increment
+    return local
+"""
+    path = tmp_path / "cell.py"
+    path.write_text(source)
+    spec = importlib.util.spec_from_file_location("cell", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    definitions, references = scope(source)
+    assert definitions == {name for name in vars(module) if not name.startswith("_")}
+    assert references == {"range", "increment"}
+    module.increment = 5
+    assert module.read() == 47
