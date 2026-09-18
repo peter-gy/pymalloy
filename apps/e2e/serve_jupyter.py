@@ -70,7 +70,7 @@ def main() -> None:
             json.dumps(
                 {
                     "argv": [
-                        sys.executable,
+                        os.environ.get("PYMALLOY_KERNEL_PYTHON", sys.executable),
                         "-m",
                         "ipykernel_launcher",
                         "-f",
