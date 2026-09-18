@@ -5,7 +5,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from pymalloy import CompilationError, ExecutionError
+from pymalloy import CompilationError, CompilerError, ExecutionError, SchemaError
 from pymalloy.export import marimo, prepare
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "examples"
@@ -416,14 +416,15 @@ def test_export_file_guard_preserves_catalog_table_precedence(tmp_path, monkeypa
 @pytest.mark.parametrize(
     "failure",
     [
-        "CompilerError('compiler unavailable')",
-        "SchemaError('schema unavailable', sql='DESCRIBE x')",
-        "TimeoutError('deadline exceeded')",
-        "duckdb.IOException('input unavailable')",
+        CompilerError("compiler unavailable"),
+        SchemaError("schema unavailable", sql="DESCRIBE x"),
+        TimeoutError("deadline exceeded"),
+        duckdb.IOException("input unavailable"),
     ],
+    ids=["compiler", "schema", "deadline", "engine-io"],
 )
-def test_cli_reports_operational_failures_without_tracebacks(
-    tmp_path, command, failure
+def test_cli_reports_operational_failures_without_replacing_output(
+    tmp_path, monkeypatch, capsys, command, failure
 ):
     import sys
 
@@ -434,30 +435,22 @@ def test_cli_reports_operational_failures_without_tracebacks(
     arguments = ["pymalloy", command, str(source)]
     if command == "export":
         arguments.extend(["--format", "jupyter", "--output", str(output)])
-    program = f"""
-import sys, duckdb
-import pymalloy as pm
-import pymalloy.export as exporter
-from pymalloy import CompilerError, SchemaError
-from pymalloy.cli import main
-def fail(*args, **kwargs):
-    raise {failure}
-pm.check = fail
-exporter.prepare = fail
-sys.argv = {arguments!r}
-main()
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", program],
-        capture_output=True,
-        text=True,
-        timeout=20,
-        check=False,
-    )
-    assert result.returncode == 1
-    assert result.stdout == ""
-    assert result.stderr.startswith("pymalloy: ")
-    assert "Traceback" not in result.stderr
+    import pymalloy as pm
+    import pymalloy.export as exporter
+    from pymalloy.cli import main
+
+    def fail(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(pm, "check", fail)
+    monkeypatch.setattr(exporter, "prepare", fail)
+    monkeypatch.setattr(sys, "argv", arguments)
+    with pytest.raises(SystemExit) as stopped:
+        main()
+    assert stopped.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"pymalloy: {failure}\n"
     assert output.read_text() == "existing notebook"
 
 
