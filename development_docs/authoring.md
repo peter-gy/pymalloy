@@ -160,3 +160,20 @@ Malloy's exported `routeOf` and `payloadOf` helpers. Python documentation policy
 selects routes and severity from that projection. It does not parse annotations.
 The syntax editor replaces directly owned native descriptions and preserves
 other routes and shared annotation ownership.
+
+## Measure authoring latency
+
+Run `uv run python tools/benchmark_authoring.py --output timings.json` to measure
+fresh Python execution, parsing, draft formatting/checking/validation, compilation,
+warm ad hoc query compilation, schema discovery, execution and result conversion.
+The report retains samples, medians and dependency versions. Warm query edits use
+one retained model. Cold starts use fresh Python processes but retain OS and Deno
+caches. Schema discovery is measured directly through DESCRIBE, not inferred by
+subtracting total compile times.
+
+On the development Mac, five-sample medians for the 100,000-row benchmark measured
+270 ms for draft formatting before sharing its compiler process and 137 ms after.
+Draft compilation remained approximately 131 ms and warm ad hoc compilation
+approximately 2.4 ms. These are local workload measurements, not performance
+promises. The optimization changes process ownership for format-plus-parse and
+introduces no cache.
