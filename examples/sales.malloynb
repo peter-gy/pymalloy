@@ -1,0 +1,15 @@
+>>>markdown
+# Regional sales
+
+Compare revenue across regions, then calculate the total.
+>>>malloy
+import {orders} from "orders.malloy"
+
+run: orders -> by_region
+>>>markdown
+## Total revenue
+
+The SQL cell queries the same regional summary.
+>>>sql connection:duckdb
+SELECT SUM(revenue) AS total_revenue
+FROM (%{ orders -> by_region }%)

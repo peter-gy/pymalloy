@@ -1,0 +1,27 @@
+source: orders is duckdb.table('orders.csv') extend {
+  measure: revenue is amount.sum()
+  measure: order_count is count()
+
+  view: by_region is {
+    group_by: region
+    aggregate: revenue, order_count
+    order_by: revenue desc
+  }
+
+  view: monthly_revenue is {
+    group_by: order_month is ordered_at.month
+    aggregate: revenue
+    order_by: order_month
+  }
+
+  view: region_detail is {
+    group_by: region
+    aggregate: revenue
+    nest: categories is {
+      group_by: category
+      aggregate: revenue
+      order_by: revenue desc
+    }
+    order_by: region
+  }
+}
