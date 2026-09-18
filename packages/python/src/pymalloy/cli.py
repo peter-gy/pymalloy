@@ -4,7 +4,7 @@ import math
 import sys
 from pathlib import Path
 
-from pymalloy.analysis import Diagnostic
+from pymalloy.analysis import Diagnostic, to_dict
 
 
 def _parse_givens(text: str) -> dict:
@@ -26,6 +26,20 @@ def _parse_givens(text: str) -> dict:
     return values
 
 
+def _parse_files(text: str) -> dict[str, str]:
+    try:
+        values = json.loads(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"Invalid files JSON: {error}") from error
+    if not isinstance(values, dict) or any(
+        not isinstance(path, str) for path in values.values()
+    ):
+        raise argparse.ArgumentTypeError(
+            "files must be a JSON object mapping aliases to local paths"
+        )
+    return values
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Check, format, and export Malloy analyses."
@@ -40,9 +54,9 @@ def main() -> None:
     )
     export.add_argument(
         "--profile",
-        choices=("precompiled", "native", "widget"),
+        choices=("precompiled", "server", "widget"),
         default="precompiled",
-        help="precompiled SQL, native model, or interactive browser widget (default: precompiled)",
+        help="precompiled SQL, server model, or interactive browser widget (default: precompiled)",
     )
     export.add_argument(
         "-o",
@@ -51,12 +65,20 @@ def main() -> None:
         required=True,
         help="output .py or .ipynb notebook (replaced on success)",
     )
-    export.add_argument(
+    selection = export.add_mutually_exclusive_group()
+    selection.add_argument(
         "-q",
         "--query",
         action="append",
-        default=[],
-        help="named query, source.view, run:N, sql:N, or '*' for all (repeatable)",
+        help="named query, source.view, run:N, sql:N, (repeatable)",
+    )
+    selection.add_argument("--all", action="store_true", help="select all queries")
+    export.add_argument(
+        "--files",
+        type=_parse_files,
+        default={},
+        metavar="JSON",
+        help="file aliases and local paths for widget SQL readers",
     )
     export.add_argument(
         "--data-root",
@@ -111,7 +133,7 @@ def _tool(args: argparse.Namespace) -> None:
     try:
         import duckdb
 
-        from pymalloy.server import CompilationError, Session, SessionError
+        from pymalloy import CompilationError, ModelError, check, format
     except ImportError as error:
         print(
             f"pymalloy: {error}. Install language tools with pip install 'pymalloy[server]'",
@@ -120,14 +142,16 @@ def _tool(args: argparse.Namespace) -> None:
         raise SystemExit(1) from None
     try:
         if args.command == "check":
-            with Session(
+            report = check(
+                args.path.read_text(encoding="utf-8"),
+                path=args.path,
+                syntax_only=args.syntax_only,
                 data_root=args.data_root,
                 database=args.database,
                 read_only=args.database is not None,
-            ) as session:
-                report = session.check_file(args.path, syntax_only=args.syntax_only)
+            )
             if args.json:
-                print(json.dumps(report.to_dict(), ensure_ascii=False))
+                print(json.dumps(to_dict(report), ensure_ascii=False))
             else:
                 for diagnostic in report.diagnostics:
                     _diagnostic(diagnostic, args.path)
@@ -139,8 +163,7 @@ def _tool(args: argparse.Namespace) -> None:
         else:
             with args.path.open(encoding="utf-8", newline="") as input_file:
                 source = input_file.read()
-            with Session() as session:
-                formatted = session.format(source)
+            formatted = format(source)
             if args.check:
                 if source != formatted:
                     print(f"{args.path}: formatting required", file=sys.stderr)
@@ -154,7 +177,7 @@ def _tool(args: argparse.Namespace) -> None:
         else:
             print(f"pymalloy: {error}", file=sys.stderr)
         raise SystemExit(1) from None
-    except (OSError, ValueError, TimeoutError, SessionError, duckdb.Error) as error:
+    except (OSError, ValueError, TimeoutError, ModelError, duckdb.Error) as error:
         print(f"pymalloy: {error}", file=sys.stderr)
         raise SystemExit(1) from None
 
@@ -184,8 +207,8 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
     }:
         export.error("--output must differ from the model and database")
     try:
-        from pymalloy.exports import compile_document, jupyter, marimo
-        from pymalloy.server import CompilationError
+        from pymalloy import CompilationError
+        from pymalloy.export import compile, jupyter, marimo
     except ImportError as error:
         extra = "server,marimo" if args.format == "marimo" else "server"
         print(
@@ -194,10 +217,12 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
         )
         raise SystemExit(1) from None
     try:
-        document = compile_document(
+        document = compile(
             args.model,
             profile=args.profile,
             queries=args.query,
+            all=args.all,
+            files=args.files,
             givens=args.givens,
             data_root=args.data_root,
             database=args.database,
@@ -207,7 +232,13 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
         source = renderer.render(document, output_path=args.output)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(source, encoding="utf-8")
-    except (CompilationError, ImportError, OSError) as error:
+    except ImportError as error:
+        print(
+            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[server,marimo]'",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
+    except (CompilationError, OSError, ValueError, TypeError) as error:
         print(f"pymalloy: {error}", file=sys.stderr)
         raise SystemExit(1) from None
     print(f"Wrote {args.output} ({len(document.queries)} queries)", file=sys.stderr)
