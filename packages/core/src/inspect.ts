@@ -1,21 +1,21 @@
-import type { QueryDescriptor } from "./types.js";
+import type { QueryDescriptor } from "./types";
 import type { Model, MalloyTranslator, ModelDef } from "@malloydata/malloy";
-import { diagnostics, plain, type Locations, type Diagnostic } from "./diagnostics.js";
-import { validatePosition } from "./tools.js";
+import { diagnostics, plain, type Locations, type Diagnostic } from "./diagnostics";
+import { validatePosition } from "./tools";
 import type {
   AnnotationInfo,
   GivenInfo,
   ImportInfo,
   SourceLocation,
   SourcePosition,
-} from "./metadata.js";
+} from "./metadata";
 import {
   givenDetails,
   importedModel,
   modelImports,
   nativeMetadata,
   type NativeMetadata,
-} from "./upstream.js";
+} from "./upstream";
 
 /** @title Inspection */
 export interface Inspection {

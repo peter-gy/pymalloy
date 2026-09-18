@@ -1,4 +1,4 @@
-import { checkSource } from "../src/tooling.js";
+import { checkSource } from "../src/tooling";
 import { DuckDBDialect, mkFieldDef } from "@malloydata/malloy";
 import {
   CompiledModel,
@@ -6,7 +6,7 @@ import {
   type Fulfilled,
   type LoadOptions,
   type SourcePosition,
-} from "../src/index.js";
+} from "../src/index";
 interface Fixture extends Omit<LoadOptions, "connection"> {
   describe(sql: string): Promise<{ name: string; type: string }[]>;
   readURL(url: URL): Promise<string>;

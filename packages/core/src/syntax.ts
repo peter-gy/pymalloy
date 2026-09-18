@@ -1,9 +1,9 @@
 import { MalloyTranslator, routeOf } from "@malloydata/malloy";
 import type { ParserRuleContext } from "antlr4ts";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
-import { diagnostics, ToolingError } from "./diagnostics.js";
-import { identifierText, scalarExpression, type Scalar } from "./scalar.js";
-import { tableReferences } from "./tables.js";
+import { diagnostics, ToolingError } from "./diagnostics";
+import { identifierText, scalarExpression, type Scalar } from "./scalar";
+import { tableReferences } from "./tables";
 
 /** Lossless authored syntax. Strings retain all syntax outside editable bindings. */
 export type SyntaxNode = ConcreteSyntax | ScalarSyntax | TableSyntax;

@@ -7,9 +7,9 @@ import {
   type DocumentLocation,
   type PreparedQuery,
 } from "@malloydata/malloy";
-import { documentSource, sqlParts } from "./document.js";
-import { diagnostics, ToolingError, offsetDiagnostics } from "./diagnostics.js";
-import type { Task, SchemaNeed } from "./job.js";
+import { documentSource, sqlParts } from "./document";
+import { diagnostics, ToolingError, offsetDiagnostics } from "./diagnostics";
+import type { Task, SchemaNeed } from "./job";
 
 type ParseUpdate = Parameters<MalloyTranslator["update"]>[0];
 

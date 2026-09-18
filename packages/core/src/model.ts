@@ -1,13 +1,13 @@
-import { isMalloyText } from "./selection.js";
+import { isMalloyText } from "./selection";
 import type { Result as MalloyResult } from "@malloydata/malloy-interfaces";
 import { type GivenValue, type PreparedQuery, type PreparedResult } from "@malloydata/malloy";
-import { Job, type Task } from "./job.js";
-import type { QueryDescriptor, QuerySelection, QueryOptions, DocumentOptions } from "./types.js";
-import { loadSource, type LoadOptions, type LoadedSource, type PreparedSQL } from "./compile.js";
-import { ToolingError, toolingError, plain } from "./diagnostics.js";
-import { inspectModel, referenceAt, type Inspection, type ReferenceInfo } from "./inspect.js";
-import type { NativeMetadata } from "./upstream.js";
-import { compilerVersion, parseSource, type ParseReport, type SourcePosition } from "./tools.js";
+import { Job, type Task } from "./job";
+import type { QueryDescriptor, QuerySelection, QueryOptions, DocumentOptions } from "./types";
+import { loadSource, type LoadOptions, type LoadedSource, type PreparedSQL } from "./compile";
+import { ToolingError, toolingError, plain } from "./diagnostics";
+import { inspectModel, referenceAt, type Inspection, type ReferenceInfo } from "./inspect";
+import type { NativeMetadata } from "./upstream";
+import { compilerVersion, parseSource, type ParseReport, type SourcePosition } from "./tools";
 
 export interface MarkdownCell {
   kind: "markdown";

@@ -1,6 +1,6 @@
 import type { DocumentRange } from "@malloydata/malloy";
 import { MalloySQLParser } from "@malloydata/malloy-sql";
-import { diagnostics, ToolingError } from "./diagnostics.js";
+import { diagnostics, ToolingError } from "./diagnostics";
 
 export function documentSource(document: string, url: URL) {
   if (!/\.(malloynb|malloysql)$/.test(url.pathname)) return { source: document };

@@ -1,5 +1,5 @@
-import { CompiledModel, type Fulfilled } from "../src/index.js";
-import { compile, drive } from "./host.js";
+import { CompiledModel, type Fulfilled } from "../src/index";
+import { compile, drive } from "./host";
 import { expect, test } from "vite-plus/test";
 async function describe() {
   return [{ name: "value", type: "INTEGER" }];

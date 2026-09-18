@@ -1,4 +1,4 @@
-import type { OperationOptions } from "./types.js";
+import type { OperationOptions } from "./types";
 export class Operations {
   private pending: Promise<void> = Promise.resolve();
   private accepting = true;

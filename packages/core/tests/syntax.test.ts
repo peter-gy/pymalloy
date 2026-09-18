@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
-import { syntaxSource, type Scalar, type SyntaxNode } from "../src/tooling.js";
-import { compile, drive } from "./host.js";
+import { syntaxSource, type Scalar, type SyntaxNode } from "../src/tooling";
+import { compile, drive } from "./host";
 
 function isNode(part: string | SyntaxNode): part is SyntaxNode {
   return typeof part !== "string";

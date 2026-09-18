@@ -1,6 +1,6 @@
-import { compile, drive, check } from "./host.js";
+import { compile, drive, check } from "./host";
 import { expect, test } from "vite-plus/test";
-import { formatSource, parseSource } from "../src/tooling.js";
+import { formatSource, parseSource } from "../src/tooling";
 const url = new URL("memory://project/model.malloy");
 const source = "source: values is duckdb.sql('SELECT 42 AS value')\nrun: values -> {select: value}";
 function options(text = source) {

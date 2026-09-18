@@ -1,5 +1,5 @@
 import { type DocumentLocation, type LogMessage, MalloyError } from "@malloydata/malloy";
-import type { SourceLocation } from "./metadata.js";
+import type { SourceLocation } from "./metadata";
 
 /** @title Diagnostic */
 export interface Diagnostic {

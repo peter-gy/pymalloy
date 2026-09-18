@@ -1,4 +1,4 @@
-export { checkSource, type CheckOptions, type CheckReport } from "./model.js";
+export { checkSource, type CheckOptions, type CheckReport } from "./model";
 export {
   parseSource,
   formatSource,
@@ -6,15 +6,15 @@ export {
   type ParseOptions,
   type ParseReport,
   type SymbolInfo,
-} from "./tools.js";
-export { ToolingError } from "./diagnostics.js";
+} from "./tools";
+export { ToolingError } from "./diagnostics";
 export {
   syntaxSource,
   type SyntaxNode,
   type ConcreteSyntax,
   type ScalarSyntax,
   type TableSyntax,
-} from "./syntax.js";
+} from "./syntax";
 export type {
   Scalar,
   ScalarField,
@@ -29,4 +29,4 @@ export type {
   ScalarFilter,
   ScalarCase,
   ScalarRaw,
-} from "./scalar.js";
+} from "./scalar";

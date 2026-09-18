@@ -1,7 +1,7 @@
-import { isMalloyText } from "./selection.js";
-import type { CompiledModel } from "./model.js";
-import type { Job } from "./job.js";
-import type { SourcePosition } from "./metadata.js";
+import { isMalloyText } from "./selection";
+import type { CompiledModel } from "./model";
+import type { Job } from "./job";
+import type { SourcePosition } from "./metadata";
 import type {
   QueryDescriptor,
   QuerySelection,
@@ -9,7 +9,7 @@ import type {
   QueryOptions,
   DocumentOptions,
   Result,
-} from "./types.js";
+} from "./types";
 
 interface InspectOptions {
   position?: SourcePosition;

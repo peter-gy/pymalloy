@@ -1,16 +1,16 @@
-import { tableReferences } from "./tables.js";
+import { tableReferences } from "./tables";
 import { Malloy, MalloyTranslator, Parse } from "@malloydata/malloy";
 import type { ParserRuleContext } from "antlr4ts";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
 import type { ParseTreeListener } from "antlr4ts/tree/ParseTreeListener.js";
-import { formatMalloy } from "./upstream.js";
-import type { SourcePosition, SourceRange, ImportInfo } from "./metadata.js";
-import { diagnostics, ToolingError, offsetDiagnostics, type Diagnostic } from "./diagnostics.js";
+import { formatMalloy } from "./upstream";
+import type { SourcePosition, SourceRange, ImportInfo } from "./metadata";
+import { diagnostics, ToolingError, offsetDiagnostics, type Diagnostic } from "./diagnostics";
 
-import { documentSource } from "./document.js";
+import { documentSource } from "./document";
 
 export const compilerVersion = Malloy.version;
-export type { SourcePosition } from "./metadata.js";
+export type { SourcePosition } from "./metadata";
 const sourceURL = new URL("memory://pymalloy/model.malloy");
 
 /** @title ParseOptions */

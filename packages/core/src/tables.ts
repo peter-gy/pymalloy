@@ -2,7 +2,7 @@ import { Parse, type MalloyTranslator } from "@malloydata/malloy";
 import type { ParserRuleContext } from "antlr4ts";
 import type { ParseTreeListener } from "antlr4ts/tree/ParseTreeListener.js";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
-import type { SourceRange } from "./metadata.js";
+import type { SourceRange } from "./metadata";
 
 interface TableReference {
   connection: string;

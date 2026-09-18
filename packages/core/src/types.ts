@@ -1,6 +1,6 @@
 import type { Result as MalloyResult } from "@malloydata/malloy-interfaces";
 import type { GivenValue } from "@malloydata/malloy";
-import type { SourceLocation } from "./metadata.js";
+import type { SourceLocation } from "./metadata";
 export type Value =
   | null
   | string
@@ -50,8 +50,8 @@ export interface DocumentOptions extends QueryOptions {
   all?: boolean;
 }
 export type { GivenValue } from "@malloydata/malloy";
-export type { ModelSource } from "./model.js";
-export type { Diagnostic } from "./diagnostics.js";
+export type { ModelSource } from "./model";
+export type { Diagnostic } from "./diagnostics";
 export type {
   SourceLocation,
   SourcePosition,
@@ -59,4 +59,4 @@ export type {
   AnnotationInfo,
   GivenInfo,
   ImportInfo,
-} from "./metadata.js";
+} from "./metadata";

@@ -5,7 +5,7 @@ export {
   type QueryCell,
   type CheckOptions,
   type CheckReport,
-} from "./model.js";
+} from "./model";
 export type {
   Column,
   Value,
@@ -18,8 +18,8 @@ export type {
   OperationOptions,
   RunOptions,
   ModelSource,
-} from "./types.js";
-export { Job, type Needs, type Fulfilled, type Step, type Task } from "./job.js";
+} from "./types";
+export { Job, type Needs, type Fulfilled, type Step, type Task } from "./job";
 export type { GivenValue } from "@malloydata/malloy";
 export type {
   SourcePosition,
@@ -28,17 +28,17 @@ export type {
   ParseOptions,
   ParsedImport,
   SourceSpan,
-} from "./tools.js";
-export { ToolingError, type Diagnostic } from "./diagnostics.js";
-export type { LoadOptions } from "./compile.js";
-export type { Inspection, ReferenceInfo } from "./inspect.js";
+} from "./tools";
+export { ToolingError, type Diagnostic } from "./diagnostics";
+export type { LoadOptions } from "./compile";
+export type { Inspection, ReferenceInfo } from "./inspect";
 export type {
   AnnotationInfo,
   GivenInfo,
   ImportInfo,
   SourceLocation,
   SourceRange,
-} from "./metadata.js";
-export type { NativeMetadata, AnnotatedObject, RoutedAnnotation } from "./upstream.js";
-export { Model, Query, type ModelDriver } from "./runtime.js";
-export { Operations } from "./operations.js";
+} from "./metadata";
+export type { NativeMetadata, AnnotatedObject, RoutedAnnotation } from "./upstream";
+export { Model, Query, type ModelDriver } from "./runtime";
+export { Operations } from "./operations";
