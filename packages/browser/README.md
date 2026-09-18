@@ -1,23 +1,24 @@
-# @pymalloy/browser
+# Malloy in the browser
 
-Run [Malloy](https://www.malloydata.dev/) with
-[DuckDB WebAssembly](https://duckdb.org/docs/current/clients/wasm/overview) in a browser.
+Run Malloy with a DuckDB WebAssembly worker and model-specific virtual files.
 
-```typescript
-import { Session } from "@pymalloy/browser";
+```ts
+import { Session } from "@malloy-runtime/browser";
 
-const session = await Session.create();
+const session = await Session.open();
 try {
-  const result = await session.run("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }");
-  console.log(result.rows); // [{ answer: 42 }]
+  const model = await session.model({
+    text: "run: duckdb.table('data.csv') -> { select: value }",
+    files: { "data.csv": new TextEncoder().encode("value\n42\n") },
+  });
+  console.log((await model.query().run()).rows);
 } finally {
   await session.close();
 }
 ```
 
-The default runtime downloads versioned WebAssembly and worker assets from
-jsDelivr. The page must permit their network requests and worker execution.
-Provide model and data files as `Uint8Array` values or HTTP URL descriptors.
+`Session.open({bundles?,signal?})` configures worker assets and session lifetime.
+Models accept text, a URL, or `ModelSource` plus virtual files. URL descriptors
+require CORS. Models share the compiler's Model/Query/Result contract with Node.
 
-See the [browser API](../../docs/reference/browser.md) for files, result types,
-custom bundles, and lifecycle.
+[Browser API](https://peter-gy.github.io/pymalloy/reference/browser)

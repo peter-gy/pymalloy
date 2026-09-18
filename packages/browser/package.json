@@ -1,5 +1,5 @@
 {
-  "name": "@pymalloy/browser",
+  "name": "@malloy-runtime/browser",
   "version": "0.1.0",
   "files": [
     "dist"
@@ -13,14 +13,14 @@
   },
   "scripts": {
     "build": "vp pack",
-    "typecheck": "tsc --noEmit",
-    "test": "vp test"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "catalog:",
-    "@pymalloy/core": "workspace:*",
+    "@malloy-runtime/compiler": "workspace:*",
+    "@malloy-runtime/duckdb": "workspace:*",
     "apache-arrow": "catalog:",
-    "process": "0.11.10"
+    "process": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

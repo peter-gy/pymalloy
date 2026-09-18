@@ -1,3 +1,5 @@
+import { materialize } from "@malloy-runtime/duckdb/arrow";
+import { checkSource, formatSource } from "@malloy-runtime/compiler/tooling";
 import {
   AsyncDuckDB,
   type AsyncDuckDBConnection,
@@ -7,41 +9,37 @@ import {
   selectBundle,
   VoidLogger,
 } from "@duckdb/duckdb-wasm";
-import { CompiledModel, type GivenValue, type Inspection } from "@pymalloy/core";
-
+import {
+  CompiledModel,
+  Model,
+  Operations,
+  ToolingError,
+  type OperationOptions,
+  type RunOptions,
+  type SourcePosition,
+  type ModelSource,
+  type Column,
+} from "@malloy-runtime/compiler";
+import {
+  connection as compilerConnection,
+  drive,
+  stableResult,
+  type Host,
+} from "@malloy-runtime/duckdb";
 import { type File, type Files, modelURL, snapshot, readImport } from "./files.js";
-import { materialize, type ResultRow } from "./arrow.js";
 
 export interface SessionOptions {
   bundles?: DuckDBBundles;
   signal?: AbortSignal;
 }
-export interface ModelOptions {
-  files?: Files;
-  url?: string;
-  imports?: Readonly<Record<string, string>>;
-}
-export interface RunOptions extends ModelOptions {
-  query?: string;
-  givens?: Record<string, GivenValue>;
-}
-export interface Result {
-  queries: readonly string[];
-  sql: string;
-  columns: Array<{ name: string; type: string }>;
-  rows: ResultRow[];
-}
-export interface Model {
-  readonly queries: readonly string[];
-  inspect(): Inspection;
-  run(options?: Omit<RunOptions, keyof ModelOptions>): Promise<Result>;
-  run(source: string, options?: Omit<RunOptions, keyof ModelOptions>): Promise<Result>;
-  close(): void;
-}
-
+export type ModelSpec = (
+  | { text: string; url?: string }
+  | { source: ModelSource }
+  | { url: string }
+) & { files?: Files };
 export class Session {
-  private readonly models = new Set<SessionModel>();
-  private pending: Promise<unknown> = Promise.resolve();
+  private readonly models = new Set<Model>();
+  private readonly operations: Operations;
   private stopped = false;
   private closing?: Promise<void>;
   private activeFiles: string[] = [];
@@ -55,9 +53,14 @@ export class Session {
     private readonly failure: Promise<never>,
     private readonly fail: (error: Error) => void,
     private readonly removeAbortListener: () => void,
-  ) {}
+  ) {
+    this.operations = new Operations(() => {
+      this.fail(new Error("Active operation was cancelled"));
+      void this.close();
+    });
+  }
 
-  static async create(options: SessionOptions = {}): Promise<Session> {
+  static async open(options: SessionOptions = {}): Promise<Session> {
     const signal = options.signal;
     const bundles = structuredClone(options.bundles ?? getJsDelivrBundles());
     signal?.throwIfAborted();
@@ -135,46 +138,113 @@ export class Session {
     return this.stopped;
   }
 
-  model(source: string, options: ModelOptions = {}): Promise<Model> {
-    const files = snapshot(options.files);
-    const definition = structuredClone({ url: options.url, imports: options.imports });
+  model(input: ModelSpec, options: OperationOptions = {}): Promise<Model> {
+    const { files: inputFiles, ...definition } = input;
+    const files = snapshot(inputFiles);
+    const spec = structuredClone(definition);
     return this.enqueue(async () => {
-      const compiled = await this.compile(source, files, definition);
+      await this.activate(files);
+      const captured = "source" in spec ? spec.source : undefined;
+      const root = new URL(captured?.url ?? ("url" in spec ? (spec.url ?? modelURL) : modelURL));
+      const host = this.host(files, root, captured);
+      const compiled = await drive(
+        CompiledModel.begin({
+          url: root,
+          source: captured?.text ?? ("text" in spec ? spec.text : undefined),
+          connection: compilerConnection,
+        }),
+        host,
+      );
       if (this.stopped) throw new Error("Session is closed");
-      const model = new SessionModel(
-        compiled.queries,
-        (extension, selected) =>
+      const schemas = new Map<string, { signature: string; columns: Column[] }>();
+      const model = new Model(compiled, {
+        assertActive: () => {
+          if (this.stopped) throw new Error("Session is closed");
+        },
+        compile: (job) => drive(job, host),
+        run: async (sql, template) => {
+          const table = await this.connection.query(sql);
+          const data = materialize(table);
+          const signature = JSON.stringify(table.schema, (_key, value) =>
+            value instanceof Map ? [...value] : value,
+          );
+          const cached = schemas.get(sql);
+          const reusable =
+            table.schema.dictionaries.size === 0 && sql.length + signature.length <= 65_536;
+          let columns = reusable && cached?.signature === signature ? cached.columns : undefined;
+          if (!columns) {
+            columns = await host.describe(sql);
+            if (reusable) {
+              if (schemas.size === 32) schemas.delete(schemas.keys().next().value!);
+              schemas.set(sql, { signature, columns });
+            }
+          }
+          return {
+            sql,
+            rows: data.rows,
+            columns: structuredClone(columns),
+            malloy: stableResult(sql, columns, data.rows, template),
+          };
+        },
+        submit: (task, options) =>
           this.enqueue(async () => {
             await this.activate(files);
-            return this.execute(compiled, selected, extension);
-          }),
-        () => {
-          if (this.closed) throw new Error("Session is closed");
-          return compiled.inspect();
-        },
-        () => {
+            return task();
+          }, options),
+        release: () => {
           this.models.delete(model);
           if (this.activeSnapshot === files) this.activeSnapshot = undefined;
         },
-      );
+      });
       this.models.add(model);
       return model;
-    });
+    }, options);
   }
-
-  run(source: string, options: RunOptions = {}): Promise<Result> {
+  async run(text: string, options: RunOptions & { files?: Files } = {}) {
+    const captured = { givens: structuredClone(options.givens), signal: options.signal };
+    const model = await this.model({ text, files: options.files }, captured);
+    try {
+      return await model.query().run(captured);
+    } finally {
+      model.close();
+    }
+  }
+  check(
+    text: string,
+    options: {
+      files?: Files;
+      url?: string;
+      syntaxOnly?: boolean;
+      position?: SourcePosition;
+    } & OperationOptions = {},
+  ) {
     const files = snapshot(options.files);
-    const definition = structuredClone({ url: options.url, imports: options.imports });
-    const selected = structuredClone({ query: options.query, givens: options.givens });
+    const root = new URL(options.url ?? modelURL);
     return this.enqueue(async () => {
-      const compiled = await this.compile(source, files, definition);
-      return this.execute(compiled, selected);
-    });
+      await this.activate(files);
+      return drive(
+        checkSource({
+          url: root,
+          source: text,
+          connection: compilerConnection,
+          syntaxOnly: options.syntaxOnly,
+          position: options.position,
+        }),
+        this.host(files, root),
+      );
+    }, options);
+  }
+  format(text: string) {
+    const result = formatSource(text);
+    if (result.diagnostics.length)
+      throw new ToolingError("Malloy formatting failed", result.diagnostics);
+    return result.source;
   }
 
   close(): Promise<void> {
     if (!this.closing) {
       this.stopped = true;
+      void this.operations.close();
       for (const model of this.models) model.close();
       this.removeAbortListener();
       this.imports.abort();
@@ -186,14 +256,9 @@ export class Session {
     return this.closing;
   }
 
-  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+  private enqueue<T>(task: () => Promise<T>, options: OperationOptions = {}): Promise<T> {
     if (this.stopped) return Promise.reject(new Error("Session is closed"));
-    const result = this.pending.then(() => {
-      if (this.stopped) throw new Error("Session is closed");
-      return Promise.race([task(), this.failure]);
-    });
-    this.pending = result.catch(() => undefined);
-    return result;
+    return this.operations.run(() => Promise.race([task(), this.failure]), options);
   }
 
   private async activate(files: Map<string, File>): Promise<void> {
@@ -209,16 +274,8 @@ export class Session {
     this.activeSnapshot = files;
   }
 
-  private async compile(
-    source: string,
-    files: Map<string, File>,
-    options: Pick<ModelOptions, "url" | "imports">,
-  ): Promise<CompiledModel> {
-    await this.activate(files);
-    const root = new URL(options.url ?? modelURL);
-    return CompiledModel.load({
-      url: root,
-      source,
+  private host(files: Map<string, File>, root: URL, captured?: ModelSource): Host {
+    return {
       describe: async (sql) => {
         const result = await this.connection.query(`DESCRIBE ${sql}`);
         return result
@@ -226,73 +283,12 @@ export class Session {
           .map((row) => ({ name: String(row.column_name), type: String(row.column_type) }));
       },
       readURL: async (url) => {
-        if (options.imports === undefined) return readImport(files, url, this.imports.signal, root);
-        if (!Object.hasOwn(options.imports, url.href)) {
-          throw new Error(`Import '${url.href}' is not present in captured source`);
-        }
-        return options.imports[url.href];
+        if (!captured) return readImport(files, url, this.imports.signal, root);
+        if (!Object.hasOwn(captured.imports, url.href))
+          throw new Error(`Source bundle is missing '${url.href}'`);
+        return captured.imports[url.href];
       },
-    });
-  }
-
-  private async execute(
-    compiled: CompiledModel,
-    options: RunOptions,
-    extension?: string,
-  ): Promise<Result> {
-    const query = await compiled.query(options.query, extension, options.givens);
-    const table = await this.connection.query(query.sql);
-    return {
-      queries: [...compiled.queries],
-      sql: query.sql,
-      ...materialize(table),
     };
   }
 }
-
-function querySource(value: string | Omit<RunOptions, keyof ModelOptions>): value is string {
-  return typeof value === "string";
-}
-
-class SessionModel implements Model {
-  constructor(
-    readonly queries: readonly string[],
-    private execute:
-      | ((
-          source: string | undefined,
-          options: Omit<RunOptions, keyof ModelOptions>,
-        ) => Promise<Result>)
-      | undefined,
-    private describe: (() => Inspection) | undefined,
-    private release: (() => void) | undefined,
-  ) {}
-
-  inspect(): Inspection {
-    if (!this.describe) throw new Error("Model is closed");
-    return this.describe();
-  }
-
-  run(options?: Omit<RunOptions, keyof ModelOptions>): Promise<Result>;
-  run(source: string, options?: Omit<RunOptions, keyof ModelOptions>): Promise<Result>;
-  run(
-    sourceOrOptions: string | Omit<RunOptions, keyof ModelOptions> = {},
-    options: Omit<RunOptions, keyof ModelOptions> = {},
-  ): Promise<Result> {
-    if (!this.execute) return Promise.reject(new Error("Model is closed"));
-    const extension = querySource(sourceOrOptions) ? sourceOrOptions : undefined;
-    const selected = structuredClone(querySource(sourceOrOptions) ? options : sourceOrOptions);
-    if (extension !== undefined && selected.query !== undefined) {
-      return Promise.reject(new Error("Choose source or query"));
-    }
-    return this.execute(extension, selected);
-  }
-
-  close(): void {
-    this.execute = undefined;
-    this.describe = undefined;
-    this.release?.();
-    this.release = undefined;
-  }
-}
-
-export type { DuckDBBundles, GivenValue };
+export type { DuckDBBundles };
