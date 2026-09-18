@@ -1,4 +1,4 @@
-import { MalloyTranslator } from "@malloydata/malloy";
+import { MalloyTranslator, routeOf } from "@malloydata/malloy";
 import type { ParserRuleContext } from "antlr4ts";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
 import { diagnostics, ToolingError } from "./diagnostics.js";
@@ -170,13 +170,13 @@ export function syntaxSource(
     const start = context.start.startIndex;
     const end = context.stop!.stopIndex + 1;
     if (start < binding.start || end > expression.start) return;
-    // Only parser-selected single-line doc routes are editable. Shared statement
-    // tags and block annotations retain their authored text without invented ownership.
-    const token = context.start.text ?? "";
-    if (!token.startsWith("#(doc)") || token.slice(6, 7).trim() !== "") return;
+    // Shared statement annotations remain outside the binding's editable scope.
+    const token = characters.slice(start, end).join("");
+    const route = routeOf({ value: token });
+    if (route !== '"') return;
     binding.children.push({
       kind: "annotation",
-      name: "doc",
+      name: route,
       start,
       end,
       children: [],

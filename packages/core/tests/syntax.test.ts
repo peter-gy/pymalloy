@@ -47,7 +47,7 @@ test("syntax roundtrips unsupported constructs, annotations, Unicode, and CRLF e
     "##! experimental.givens",
     "given: threshold :: number is 2",
     "import {base is original} from 'base.malloy'",
-    "#(doc) A source",
+    '#" A source',
     "source: `a\\`b`(p :: number is 1) is # note=kept",
     "  duckdb.sql(\"SELECT '😀' AS face\") extend {",
     "    dimension: `path\\\\name` is face",
@@ -152,16 +152,16 @@ test("named nests own their fields while anonymous nests and runs remain opaque"
 
 test("owned doc annotations are editable without changing shared tags, formatting, or literals", () => {
   const source = [
-    "#(doc) Shared statement documentation",
-    "source: #(doc) Before the name",
-    "  orders #(doc) Before is",
-    "  is #(doc) After is",
-    "  duckdb.sql(\"SELECT '#(doc) literal' AS value\") extend {",
-    "    dimension: #(doc) Field documentation",
+    '#" Shared statement documentation',
+    'source: #" Before the name',
+    '  orders #" Before is',
+    '  is #" After is',
+    "  duckdb.sql(\"SELECT '#(research) literal' AS value\") extend {",
+    '    dimension: #" Field documentation',
     "      label is # currency=USD",
     "        value",
     "  }",
-    "query: result is #(doc) Query documentation",
+    'query: result is #" Query documentation',
     "  orders -> {select: label}",
   ].join("\r\n");
   const syntax = syntaxSource(source);
@@ -170,25 +170,21 @@ test("owned doc annotations are editable without changing shared tags, formattin
   const docs = children(orders).filter(
     (part) => part.type === "syntax" && part.kind === "annotation",
   );
-  expect(docs.map(text)).toEqual([
-    "#(doc) Before the name\r\n",
-    "#(doc) Before is\r\n",
-    "#(doc) After is\r\n",
-  ]);
+  expect(docs.map(text)).toEqual(['#" Before the name\r\n', '#" Before is\r\n', '#" After is\r\n']);
   const [field] = children(expression(orders));
   expect(
     children(field)
       .filter((part) => part.type === "syntax" && part.kind === "annotation")
       .map(text),
-  ).toEqual(["#(doc) Field documentation\r\n"]);
+  ).toEqual(['#" Field documentation\r\n']);
   expect(
     children(query)
       .filter((part) => part.type === "syntax" && part.kind === "annotation")
       .map(text),
-  ).toEqual(["#(doc) Query documentation\r\n"]);
-  replaceText(docs[1], "#(doc) Revised documentation\r\n");
-  expect(text(syntax)).toBe(source.replace("#(doc) Before is", "#(doc) Revised documentation"));
-  expect(text(expression(orders))).toContain("'#(doc) literal'");
+  ).toEqual(['#" Query documentation\r\n']);
+  replaceText(docs[1], '#" Revised documentation\r\n');
+  expect(text(syntax)).toBe(source.replace('#" Before is', '#" Revised documentation'));
+  expect(text(expression(orders))).toContain("'#(research) literal'");
 });
 
 function scalar(authored: string): Scalar | undefined {
@@ -324,7 +320,7 @@ test("where, having, and join predicates retain their named owner and exact surr
   const source = [
     "source: s is duckdb.sql('SELECT 1 AS value') extend {",
     "  where: value > 0, value < 100,",
-    "  join_one: #(doc) Joined source",
+    '  join_one: #" Joined source',
     "    other is duckdb.sql('SELECT 1 AS value') extend {where: value = 1}",
     "    on value = other.value",
     "  view: stats is {",
