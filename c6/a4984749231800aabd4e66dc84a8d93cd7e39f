@@ -1,0 +1,576 @@
+packages/python/build.mjs
+  s_eb8331ad77ae5f::t_d75f04859310ad 1,13-14,19-23
+packages/python/README.md
+  s_eb8331ad77ae5f::t_9ae290ec072e00 35
+  s_eb8331ad77ae5f::t_17e99708d1db0a 3-34,36-43,52-53,56,58-70
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 46,57,72-73
+packages/python/tests/test_result.py
+  s_eb8331ad77ae5f::t_270dc2baa53c9f 1-9,26-28,30-47
+  s_eb8331ad77ae5f::t_17c5012fceb4f1 10-25
+packages/python/tests/test_runtime.py
+  s_eb8331ad77ae5f::t_16d1c2d12b861c 761-764
+  s_eb8331ad77ae5f::t_934481c89abc25 585-588,635-669
+  s_eb8331ad77ae5f::t_00d3abbbce5465 750-760,765-805
+  s_eb8331ad77ae5f::t_38cf4d0b633911 35-38,54,375,382,384-386,559,561-562,564,574
+  s_eb8331ad77ae5f::t_b8cbb16355d4ce 593-634
+  s_eb8331ad77ae5f::t_6fec49340e207d 696-749
+  s_eb8331ad77ae5f::t_9f7d9d173e9e22 39-50,52-53,580-584,589-592
+  s_eb8331ad77ae5f::t_da4db96ae75f6c 680
+packages/python/hatch_build.py
+  s_eb8331ad77ae5f::t_43aa6bf2d94f2a 9-17
+packages/python/src/pymalloy/_server/process.py
+  s_eb8331ad77ae5f::t_7f9094a74e3219 17,139,154,188
+  s_eb8331ad77ae5f::t_d1f3c3b8385ba8 107-108,110
+packages/python/tests/test_authoring.py
+  s_eb8331ad77ae5f::t_cca654bbdc92ac 253,428-440
+  s_eb8331ad77ae5f::t_599aaa30c1c300 583-586,595-596
+  s_eb8331ad77ae5f::t_9ca700967265e4 610-612,677-678,680-691,695-696
+  s_eb8331ad77ae5f::t_756c6e1fdce70e 697-703,705-730
+  s_eb8331ad77ae5f::t_94a5756012aad3 465
+  s_eb8331ad77ae5f::t_38cf4d0b633911 251-252,260-263,270
+  s_eb8331ad77ae5f::t_9f29055f80f1a0 646-651
+  s_eb8331ad77ae5f::t_a6861aa4848d98 731-740,742-747,749-750
+  s_eb8331ad77ae5f::t_f77d0b10bb8cb4 679,692-694
+  s_eb8331ad77ae5f::t_76bb4643bab5a0 704
+  s_eb8331ad77ae5f::t_f8a3d2d4717e13 568-570,590-594,597-601,606-609,613-645,655-676
+packages/python/src/pymalloy/_source.py
+  s_eb8331ad77ae5f::t_4e8ec0b15ac318 17-21,59,64
+  s_eb8331ad77ae5f::t_bfbeccec4fd96c 5,8-16,22,75
+docs/guide/bundles.md
+  s_eb8331ad77ae5f::t_0bf333bd1973a1 1-87,91-97,100-131
+  s_eb8331ad77ae5f::t_9ae290ec072e00 98-99
+docs/guide/models.md
+  s_eb8331ad77ae5f::t_ee236e1b60229c 26-28,32-33
+docs/guide/overview.md
+  s_eb8331ad77ae5f::t_99238fbfea46a1 10-18,22,28
+  s_eb8331ad77ae5f::t_17e99708d1db0a 3-9,19-21,30-37,39-42
+  s_eb8331ad77ae5f::t_0a12548692e8bb 29
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 24-27,38,43-45
+docs/guide/givens.md
+  s_eb8331ad77ae5f::t_ee236e1b60229c 22-23
+  s_eb8331ad77ae5f::t_aaf09e80738f7b 27-29
+packages/python/tests/check_samples.py
+  s_eb8331ad77ae5f::t_45b7d52b2e29e6 93
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 99-100
+  s_eb8331ad77ae5f::t_aa1171299562ea 92
+docs/guide/export.md
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 6,15,17,26-27,37-39,47
+  s_eb8331ad77ae5f::t_acc2a1f90a487b 43-44,53-55
+  s_eb8331ad77ae5f::t_99238fbfea46a1 23,25
+  s_eb8331ad77ae5f::t_00199857f3d11e 9,56-64
+  s_eb8331ad77ae5f::t_ee236e1b60229c 3-4,21-22,29-31
+packages/python/tests/test_persistence.py
+  s_eb8331ad77ae5f::t_fe62ab4efe02af 5,8-10,12-14,16,18-20
+development_docs/authoring.md
+  s_eb8331ad77ae5f::t_a0a4a18b51e3f8 21,36-39,46-48,61-63,90-92,128-132,156-157
+  s_eb8331ad77ae5f::t_a894e0a979eb25 75-86,144-146,158-183
+  s_eb8331ad77ae5f::t_a4a8e0b081600e 19-20,55-59
+packages/python/schema/protocol.json
+  s_eb8331ad77ae5f::t_8c7904627212cc 592-605,627-629,631-636,655,770-773,1716-1718,1732,2427-2429,2516-2536,2845-2847,2849-2850,2852-2853,3076,3091-3111
+  s_eb8331ad77ae5f::t_00949f972904fc 630,3034-3075
+docs/reference/node.md
+  s_eb8331ad77ae5f::t_1079c3b93a2583 20-21
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 18,24,29-31
+skills/pymalloy/SKILL.md
+  s_eb8331ad77ae5f::t_a0a4a18b51e3f8 17-20,84-85,88-89,91-92,123-124,145-146
+apps/e2e/standalone/vite.config.ts
+  s_eb8331ad77ae5f::t_5904f5fc6af63c 7
+  s_eb8331ad77ae5f::t_0d18fa88b33e15 39,51-57
+skills/pymalloy/references/triage.md
+  s_eb8331ad77ae5f::t_a0a4a18b51e3f8 10
+  s_eb8331ad77ae5f::t_d15c9f93d6f608 39
+packages/python/src/pymalloy/authoring.py
+  s_eb8331ad77ae5f::t_f8a3d2d4717e13 55-57
+  s_eb8331ad77ae5f::t_3c48b83dc97727 17,72,103,123,127,150
+  s_eb8331ad77ae5f::t_005d24525db8b2 64-68,91-93,154-156
+  s_eb8331ad77ae5f::t_85dd5ee5e41187 172
+  s_eb8331ad77ae5f::t_fb631884ee18d3 9,51-52,63
+  s_eb8331ad77ae5f::t_dc27a9515f5e08 60
+  s_eb8331ad77ae5f::t_293ca91851cf13 139-140
+  s_eb8331ad77ae5f::t_8276cd5e2fca0b 166-167,170
+  s_eb8331ad77ae5f::t_fc83b13098bf2a 138,144
+packages/python/src/pymalloy/_draft.py
+  s_eb8331ad77ae5f::t_cca654bbdc92ac 22,67-69
+  s_eb8331ad77ae5f::t_601e13b8b97e74 23,144,147,163
+  s_eb8331ad77ae5f::t_bfbeccec4fd96c 9,36
+  s_eb8331ad77ae5f::t_94a5756012aad3 18,219-220
+  s_eb8331ad77ae5f::t_1201155025bc67 19
+  s_eb8331ad77ae5f::t_4e8ec0b15ac318 13-17,20-21,38-40,136-138,213
+  s_eb8331ad77ae5f::t_293ca91851cf13 214-217
+packages/python/tests/test_samples.py
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 34,43-45
+  s_eb8331ad77ae5f::t_45b7d52b2e29e6 35
+  s_eb8331ad77ae5f::t_ac66c50ddf62d2 198-222
+packages/python/src/pymalloy/_python.py
+  s_eb8331ad77ae5f::t_65df05f7d15863 28,82,120-133,188,197-199,240
+  s_eb8331ad77ae5f::t_d3e96b0a02305f 277
+  s_eb8331ad77ae5f::t_3d69324476f60d 257,269,272
+  s_eb8331ad77ae5f::t_f8a3d2d4717e13 72-79,140-144
+  s_eb8331ad77ae5f::t_005d24525db8b2 1,9,11,29-32,34-35,47-52,60-71,83-85,90,92-97,99-100,104-109,118,136-139,146-153,166-170,178-187,190-194,201,203-205,213-218,220-223,227-239,241-242,259,261-266,268,270-271
+  s_eb8331ad77ae5f::t_293ca91851cf13 155-164,306-308,319-321
+  s_eb8331ad77ae5f::t_fc83b13098bf2a 36-45,154,165,296-305,318,322
+packages/server/tests/service.test.ts
+  s_eb8331ad77ae5f::t_7f9094a74e3219 38,47,57-59,68-73
+  s_eb8331ad77ae5f::t_ce9b8c3ba10723 3,29
+  s_eb8331ad77ae5f::t_d75f04859310ad 60,67
+  s_eb8331ad77ae5f::t_c81e60b423c647 61-66
+packages/python/src/pymalloy/cli.py
+  s_eb8331ad77ae5f::t_43aa6bf2d94f2a 50-51,54-66,322-325,328-332,337-346
+  s_eb8331ad77ae5f::t_bbdb4f8401167c 152-157,191,284,327
+  s_eb8331ad77ae5f::t_4776ca080ed595 221-222,233-234,307-308,350-351
+  s_eb8331ad77ae5f::t_f64129f32a3929 9,150-151,158-161,190,283,326
+  s_eb8331ad77ae5f::t_107b550728aa88 176,224-231,263-265,298-305
+  s_eb8331ad77ae5f::t_7e5aaa92bdb04d 103-107,280
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 274
+  s_eb8331ad77ae5f::t_fb631884ee18d3 348
+  s_eb8331ad77ae5f::t_ed54b9e8b8f173 5,321,333-336
+  s_eb8331ad77ae5f::t_2b589f9aa23adf 266,315-318
+  s_eb8331ad77ae5f::t_64416241c0fe0e 269,294
+packages/python/tests/test_jupyter.py
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 33,74,104
+  s_eb8331ad77ae5f::t_aa1171299562ea 8
+development_docs/testing.md
+  s_eb8331ad77ae5f::t_99238fbfea46a1 8-19
+  s_eb8331ad77ae5f::t_5c09d4a591685b 24-29,59-60,62,73
+  s_eb8331ad77ae5f::t_78bd8afdf97297 69-72
+  s_eb8331ad77ae5f::t_a894e0a979eb25 30,109-110,152-154,160,164
+packages/python/src/pymalloy/export/_compile.py
+  s_eb8331ad77ae5f::t_e2437162f15d60 15-16
+  s_eb8331ad77ae5f::t_4e8ec0b15ac318 70,109-112
+  s_eb8331ad77ae5f::t_5e19c67e100239 14,71-80,83-85,88-89,92-104,106-108,125-136
+  s_eb8331ad77ae5f::t_94658e171abb8b 32,51-57,66,90,150-152,217
+  s_eb8331ad77ae5f::t_bb029893254c5b 6,198-201
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 13,175,210
+  s_eb8331ad77ae5f::t_aeb63cb81ab028 17,196-197,202-205
+  s_eb8331ad77ae5f::t_5458d8d022c303 31,149,216
+  s_eb8331ad77ae5f::t_3ed9e4adad160e 86-87
+  s_eb8331ad77ae5f::t_bbdb4f8401167c 33,58-65,137-144,153,218
+docs/index.md
+  s_eb8331ad77ae5f::t_a0a4a18b51e3f8 19
+  s_eb8331ad77ae5f::t_17e99708d1db0a 5-6,9-10,12-13,15-18,20-23,26,28-31,33-35
+packages/python/src/pymalloy/_connection.py
+  s_eb8331ad77ae5f::t_fb631884ee18d3 1-3
+development_docs/protocol.md
+  s_eb8331ad77ae5f::t_8861adabfcd787 6-7,24,31-32,40-46,48-52,66-67,92-95
+  s_eb8331ad77ae5f::t_030d434d44ae70 8-9,25-26
+  s_eb8331ad77ae5f::t_d15c9f93d6f608 47
+  s_eb8331ad77ae5f::t_a894e0a979eb25 17,23,33-35,87-88
+  s_eb8331ad77ae5f::t_9ca700967265e4 56-61
+packages/core/src/tables.ts
+  s_eb8331ad77ae5f::t_ce7fb1e5b177ca 1,4,16,19,26-27
+packages/core/src/document.ts
+  s_eb8331ad77ae5f::t_64b16fb380d25a 6-7
+packages/python/tests/test_documents.py
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 21,47,58,71,91,113,143,145,147-148
+  s_eb8331ad77ae5f::t_e844a5c0278f1f 6
+tools/bundle-notices.ts
+  s_eb8331ad77ae5f::t_535e1abcda230f 5-14,62
+  s_eb8331ad77ae5f::t_c02030df13cb6c 38-45
+packages/core/src/operations.ts
+  s_eb8331ad77ae5f::t_1bdb841dc956ac 20,24-25
+  s_eb8331ad77ae5f::t_64b16fb380d25a 78-79
+  s_eb8331ad77ae5f::t_9e620e88da6938 2-3,7,10,16-17,26-28,38-39,41,44-51,55-60,69-74,77,80-81
+packages/core/src/syntax.ts
+  s_eb8331ad77ae5f::t_293ca91851cf13 308-312,324-330
+  s_eb8331ad77ae5f::t_cbfe9d474ddf96 398-408,411,413-422,427,435,442-443,449-450
+  s_eb8331ad77ae5f::t_c7ceecc5fe751c 2,27-30,56,76,104-105,107,124-125,397,412,423,456
+  s_eb8331ad77ae5f::t_b6f3e7ced17c96 214,218-219,390
+  s_eb8331ad77ae5f::t_94a5756012aad3 8
+  s_eb8331ad77ae5f::t_fc83b13098bf2a 49-52,80,106,112,114,121-123,307,313-323,331-335,340-346,370
+  s_eb8331ad77ae5f::t_496e5d1b4c1068 66
+  s_eb8331ad77ae5f::t_ce7fb1e5b177ca 1,9,67-68,81,84,86,222,232,395-396
+  s_eb8331ad77ae5f::t_6b0dfc2d54d4f7 113,137
+  s_eb8331ad77ae5f::t_f73e750d6ac4ff 134-135
+  s_eb8331ad77ae5f::t_96f312d3028545 32-48,108-111,115-120,126-133,136,138-145,233-304,336-339,347-369,371-389,391-394,409-410,436-441,444-448,457-458,475-481
+development_docs/README.md
+  s_eb8331ad77ae5f::t_a4a8e0b081600e 73-75
+  s_eb8331ad77ae5f::t_a894e0a979eb25 112,123-127,131-132
+  s_eb8331ad77ae5f::t_99238fbfea46a1 114-122
+packages/core/tests/host.ts
+  s_eb8331ad77ae5f::t_8900221a25f8f4 2,5,22-23,27-28,31,37-38,41
+packages/python/src/pymalloy/_syntax.py
+  s_eb8331ad77ae5f::t_f8a3d2d4717e13 365
+  s_eb8331ad77ae5f::t_8276cd5e2fca0b 354-356
+  s_eb8331ad77ae5f::t_c3b4ac7ea0b4ce 303-304
+  s_eb8331ad77ae5f::t_293ca91851cf13 399-406
+  s_eb8331ad77ae5f::t_dc27a9515f5e08 393
+  s_eb8331ad77ae5f::t_85dd5ee5e41187 104,305
+  s_eb8331ad77ae5f::t_3c48b83dc97727 36,297,299-301,307-308,370,386
+  s_eb8331ad77ae5f::t_4fc233fef9611b 113
+  s_eb8331ad77ae5f::t_a6861aa4848d98 93-97,261,279-281
+  s_eb8331ad77ae5f::t_005d24525db8b2 14-20,65-67,225-227,258-260,302,306,374-377
+  s_eb8331ad77ae5f::t_fc83b13098bf2a 398
+  s_eb8331ad77ae5f::t_fb631884ee18d3 10,69,228,273-274,276-278,282-285,327,335
+  s_eb8331ad77ae5f::t_3d69324476f60d 264-265
+  s_eb8331ad77ae5f::t_756c6e1fdce70e 91,100-103,105-106,248-249,328-329
+packages/python/src/pymalloy/_annotations.py
+  s_eb8331ad77ae5f::t_fb631884ee18d3 1-27
+docs/reference/authoring.md
+  s_eb8331ad77ae5f::t_5c09d4a591685b 63,146,153-155,186-189,222-223
+  s_eb8331ad77ae5f::t_78bd8afdf97297 44,69-71,87-102,112-115,132-145,147,156-162,209-213
+  s_eb8331ad77ae5f::t_934481c89abc25 173
+  s_eb8331ad77ae5f::t_ee236e1b60229c 172,174-176,199-205
+README.md
+  s_eb8331ad77ae5f::t_17e99708d1db0a 3-7,10,13-28,31-39,41,46-47,50,52,54,56-64
+  s_eb8331ad77ae5f::t_9ae290ec072e00 29
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 40,51,66-67
+packages/core/scripts/lexicon.mjs
+  s_eb8331ad77ae5f::t_756c6e1fdce70e 9-52,54-55
+  s_eb8331ad77ae5f::t_ef94d96e527611 53
+docs/guide/authoring.md
+  s_eb8331ad77ae5f::t_a4a8e0b081600e 176-177
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 132,134-136,140-146,173-175,190-194,196-204,222
+  s_eb8331ad77ae5f::t_ee236e1b60229c 1,51-54,207,209-212,214-218
+packages/python/src/pymalloy/_server/runtime.py
+  s_eb8331ad77ae5f::t_601e13b8b97e74 15,51,53-54,70,75,79-81,106-108,244,402-406
+  s_eb8331ad77ae5f::t_4e8ec0b15ac318 30-35,203-206,336-338
+  s_eb8331ad77ae5f::t_bfbeccec4fd96c 174,218,468
+  s_eb8331ad77ae5f::t_f02fd3d4ef3d08 69,88
+  s_eb8331ad77ae5f::t_92bef283d5a12a 11,401
+  s_eb8331ad77ae5f::t_5c09d4a591685b 178-179,192,229-230,245
+  s_eb8331ad77ae5f::t_eacdc88805abc5 47,90,138-143,145,148
+  s_eb8331ad77ae5f::t_42dac53d097c37 68,87
+  s_eb8331ad77ae5f::t_b8cbb16355d4ce 96-98,187-191,193
+packages/node/src/session.ts
+  s_eb8331ad77ae5f::t_9e620e88da6938 54,87,93,95-96,139
+  s_eb8331ad77ae5f::t_6ad57a33b88580 88-90,92,94,98,107,137-138
+  s_eb8331ad77ae5f::t_b3f569530aebc2 141
+  s_eb8331ad77ae5f::t_1bdb841dc956ac 32-33,62-63,105-106,108,160-162
+packages/python/src/pymalloy/_records.py
+  s_eb8331ad77ae5f::t_91586ffe53da1b 83-85,132
+  s_eb8331ad77ae5f::t_95646bf0601c7e 198-203,278-283,377,388-389,457-461,523-524
+  s_eb8331ad77ae5f::t_00949f972904fc 248-276,385-387,648
+packages/core/src/model.ts
+  s_eb8331ad77ae5f::t_c02030df13cb6c 293-305
+  s_eb8331ad77ae5f::t_64b16fb380d25a 2,10,26,45,56-57,82,136-137,141,170,198,266
+  s_eb8331ad77ae5f::t_39452379f77ccc 290-292,306
+packages/python/tests/test_profiles.py
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 52,56,110
+  s_eb8331ad77ae5f::t_aa1171299562ea 12
+  s_eb8331ad77ae5f::t_7e5aaa92bdb04d 265-283,292-341
+  s_eb8331ad77ae5f::t_6a7b0399bbad01 284-291
+docs/guide/dataframes.md
+  s_eb8331ad77ae5f::t_ee236e1b60229c 1,41-44,101-104
+  s_eb8331ad77ae5f::t_5c09d4a591685b 56-57,77-89,113
+apps/e2e/tests/pyodide.spec.ts
+  s_eb8331ad77ae5f::t_8d6f5e1b0115cd 11
+packages/node/src/duckdb.ts
+  s_eb8331ad77ae5f::t_b3f569530aebc2 28,33-34,38,41
+packages/python/src/pymalloy/export/_scope.py
+  s_eb8331ad77ae5f::t_daf0e2c4a39abd 5,56-59,61,63
+  s_eb8331ad77ae5f::t_45b7d52b2e29e6 1-4,6-51,53-55
+  s_eb8331ad77ae5f::t_c144ae73255b35 60,62
+docs/guide/widget.md
+  s_eb8331ad77ae5f::t_29833d96709347 38,47
+  s_eb8331ad77ae5f::t_030d434d44ae70 48-49
+  s_eb8331ad77ae5f::t_9ca700967265e4 20-25
+  s_eb8331ad77ae5f::t_aaf09e80738f7b 3-5,30-37,39-45,51-53
+  s_eb8331ad77ae5f::t_ee236e1b60229c 28-29
+docs/reference/core.md
+  s_eb8331ad77ae5f::t_4282fdb97787e6 10
+  s_eb8331ad77ae5f::t_ee236e1b60229c 34-36,39-40
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 22,25-28
+packages/core/src/upstream.ts
+  s_eb8331ad77ae5f::t_ce7fb1e5b177ca 10-11,16-23,27-50,162
+  s_eb8331ad77ae5f::t_96f312d3028545 24-26,166-170,173-182
+  s_eb8331ad77ae5f::t_64b16fb380d25a 1,163-165,171-172,183-186
+skills/pymalloy/references/api.md
+  s_eb8331ad77ae5f::t_4282fdb97787e6 116-117,130-131
+packages/python/src/pymalloy/__init__.py
+  s_eb8331ad77ae5f::t_e844a5c0278f1f 69
+  s_eb8331ad77ae5f::t_9e620e88da6938 7-10,59
+packages/python/src/pymalloy/_server/compiler.py
+  s_eb8331ad77ae5f::t_7f9094a74e3219 9,11-14,84-86,94
+  s_eb8331ad77ae5f::t_e66465ab2d1916 18,34-41,43-48
+  s_eb8331ad77ae5f::t_d1f3c3b8385ba8 30-33
+packages/python/src/pymalloy/export/_python.py
+  s_eb8331ad77ae5f::t_7b10b83a0aa837 37,161
+  s_eb8331ad77ae5f::t_da1325799d9461 38-42,97,99,102
+  s_eb8331ad77ae5f::t_e0d48f3cbc60f2 53-55,57-58
+  s_eb8331ad77ae5f::t_e89227e791162b 51,56,91-92,96,100-101
+  s_eb8331ad77ae5f::t_5458d8d022c303 7,151-154
+  s_eb8331ad77ae5f::t_599aaa30c1c300 63-71
+  s_eb8331ad77ae5f::t_bbdb4f8401167c 93-95,98,162-163
+  s_eb8331ad77ae5f::t_0c6d67f9eea846 43-46,72-73,86
+  s_eb8331ad77ae5f::t_65356645bdb4b3 52
+  s_eb8331ad77ae5f::t_e64a06e058d19d 113-118
+  s_eb8331ad77ae5f::t_1a00d12d7e4e4f 167-168
+packages/python/tests/test_widget.py
+  s_eb8331ad77ae5f::t_e43a55bdd2e071 204
+  s_eb8331ad77ae5f::t_381561b3877bbb 167-169
+  s_eb8331ad77ae5f::t_9ca700967265e4 78,132,285
+  s_eb8331ad77ae5f::t_9deb42d4f3f38c 86-90,94,143,159-160,163,165-166,170-178,187,190-194,196-199,201-203,205-209
+  s_eb8331ad77ae5f::t_4090805536e47a 124,133,135
+development_docs/releasing.md
+  s_eb8331ad77ae5f::t_a0a4a18b51e3f8 11-14,39
+packages/widget/vite.config.ts
+  s_eb8331ad77ae5f::t_d75f04859310ad 5,7,29
+packages/core/tests/syntax.test.ts
+  s_eb8331ad77ae5f::t_5c3b038b528e18 20-21,26-27
+  s_eb8331ad77ae5f::t_94a5756012aad3 127
+  s_eb8331ad77ae5f::t_6b0dfc2d54d4f7 18,78,83,105,107,109,152,154-155,162-163,185-186,190,192,195,197,210,354,370,372
+  s_eb8331ad77ae5f::t_ef94d96e527611 450
+  s_eb8331ad77ae5f::t_599aaa30c1c300 22-25,134-136,390-392,432-449,451-453
+docs/reference/export.md
+  s_eb8331ad77ae5f::t_0bf333bd1973a1 14-15,49,52-64,67,70-75,78-89,91,102-110,113-114,116-118
+  s_eb8331ad77ae5f::t_00199857f3d11e 23,27-31
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 4,6,10,38,40-43,76
+  s_eb8331ad77ae5f::t_b1972edffd31b6 34-36
+  s_eb8331ad77ae5f::t_cd1d07ae3eca6c 77
+  s_eb8331ad77ae5f::t_acc2a1f90a487b 21-22,24-25
+  s_eb8331ad77ae5f::t_a4a8e0b081600e 90
+  s_eb8331ad77ae5f::t_0cbe85ffce8e18 11-12,33,37,39
+  s_eb8331ad77ae5f::t_1079c3b93a2583 20
+  s_eb8331ad77ae5f::t_0a12548692e8bb 69
+  s_eb8331ad77ae5f::t_99238fbfea46a1 92-98,100-101
+packages/python/src/pymalloy/_lexicon.py
+  s_eb8331ad77ae5f::t_6ea7e460085f8c 1-82
+packages/duckdb/src/index.ts
+  s_eb8331ad77ae5f::t_b3f569530aebc2 3,6-9,29
+  s_eb8331ad77ae5f::t_9e620e88da6938 11,18,22,27,31,41,43-47
+packages/core/tests/tools.test.ts
+  s_eb8331ad77ae5f::t_c02030df13cb6c 333-334,339-340,342-347
+  s_eb8331ad77ae5f::t_39452379f77ccc 159-161,171-174,305-308,331-332,335-338,341
+docs/guide/data.md
+  s_eb8331ad77ae5f::t_78bd8afdf97297 5-10
+  s_eb8331ad77ae5f::t_ee236e1b60229c 11,89-90
+  s_eb8331ad77ae5f::t_f011d49d4a448a 43-44,46,72-73
+  s_eb8331ad77ae5f::t_8f83d02fbabd56 45
+  s_eb8331ad77ae5f::t_5c09d4a591685b 52-53
+  s_eb8331ad77ae5f::t_634f08bac01fb5 33,38-42,71
+  s_eb8331ad77ae5f::t_454be04c37df53 3,12,19-24,26,29-30,54,57,60-66,68,74-82
+pyproject.toml
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 12
+pnpm-workspace.yaml
+  s_eb8331ad77ae5f::t_6c64d9c4e6ef98 40
+packages/protocol/src/server.ts
+  s_eb8331ad77ae5f::t_7f9094a74e3219 63-66,112
+  s_eb8331ad77ae5f::t_b3f569530aebc2 12-13,26-29,32,38-44,46
+  s_eb8331ad77ae5f::t_d75f04859310ad 122-125
+packages/python/src/pymalloy/export/_files.py
+  s_eb8331ad77ae5f::t_5e19c67e100239 1-6,14-18
+  s_eb8331ad77ae5f::t_65356645bdb4b3 24
+  s_eb8331ad77ae5f::t_aeb63cb81ab028 19-20,26-34
+  s_eb8331ad77ae5f::t_94658e171abb8b 21-23,25,35-37
+packages/python/tests/test_source_bundle.py
+  s_eb8331ad77ae5f::t_9ca700967265e4 99-101,111-120,183-214
+packages/protocol/src/widget.ts
+  s_eb8331ad77ae5f::t_9ca700967265e4 18
+packages/python/src/pymalloy/execution.py
+  s_eb8331ad77ae5f::t_7f9094a74e3219 10,26,37
+packages/python/src/pymalloy/_server/validation.py
+  s_eb8331ad77ae5f::t_601e13b8b97e74 34,109
+  s_eb8331ad77ae5f::t_934481c89abc25 11,40,57-62,107,110-111
+  s_eb8331ad77ae5f::t_7f9094a74e3219 12,87
+packages/python/tests/test_compiler_lifecycle.py
+  s_eb8331ad77ae5f::t_37672d523c593a 26,69-71
+  s_eb8331ad77ae5f::t_fb631884ee18d3 35-44,95-100,102,104-105
+  s_eb8331ad77ae5f::t_f4f8be945f3ebf 27-29,76-94
+  s_eb8331ad77ae5f::t_a4f73bfd8b2825 50
+packages/python/src/pymalloy/_server/api.py
+  s_eb8331ad77ae5f::t_4e8ec0b15ac318 76-78
+  s_eb8331ad77ae5f::t_f02fd3d4ef3d08 5,30,50,68,112,129
+  s_eb8331ad77ae5f::t_42dac53d097c37 29,49,67,111,128
+  s_eb8331ad77ae5f::t_bfbeccec4fd96c 3,14,32,52,105,118-119,121-127,130-138,145
+  s_eb8331ad77ae5f::t_601e13b8b97e74 12,19,31,51,59,69,92,104
+packages/python/src/pymalloy/widget.py
+  s_eb8331ad77ae5f::t_135f9a970e115a 6,26-38,46,74-77,177,193-196
+  s_eb8331ad77ae5f::t_8861adabfcd787 213-215
+  s_eb8331ad77ae5f::t_72fc23ed22eb77 11,16,241
+  s_eb8331ad77ae5f::t_9ca700967265e4 13,73,85,109,116-117,127,206
+  s_eb8331ad77ae5f::t_1d48eed9de9566 21-23,47-49,51-53,86-87,89
+packages/python/src/pymalloy/_server/tooling.py
+  s_eb8331ad77ae5f::t_fb631884ee18d3 15-17,57-59
+  s_eb8331ad77ae5f::t_135f9a970e115a 39-41
+  s_eb8331ad77ae5f::t_e66465ab2d1916 11,121-123,126-129
+packages/node/tests/session.test.ts
+  s_eb8331ad77ae5f::t_9ca700967265e4 456
+  s_eb8331ad77ae5f::t_8900221a25f8f4 84,86-89
+  s_eb8331ad77ae5f::t_1bdb841dc956ac 533-547
+packages/python/tests/test_compile.py
+  s_eb8331ad77ae5f::t_fb631884ee18d3 209,372-375,377-380,382-385,387-391,393-394
+  s_eb8331ad77ae5f::t_7d889ac4d59d64 386
+  s_eb8331ad77ae5f::t_107b550728aa88 413-418,423-424,427-436,453
+  s_eb8331ad77ae5f::t_4e8105f68087ab 404-405
+  s_eb8331ad77ae5f::t_4776ca080ed595 454-495,498
+  s_eb8331ad77ae5f::t_c7e12b8a3da73e 530-543
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 25,34,70,72,88,115,138,142,158,210,252,265,273
+  s_eb8331ad77ae5f::t_3ed9e4adad160e 189
+  s_eb8331ad77ae5f::t_381561b3877bbb 223,233-237,240-243,395-403,406-412
+packages/python/src/pymalloy/expressions.py
+  s_eb8331ad77ae5f::t_fb631884ee18d3 14,66,78,83,87-95,99
+packages/python/src/pymalloy/_wire.py
+  s_eb8331ad77ae5f::t_381561b3877bbb 4,27
+packages/python/src/pymalloy/export/__init__.py
+  s_eb8331ad77ae5f::t_94658e171abb8b 35,62,77
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 6,15,18,22
+  s_eb8331ad77ae5f::t_4776ca080ed595 69
+  s_eb8331ad77ae5f::t_bbdb4f8401167c 36,63
+  s_eb8331ad77ae5f::t_f6c30a18d04810 76
+  s_eb8331ad77ae5f::t_65356645bdb4b3 38,40-42
+  s_eb8331ad77ae5f::t_5458d8d022c303 5,26
+  s_eb8331ad77ae5f::t_9e620e88da6938 49-50
+  s_eb8331ad77ae5f::t_e0d48f3cbc60f2 7,61,70-75,78-82
+packages/python/src/pymalloy/_server/engine.py
+  s_eb8331ad77ae5f::t_16d1c2d12b861c 56,60
+  s_eb8331ad77ae5f::t_f02fd3d4ef3d08 3,25,29-32,37
+  s_eb8331ad77ae5f::t_42dac53d097c37 5,24,34-36,38,41,44-55,57-59,61-63,66-71,73,85-87
+  s_eb8331ad77ae5f::t_eacdc88805abc5 14,27,74-84
+  s_eb8331ad77ae5f::t_b6faf801b5e465 64
+apps/docs/.vitepress/config.mts
+  s_eb8331ad77ae5f::t_ee236e1b60229c 12,18,23-24,26,49
+packages/browser/src/session.ts
+  s_eb8331ad77ae5f::t_b3f569530aebc2 190,317
+  s_eb8331ad77ae5f::t_1bdb841dc956ac 170,175
+  s_eb8331ad77ae5f::t_9e620e88da6938 1,15-16,21,37,43,60,62,180,283,287,289,291,295,301,310
+  s_eb8331ad77ae5f::t_a6861aa4848d98 277-280,323
+  s_eb8331ad77ae5f::t_6ad57a33b88580 63-68,173,177,179,284-286,288,290,311-313,315
+docs/reference/server.md
+  s_eb8331ad77ae5f::t_030d434d44ae70 21-22,42,84,87
+  s_eb8331ad77ae5f::t_ee236e1b60229c 19,68-69,88-89,93
+  s_eb8331ad77ae5f::t_d15c9f93d6f608 15-16,25-33,39-41,85-86,96,100-102,126-129,133-134,136-137
+  s_eb8331ad77ae5f::t_aaf09e80738f7b 34,45-46,91-92,103-107,112-117,119-123
+  s_eb8331ad77ae5f::t_8861adabfcd787 125
+packages/server/vite.config.ts
+  s_eb8331ad77ae5f::t_d75f04859310ad 4,6,10
+packages/python/src/pymalloy/export/marimo.py
+  s_eb8331ad77ae5f::t_22df222ccbe79f 54-56,60-68
+  s_eb8331ad77ae5f::t_45b7d52b2e29e6 10
+  s_eb8331ad77ae5f::t_43aa6bf2d94f2a 57-59
+packages/core/src/diagnostics.ts
+  s_eb8331ad77ae5f::t_64b16fb380d25a 45
+packages/python/src/pymalloy/_table.py
+  s_eb8331ad77ae5f::t_fb631884ee18d3 35
+packages/core/src/runtime.ts
+  s_eb8331ad77ae5f::t_6ad57a33b88580 21,24,38
+  s_eb8331ad77ae5f::t_64b16fb380d25a 1,57-58
+apps/e2e/standalone/main.js
+  s_eb8331ad77ae5f::t_8d6f5e1b0115cd 13,15-16
+packages/python/src/pymalloy/agent.py
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 19-20,35-42,44
+  s_eb8331ad77ae5f::t_4e8ec0b15ac318 15-16
+tools/generate-records.py
+  s_eb8331ad77ae5f::t_c85e76244cd98e 5
+  s_eb8331ad77ae5f::t_df82f27a3622c8 1
+  s_eb8331ad77ae5f::t_d3e96b0a02305f 8-21
+docs/guide/server-python.md
+  s_eb8331ad77ae5f::t_454be04c37df53 3,6,14,18-21,31,34-37,39-46,51-52
+docs/reference/python.md
+  s_eb8331ad77ae5f::t_aaf09e80738f7b 14-17,19-22,37-38
+  s_eb8331ad77ae5f::t_9ca700967265e4 10-11,24-26
+  s_eb8331ad77ae5f::t_ee236e1b60229c 12
+  s_eb8331ad77ae5f::t_030d434d44ae70 28-30
+packages/python/src/pymalloy/_persistence.py
+  s_eb8331ad77ae5f::t_2b589f9aa23adf 6
+  s_eb8331ad77ae5f::t_22df222ccbe79f 23-24
+packages/python/pyproject.toml
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 8,17,20,32-33
+  s_eb8331ad77ae5f::t_ee236e1b60229c 4
+  s_eb8331ad77ae5f::t_34275c87709456 18-19
+packages/python/src/pymalloy/export/_plan.py
+  s_eb8331ad77ae5f::t_7b10b83a0aa837 125-126,131
+  s_eb8331ad77ae5f::t_f6c30a18d04810 127
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 7,46,57,75,105
+  s_eb8331ad77ae5f::t_e89227e791162b 128-130
+  s_eb8331ad77ae5f::t_3ed9e4adad160e 167-171
+  s_eb8331ad77ae5f::t_45b7d52b2e29e6 16,19,27-30,43,148-151,153-155,178-188
+  s_eb8331ad77ae5f::t_5458d8d022c303 65-68,124,175-177
+docs/guide/getting-started.md
+  s_eb8331ad77ae5f::t_aaf09e80738f7b 12,16,61-63,67,76-77
+packages/server/src/service.ts
+  s_eb8331ad77ae5f::t_7f9094a74e3219 128-131
+packages/python/src/pymalloy/_document.py
+  s_eb8331ad77ae5f::t_8ec85dd9c213e5 93-100
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 18,25,42,107-108
+  s_eb8331ad77ae5f::t_94658e171abb8b 9,50,56-63
+  s_eb8331ad77ae5f::t_bbdb4f8401167c 51,64-72,83,85-88
+  s_eb8331ad77ae5f::t_79701ba72f250e 13,90
+  s_eb8331ad77ae5f::t_5458d8d022c303 11,49,54-55
+docs/reference/browser.md
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 18,22,31-33
+packages/core/src/compile.ts
+  s_eb8331ad77ae5f::t_b3f569530aebc2 114,125-126,143,145
+  s_eb8331ad77ae5f::t_64b16fb380d25a 2,4-5,11,21,38-43,53,66,73-76,78-79,87,183,204,206
+packages/core/src/selection.ts
+  s_eb8331ad77ae5f::t_64b16fb380d25a 1-2,7-13,22
+  s_eb8331ad77ae5f::t_c72a08b0553286 14-18,20-21
+packages/core/src/tools.ts
+  s_eb8331ad77ae5f::t_8900221a25f8f4 153,161
+  s_eb8331ad77ae5f::t_64b16fb380d25a 3,6-8,11,15,19,24,77,91,94,122,130-131,152,155
+packages/widget/tests/lifecycle.test.ts
+  s_eb8331ad77ae5f::t_9ca700967265e4 38-45,47,86-87,187-195,230-233,249-254,256-259,262-271
+  s_eb8331ad77ae5f::t_c72a08b0553286 317
+.github/workflows/ci.yml
+  s_eb8331ad77ae5f::t_9701d7ee211343 170,200-201
+  s_eb8331ad77ae5f::t_df82f27a3622c8 50
+  s_eb8331ad77ae5f::t_8ec85dd9c213e5 75-81
+packages/node/README.md
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 24-25
+docs/guide/troubleshooting.md
+  s_eb8331ad77ae5f::t_aaf09e80738f7b 16-20,22-24
+packages/python/src/pymalloy/export/_sql.py
+  s_eb8331ad77ae5f::t_aeb63cb81ab028 10,17,55
+packages/python/src/pymalloy/validation.py
+  s_eb8331ad77ae5f::t_4e8ec0b15ac318 144
+  s_eb8331ad77ae5f::t_934481c89abc25 13,104
+  s_eb8331ad77ae5f::t_601e13b8b97e74 47,74
+packages/widget/src/initialize.ts
+  s_eb8331ad77ae5f::t_9e620e88da6938 19,35,67-68,118,120,145,163-164,181,195
+  s_eb8331ad77ae5f::t_9ca700967265e4 53,112-117
+docs/guide/concepts.md
+  s_eb8331ad77ae5f::t_17e99708d1db0a 1,3-8,12-13,16,32-48,51-58,66,70-78,80-83,85,88-89,91,97-99
+  s_eb8331ad77ae5f::t_4282fdb97787e6 94-96
+  s_eb8331ad77ae5f::t_a4fdc61bb4bcd1 17,27-28,49-50,67-69,86-87,92-93
+  s_eb8331ad77ae5f::t_99238fbfea46a1 20-26,29-31,59-65
+apps/e2e/tests/browser.spec.ts
+  s_eb8331ad77ae5f::t_1bdb841dc956ac 388-454
+  s_eb8331ad77ae5f::t_a6861aa4848d98 508-513
+  s_eb8331ad77ae5f::t_8900221a25f8f4 313
+  s_eb8331ad77ae5f::t_c960a7649fda19 574-576
+  s_eb8331ad77ae5f::t_5904f5fc6af63c 455-460,464-467,469-486,488-493,496-503,505-507,514-531,533-537,539-549
+packages/python/src/pymalloy/_errors.py
+  s_eb8331ad77ae5f::t_7f9094a74e3219 6-10,18,22-26
+packages/python/tests/test_widget_export_files.py
+  s_eb8331ad77ae5f::t_aa1171299562ea 5
+  s_eb8331ad77ae5f::t_61add2c4dfbd89 23,48,53,58,63,71,79,83-85,88-89,101
+  s_eb8331ad77ae5f::t_e1a560c69a26dc 100
+packages/core/src/index.ts
+  s_eb8331ad77ae5f::t_c85e76244cd98e 21-30
+packages/python/src/pymalloy/export/_bundle.py
+  s_eb8331ad77ae5f::t_5be93256c87d47 323
+  s_eb8331ad77ae5f::t_94658e171abb8b 28,355
+  s_eb8331ad77ae5f::t_599aaa30c1c300 67-79,121,194-196,219,224-231,354
+packages/python/src/pymalloy/_server/deadline.py
+  s_eb8331ad77ae5f::t_eacdc88805abc5 1-47
+packages/python/src/pymalloy/_snapshot.py
+  s_eb8331ad77ae5f::t_135f9a970e115a 1-12
+development_docs/architecture.md
+  s_eb8331ad77ae5f::t_acc2a1f90a487b 180-182
+  s_eb8331ad77ae5f::t_cd1d07ae3eca6c 55-57,64-67
+  s_eb8331ad77ae5f::t_0ccbde07f95f5c 120
+  s_eb8331ad77ae5f::t_a0a4a18b51e3f8 13,15-17,50-54,62-63,88-89,91,98-105,108,119,121-122,129-131,154-156,178-179,193-194
+  s_eb8331ad77ae5f::t_00199857f3d11e 183-186
+  s_eb8331ad77ae5f::t_a4a8e0b081600e 58
+  s_eb8331ad77ae5f::t_a894e0a979eb25 3-8,44-48,106-107,113-118,123-128,150-153,157-165,198-209
+  s_eb8331ad77ae5f::t_99238fbfea46a1 28-43,84-87,90,92-95
+packages/core/src/scalar.ts
+  s_eb8331ad77ae5f::t_ce7fb1e5b177ca 3,82,85,89,178,287-288
+  s_eb8331ad77ae5f::t_496e5d1b4c1068 83-84
+  s_eb8331ad77ae5f::t_96f312d3028545 86-88,179-187,190-191,193-227,229-286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c6a4984749231800aabd4e66dc84a8d93cd7e39f",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
