@@ -3,10 +3,12 @@ from __future__ import annotations
 import queue
 import struct
 import subprocess
+import sysconfig
 import threading
 import time
 from collections import deque
 from concurrent.futures import Future
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import IO, Any
 
@@ -44,11 +46,19 @@ class Process:
 
     def __init__(self, *, memory_mb: int, timeout: float) -> None:
         try:
-            from deno import find_deno_bin
-        except ModuleNotFoundError as error:
-            if error.name != "deno":
-                raise
+            deno = distribution("deno")
+        except PackageNotFoundError as error:
             raise ImportError("Server execution requires pymalloy[server]") from error
+        executable = "deno" + (sysconfig.get_config_var("EXE") or "")
+        binaries = [
+            Path(str(deno.locate_file(file)))
+            for file in deno.files or ()
+            if file.name == executable and Path(str(deno.locate_file(file))).is_file()
+        ]
+        if len(binaries) != 1:
+            raise FileNotFoundError(
+                "Deno's installed distribution must contain one executable. Reinstall pymalloy[server]."
+            )
         if type(memory_mb) is not int or memory_mb <= 0:
             raise ValueError("compiler_memory_mb must be a positive integer")
         script = Path(__file__).parents[1] / "_assets" / "server.mjs"
@@ -56,7 +66,7 @@ class Process:
             raise FileNotFoundError(f"Packaged compiler server is missing: {script}")
         self._process = subprocess.Popen(
             [
-                find_deno_bin(),
+                str(binaries[0]),
                 "run",
                 "--no-config",
                 "--no-npm",
