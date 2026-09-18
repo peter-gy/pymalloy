@@ -2,7 +2,7 @@
 
 import re
 
-from pymalloy._lexicon import RESERVED_WORDS
+from pymalloy._authoring.lexicon import RESERVED_WORDS
 
 _BARE_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\Z")
 

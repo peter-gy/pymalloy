@@ -6,8 +6,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from pymalloy._identifiers import identifier
-from pymalloy._inputs import DataInput
+from pymalloy._authoring.identifiers import identifier
+from pymalloy._model.inputs import DataInput
 
 
 def table_path(path: str | Path) -> str:

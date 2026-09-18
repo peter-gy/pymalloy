@@ -6,14 +6,14 @@ import keyword
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._expression_ops import to_python
-from pymalloy._syntax import Fragment
-from pymalloy._table import TableReference
+from pymalloy._authoring.operations import to_python
+from pymalloy._authoring.syntax import Fragment
+from pymalloy._authoring.tables import TableReference
+from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy.expressions import Expr
 
 if TYPE_CHECKING:
-    from pymalloy._draft import Draft
+    from pymalloy._authoring.draft import Draft
 
 
 def _call(name: str, args: list[str], depth: int) -> str:

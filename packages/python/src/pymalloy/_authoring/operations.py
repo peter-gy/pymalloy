@@ -7,8 +7,8 @@ import json
 from collections.abc import Sequence
 from typing import assert_never
 
-from pymalloy._identifiers import identifier
-from pymalloy._records import (
+from pymalloy._authoring.identifiers import identifier
+from pymalloy._protocol.records import (
     Branch,
     Scalar,
     ScalarBinary,

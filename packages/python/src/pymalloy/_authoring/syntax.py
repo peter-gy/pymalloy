@@ -7,18 +7,18 @@ from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import Literal
 
-from pymalloy._annotations import annotation_text
-from pymalloy._expression_ops import normalize
-from pymalloy._identifiers import identifier
-from pymalloy._inputs import DataInput
-from pymalloy._records import (
+from pymalloy._authoring.annotations import annotation_text
+from pymalloy._authoring.identifiers import identifier
+from pymalloy._authoring.operations import normalize
+from pymalloy._authoring.tables import TableReference
+from pymalloy._model.inputs import DataInput
+from pymalloy._protocol.records import (
     ScalarSyntax,
     SyntaxNode,
     SyntaxOperation,
     SyntaxOperationKind,
     TableSyntax,
 )
-from pymalloy._table import TableReference
 from pymalloy.expressions import Expr
 
 Kind = Literal[

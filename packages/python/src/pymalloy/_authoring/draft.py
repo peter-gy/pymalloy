@@ -8,9 +8,16 @@ from difflib import unified_diff
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Unpack
 
-from pymalloy._inputs import DataInput
-from pymalloy._persistence import write_text
-from pymalloy._source import (
+from pymalloy._authoring.syntax import (
+    Fragment,
+    expression,
+    from_wire,
+    named_clause,
+    syntax,
+)
+from pymalloy._model.inputs import DataInput
+from pymalloy._model.persistence import write_text
+from pymalloy._model.source import (
     DEFAULT_SOURCE_FILENAME,
     DocumentKind,
     ModelSource,
@@ -19,7 +26,6 @@ from pymalloy._source import (
     resolve_source,
     validate_url,
 )
-from pymalloy._syntax import Fragment, expression, from_wire, named_clause, syntax
 from pymalloy.validation import DocumentationPolicy
 
 if TYPE_CHECKING:
@@ -191,7 +197,7 @@ class Draft:
         """Emit symbolic Python for equivalent Malloy, normalizing supported scalar spelling."""
         if not name.isidentifier() or keyword.iskeyword(name):
             raise ValueError("Choose a Python variable name")
-        from pymalloy._python import python_source
+        from pymalloy._authoring.python import python_source
 
         return python_source(self, name, inputs=inputs)
 
