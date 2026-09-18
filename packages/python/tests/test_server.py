@@ -11,24 +11,6 @@ from pymalloy import CompilationError, ModelError
 from pymalloy.analysis import MarkdownCell, ParseReport, QueryCell
 
 
-@pytest.fixture
-def children(monkeypatch):
-    processes = []
-    launch = subprocess.Popen
-
-    def capture(*args, **kwargs):
-        process = launch(*args, **kwargs)
-        processes.append(process)
-        return process
-
-    monkeypatch.setattr(subprocess, "Popen", capture)
-    yield processes
-    for process in processes:
-        if process.poll() is None:
-            process.kill()
-        process.wait(timeout=5)
-
-
 def test_server_uses_packaged_runtime_without_widget_imports_or_project_config(
     tmp_path,
 ):

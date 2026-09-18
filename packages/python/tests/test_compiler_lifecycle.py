@@ -12,20 +12,9 @@ from pymalloy._server import tooling
 
 
 def test_tooling_reuses_one_process_across_concurrent_calls_and_replaces_failures(
-    monkeypatch,
+    children,
 ):
-    import subprocess
-
     tooling._tooling.close()
-    processes = []
-    popen = subprocess.Popen
-
-    def start(*args, **kwargs):
-        process = popen(*args, **kwargs)
-        processes.append(process)
-        return process
-
-    monkeypatch.setattr(subprocess, "Popen", start)
     try:
         sources = [
             f"source: value_{i} is duckdb.sql('SELECT {i} AS value')" for i in range(8)
@@ -41,7 +30,7 @@ def test_tooling_reuses_one_process_across_concurrent_calls_and_replaces_failure
         with pytest.raises(pm.CompilationError):
             pm.format("run: ->")
         assert pm.format(sources[0]) == formatted[0]
-        assert len(processes) == 1
+        assert len(children) == 1
 
         with (
             pytest.raises(CompilerError, match="Compiler has no model"),
@@ -53,16 +42,16 @@ def test_tooling_reuses_one_process_across_concurrent_calls_and_replaces_failure
                 describe=lambda sql: [],
                 deadline=monotonic() + 30,
             )
-        assert processes[0].poll() is not None
+        assert children[0].poll() is not None
         assert pm.format(sources[0]) == formatted[0]
-        assert len(processes) == 2
-        processes[-1].kill()
-        processes[-1].wait(timeout=5)
+        assert len(children) == 2
+        children[-1].kill()
+        children[-1].wait(timeout=5)
         assert pm.format(sources[0]) == formatted[0]
-        assert len(processes) == 3
+        assert len(children) == 3
     finally:
         tooling._tooling.close()
-    assert all(process.poll() is not None for process in processes)
+    assert all(process.poll() is not None for process in children)
 
 
 def test_waiting_for_tooling_has_a_deadline_without_disrupting_active_work():
@@ -105,24 +94,13 @@ def test_validation_propagates_infrastructure_failures(monkeypatch, failure):
         assert isinstance(caught.value, PyMalloyError)
 
 
-def test_tooling_process_exits_when_idle_and_starts_again(monkeypatch):
-    import subprocess
-
+def test_tooling_process_exits_when_idle_and_starts_again(monkeypatch, children):
     tooling._tooling.close()
-    processes = []
-    popen = subprocess.Popen
-
-    def start(*args, **kwargs):
-        process = popen(*args, **kwargs)
-        processes.append(process)
-        return process
-
-    monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(tooling, "_IDLE_SECONDS", 0.02)
     try:
         expected = pm.format("run: missing")
-        processes[0].wait(timeout=5)
+        children[0].wait(timeout=5)
         assert pm.format("run: missing") == expected
-        assert len(processes) == 2
+        assert len(children) == 2
     finally:
         tooling._tooling.close()
