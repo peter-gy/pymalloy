@@ -1,0 +1,52 @@
+packages/core/src/tools.ts
+  s_eb8331ad77ae5f::t_c12104db1e0c04 110-113,116,126-129,136,139-141,167,177
+  s_eb8331ad77ae5f::t_e95eaa5997fe76 4,123-125,142
+  s_eb8331ad77ae5f::t_5d2f56254ad8fd 44-51
+  s_eb8331ad77ae5f::t_edb47e80f66995 33,75,163
+  s_eb8331ad77ae5f::t_220bfaacdbba1f 2-3,37,42-43,52-53,114-115,143
+  s_eb8331ad77ae5f::t_287ad74b4a54a3 117-122
+  s_eb8331ad77ae5f::t_7ec2acc26026c8 130-135,137-138
+  s_eb8331ad77ae5f::t_65d9452b13f3fa 168-172,175-176
+docs/reference/server.md
+  s_eb8331ad77ae5f::t_f977a7b9b368fe 89-91
+  s_eb8331ad77ae5f::t_4aa36367a534c7 68-70
+packages/python/schema/protocol.json
+  s_eb8331ad77ae5f::t_afd5669f7ddefb 1665-1667,1677-1679,1682
+  s_eb8331ad77ae5f::t_288f9cd3cb5b74 2095-2103,2465-2481,2892-2904
+packages/python/src/pymalloy/_records.py
+  s_eb8331ad77ae5f::t_288f9cd3cb5b74 228-232,250-255,420-422
+packages/core/src/upstream.ts
+  s_eb8331ad77ae5f::t_ebfda1dc4583c8 1,6-7,24-64,76-79,82-83
+packages/core/tests/tools.test.ts
+  s_eb8331ad77ae5f::t_1b7e54d86e7ed3 303-304,308-315
+  s_eb8331ad77ae5f::t_65d9452b13f3fa 302,305-307,316
+packages/core/src/model.ts
+  s_eb8331ad77ae5f::t_62ea9cd1c6faf9 284
+packages/python/src/pymalloy/analysis.py
+  s_eb8331ad77ae5f::t_c10f68367f052c 4,28
+  s_eb8331ad77ae5f::t_805d93ee33a490 14,22,39,46
+  s_eb8331ad77ae5f::t_84c521a4daf6b8 18,42
+packages/protocol/src/server.ts
+  s_eb8331ad77ae5f::t_f44a922d8bf4ee 50-51
+packages/core/src/index.ts
+  s_eb8331ad77ae5f::t_e80199f9720df8 42
+  s_eb8331ad77ae5f::t_a611e98bc1dd09 24-31
+packages/server/src/service.ts
+  s_eb8331ad77ae5f::t_13e491e7d6d985 6,65-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "696d76158085aedd961fef35b9a82ddea208ae1b",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
