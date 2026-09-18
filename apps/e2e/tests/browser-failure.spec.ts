@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-
 test("a worker exception settles queued work and closes its session", async ({ page }) => {
   await page.route("**/failing-worker.js", (route) =>
     route.fulfill({
@@ -16,7 +15,7 @@ test("a worker exception settles queued work and closes its session", async ({ p
   const output = await page.evaluate(async () => {
     const entry = "/runtime.mjs";
     const { Session } = await import(entry);
-    const session = await Session.create({
+    const session = await Session.open({
       bundles: {
         mvp: {
           mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,

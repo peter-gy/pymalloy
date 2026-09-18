@@ -3,6 +3,7 @@ const readback = document.querySelector('[aria-label="Python readback"]');
 const target = document.querySelector("#widget");
 const listeners = new Map();
 const pending = {};
+let firstResult;
 const lifetime = new AbortController();
 const pyodide = await globalThis.loadPyodide();
 await pyodide.loadPackage("micropip");
@@ -13,7 +14,7 @@ await pyodide.runPythonAsync(`
 import micropip
 await micropip.install(wheel_url)
 import json
-from pymalloy import Malloy, browser
+from pymalloy import MalloyWidget, browser
 source = '''
 ##! experimental.givens
  given: region_filter :: string is 'North'
@@ -34,7 +35,7 @@ runtime = browser.Runtime(
         worker=asset_root + "duckdb-browser-eh.worker.js",
     ),
 )
-widget = Malloy(source, files={"sales.csv": "region,amount\\nNorth,40\\nNorth,2\\nSouth,30\\n"}, query="sales.by_region", runtime=runtime)
+widget = MalloyWidget(source, files={"sales.csv": "region,amount\\nNorth,40\\nNorth,2\\nSouth,30\\n"}, query="sales.by_region", runtime=runtime)
 def model_get(name):
     return json.dumps(widget.get_state(key=name)[name], default=lambda value: {"__buffer__": list(value)})
 def model_save(value):
@@ -49,6 +50,10 @@ const publish = () => {
   );
 };
 const changed = (name) => {
+  if (name === "_state" && !firstResult) {
+    const state = model.get("_state");
+    if (state?.status === "ready") firstResult = structuredClone(state);
+  }
   for (const callback of listeners.get(`change:${name}`) ?? []) callback();
   publish();
 };
@@ -102,6 +107,24 @@ for (const button of document.querySelectorAll("button[data-code]")) {
     publish();
   });
 }
+const replay = document.querySelector("#replay");
+replay.disabled = false;
+replay.addEventListener("click", () => {
+  model.set("_state", firstResult);
+  changed("_state");
+  delete pending._state;
+});
+const chart = document.querySelector("#chart");
+chart.disabled = false;
+chart.addEventListener("click", async () => {
+  pyodide.globals.set(
+    "chart_source",
+    "# bar_chart\nrun: duckdb.table('sales.csv') -> {group_by: region aggregate: revenue is amount.sum()}",
+  );
+  await pyodide.runPythonAsync(
+    "widget.query = None; widget.givens = {}; widget.source = chart_source",
+  );
+});
 const scalars = document.querySelector("#scalars");
 scalars.disabled = false;
 scalars.addEventListener("click", async () => {

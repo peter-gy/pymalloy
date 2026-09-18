@@ -13,16 +13,16 @@ from fixtures.model import SALES, SOURCE, UPDATED_SALES
 from jupyterlab.handlers.announcements import NeverCheckForUpdate
 from jupyterlab.labapp import LabApp
 
-from pymalloy.exports import compile_document, jupyter
+from pymalloy.export import compile, jupyter
 
 CELLS = [
     f"""import asyncio
 import json
 from IPython.display import display
-from pymalloy import Malloy
+from pymalloy import MalloyWidget
 
 source = {SOURCE!r}
-widget = Malloy(source, files={{"sales.csv": {SALES!r}}}, query="sales.by_region")
+widget = MalloyWidget(source, files={{"sales.csv": {SALES!r}}}, query="sales.by_region")
 
 async def ready(expected_rows):
     event = asyncio.Event()
@@ -130,7 +130,7 @@ def main() -> None:
         )
         (root / "sales.csv").write_text(SALES)
         output = notebooks / "exported.ipynb"
-        document = compile_document(model, profile="widget", queries=["run:1"])
+        document = compile(model, profile="widget", queries=["run:0"])
         exported = nbformat.reads(
             jupyter.render(document, output_path=output), as_version=4
         )
@@ -138,9 +138,9 @@ def main() -> None:
         exported.cells.extend(
             nbformat.v4.new_code_cell(source)
             for source in [
-                'run_1.givens = {"region_filter": "South"}',
-                'print("Export query:", run_1.query)',
-                'run_1.close()\nprint("Export closed")',
+                'run_0.givens = {"region_filter": "South"}',
+                'print("Export query:", run_0.query)',
+                'run_0.close()\nprint("Export closed")',
             ]
         )
         nbformat.write(exported, output)

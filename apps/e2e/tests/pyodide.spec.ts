@@ -18,6 +18,10 @@ test("the base wheel runs a synchronized Malloy widget in Pyodide", async ({ pag
   });
   await page.getByRole("button", { name: "Set South", exact: true }).click();
   await expect.poll(state).toMatchObject({ status: "ready", rows: [{ revenue: 30 }] });
+  await expect(page.getByRole("table")).toContainText("30");
+  await page.getByRole("button", { name: "Replay earlier result", exact: true }).click();
+  await expect(page.getByRole("table").getByRole("row")).toHaveCount(2);
+  await expect(page.getByRole("table")).toContainText("30");
   await page.getByRole("combobox", { name: "Query", exact: true }).selectOption("sales.by_region");
   await expect(page.getByRole("table")).toContainText("North");
   await expect.poll(state).toMatchObject({
@@ -87,6 +91,20 @@ test("the base wheel runs a synchronized Malloy widget in Pyodide", async ({ pag
       { region: "South", revenue: 11 },
     ],
   });
+  await page.getByRole("button", { name: "Show chart", exact: true }).click();
+  await expect(page.getByLabel("Malloy analysis", { exact: true }).getByRole("img")).toBeVisible();
+  await expect.poll(state).toMatchObject({ status: "ready" });
+  await page.screenshot({ path: testInfo.outputPath("pyodide-chart.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(
+      async () =>
+        (await page.getByLabel("Malloy analysis", { exact: true }).getByRole("img").boundingBox())
+          ?.width ?? Infinity,
+    )
+    .toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("pyodide-chart-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByRole("button", { name: "Inspect scalar types", exact: true }).click();
   const values = page.getByLabel("Python values", { exact: true });
   await expect(values).toContainText("'exact_integer': 9007199254740993");

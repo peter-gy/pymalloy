@@ -9,9 +9,9 @@ def _():
     import marimo as mo
     from model import SALES, SOURCE
 
-    from pymalloy import Malloy
+    from pymalloy import MalloyWidget
 
-    return Malloy, SALES, SOURCE, mo
+    return MalloyWidget, SALES, SOURCE, mo
 
 
 @app.cell
@@ -33,9 +33,9 @@ def _(mo):
 
 
 @app.cell
-def _(Malloy, SALES, SOURCE, mo):
+def _(MalloyWidget, SALES, SOURCE, mo):
     analysis = mo.ui.anywidget(
-        Malloy(SOURCE, files={"sales.csv": SALES}, query="sales.filtered")
+        MalloyWidget(SOURCE, files={"sales.csv": SALES}, query="sales.filtered")
     )
     analysis
     return (analysis,)

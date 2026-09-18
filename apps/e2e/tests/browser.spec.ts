@@ -1,5 +1,4 @@
 import { expect, test } from "./fixture.ts";
-
 test("retained models own competing file mappings and preserve exact result values", async ({
   page,
 }) => {
@@ -16,7 +15,7 @@ test("retained models own competing file mappings and preserve exact result valu
   const output = await page.evaluate(async () => {
     const entry = "/runtime.mjs";
     const { Session } = await import(entry);
-    const session = await Session.create({
+    const session = await Session.open({
       bundles: {
         mvp: {
           mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
@@ -26,18 +25,20 @@ test("retained models own competing file mappings and preserve exact result valu
     });
     try {
       const source = "run: duckdb.table('data.csv') -> { select: value }";
-      const first = await session.model(source, {
+      const first = await session.model({
+        text: source,
         files: { "data.csv": new TextEncoder().encode("value\n42\n") },
       });
-      const second = await session.model(source, {
+      const second = await session.model({
+        text: source,
         files: { "data.csv": new TextEncoder().encode("value\n99\n") },
       });
       const values = [];
       for (const model of [first, first, second, first]) {
-        values.push((await model.run()).rows[0].value);
+        values.push((await model.query().run()).rows[0].value);
       }
       first.close();
-      const remaining = (await second.run()).rows;
+      const remaining = (await second.query().run()).rows;
       const exact = await session.run(`run: duckdb.sql("""
         SELECT 170141183460469231731687303715884105727::HUGEINT AS signed_value,
           340282366920938463463374607431768211455::UHUGEINT AS unsigned_value,
@@ -53,13 +54,19 @@ test("retained models own competing file mappings and preserve exact result valu
       const files = {
         "remote.malloy": { url: new URL("/remote-model.malloy", location.href).href },
       };
-      const captured = await session.model(imported, { files });
+      const captured = await session.model({
+        text: imported,
+        files,
+      });
       const remoteValues = [
-        (await captured.run()).rows[0].value,
-        (await captured.run()).rows[0].value,
+        (await captured.query().run()).rows[0].value,
+        (await captured.query().run()).rows[0].value,
       ];
-      const refreshed = await session.model(imported, { files });
-      remoteValues.push((await refreshed.run()).rows[0].value);
+      const refreshed = await session.model({
+        text: imported,
+        files,
+      });
+      remoteValues.push((await refreshed.query().run()).rows[0].value);
       const parameterized = `
         ##! experimental.givens
         given: threshold :: number is 0
@@ -67,14 +74,20 @@ test("retained models own competing file mappings and preserve exact result valu
         query: selected is numbers -> { select: value where: value > $threshold }
         query: other is numbers -> { select: doubled is value * 2 }
       `;
-      const model = await session.model(parameterized);
+      const model = await session.model({
+        text: parameterized,
+      });
       const options = { query: "selected", givens: { threshold: 9007199254740993n } };
-      const retained = model.run(options);
-      const inline = session.run(parameterized, options);
+      const retained = model.query(options.query).run({
+        givens: options.givens,
+      });
+      const inline = model.query(options.query).run({ givens: options.givens });
       options.query = "other";
       options.givens.threshold = 0n;
       const submitted = await Promise.all([retained, inline]);
-      const updated = await model.run(options);
+      const updated = await model.query(options.query).run({
+        givens: options.givens,
+      });
       return JSON.parse(
         JSON.stringify(
           {
@@ -114,11 +127,10 @@ test("retained models own competing file mappings and preserve exact result valu
     },
   ]);
   expect(output.empty.rows).toEqual([]);
-  expect(output.empty.columns).toEqual([{ name: "value", type: "Int64" }]);
+  expect(output.empty.columns).toEqual([{ name: "value", type: "BIGINT" }]);
   expect(requested).toContain("/duckdb/duckdb-mvp.wasm");
   expect(requested).toContain("/duckdb/duckdb-browser-mvp.worker.js");
 });
-
 test("captured documents retain imports, source identity, and literal data paths", async ({
   page,
 }) => {
@@ -126,7 +138,7 @@ test("captured documents retain imports, source identity, and literal data paths
   const output = await page.evaluate(async () => {
     const entry = "/runtime.mjs";
     const { Session } = await import(entry);
-    const session = await Session.create({
+    const session = await Session.open({
       bundles: {
         mvp: {
           mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
@@ -165,18 +177,32 @@ SELECT * FROM %{ numbers -> {select: value} }%
         },
         files: { "../numbers.csv": text },
       };
-      const submitted = session.model(source, options);
+      const submitted = session.model({
+        source: {
+          text: source,
+          url: options.url,
+          imports: options.imports,
+        },
+        files: options.files,
+      });
       options.url = "https://different.example/report.malloy";
       options.imports["file:///project/numbers.malloy"] = "run: missing";
       const model = await submitted;
       const runs = [];
       for (const query of model.queries)
-        runs.push(String((await model.run({ query })).rows[0].value));
-      const extended = await model.run("run: numbers -> {select: doubled is value * 2}");
+        runs.push(String((await model.query(query.name).run({})).rows[0].value));
+      const extended = await model
+        .query({
+          malloy: "run: numbers -> {select: doubled is value * 2}",
+        })
+        .run();
       const missing = await session
-        .model("import './parts/base.malloy'", {
-          url: "file:///project/report.malloy",
-          imports: {},
+        .model({
+          source: {
+            text: "import './parts/base.malloy'",
+            url: "file:///project/report.malloy",
+            imports: {},
+          },
           files: {
             "parts/base.malloy": new TextEncoder().encode(
               "source: wrong is duckdb.sql('SELECT 1')",
@@ -189,21 +215,34 @@ SELECT * FROM %{ numbers -> {select: value} }%
         );
       const invalidURL = "file:///project/parts/broken.malloy";
       const diagnostics = await session
-        .model("import './parts/broken.malloy'", {
-          url: "file:///project/report.malloy",
-          imports: { [invalidURL]: "source: broken is undefined_source" },
+        .model({
+          source: {
+            text: "import './parts/broken.malloy'",
+            url: "file:///project/report.malloy",
+            imports: { [invalidURL]: "source: broken is undefined_source" },
+          },
         })
         .then(
           () => [],
-          (error: { diagnostics: Array<{ location: { url: string } | null }> }) =>
-            error.diagnostics.map((diagnostic) => diagnostic.location?.url),
+          (error: {
+            diagnostics: Array<{
+              location: {
+                url: string;
+              } | null;
+            }>;
+          }) => error.diagnostics.map((diagnostic) => diagnostic.location?.url),
         );
-      const sqlDocument = await session.run(">>>sql connection:duckdb\nSELECT 17 AS answer", {
-        url: "file:///project/report.malloysql",
-        imports: {},
-      });
+      const sqlDocument = await (
+        await session.model({
+          text: ">>>sql connection:duckdb\nSELECT 17 AS answer",
+          url: "file:///project/report.malloysql",
+        })
+      )
+        .query()
+        .run();
       const ambiguousImport = await session
-        .model("import 'base.malloy'", {
+        .model({
+          text: "import 'base.malloy'",
           files: { "base.malloy": text, "./base.malloy": text },
         })
         .then(
@@ -228,12 +267,11 @@ SELECT * FROM %{ numbers -> {select: value} }%
   expect(output.remote).toBe("20");
   expect(output.runs).toEqual(["42", "42"]);
   expect(output.extended).toBe("84");
-  expect(output.missing).toContain("not present in captured source");
+  expect(output.missing).toContain("Source bundle is missing");
   expect(output.diagnostics).toContain("file:///project/parts/broken.malloy");
   expect(output.sql).toBe("17");
   expect(output.ambiguousImport).toContain("matches multiple virtual files");
 });
-
 test("session abort settles running and queued browser work and releases models", async ({
   page,
 }) => {
@@ -249,7 +287,7 @@ test("session abort settles running and queued browser work and releases models"
     };
     const startup = new AbortController();
     const options = { bundles, signal: startup.signal };
-    const opening = Session.create(options);
+    const opening = Session.open(options);
     options.signal = new AbortController().signal;
     const reason = new Error("Analysis was replaced");
     startup.abort(reason);
@@ -258,10 +296,10 @@ test("session abort settles running and queued browser work and releases models"
       (error: Error) => error === reason,
     );
     const lifetime = new AbortController();
-    const session = await Session.create({ bundles, signal: lifetime.signal });
-    const model = await session.model(
-      "run: duckdb.sql('SELECT sum(a.i * b.i) AS value FROM range(1000000) a(i), range(1000000) b(i)') -> { select: value }",
-    );
+    const session = await Session.open({ bundles, signal: lifetime.signal });
+    const model = await session.model({
+      text: "run: duckdb.sql('SELECT sum(a.i * b.i) AS value FROM range(1000000) a(i), range(1000000) b(i)') -> { select: value }",
+    });
     // oxlint-disable-next-line typescript/unbound-method -- Restored below and invoked with the original Worker as receiver.
     const post = Worker.prototype.postMessage;
     let started!: () => void;
@@ -273,8 +311,9 @@ test("session abort settles running and queued browser work and releases models"
       post.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
       if (message.type === "RUN_QUERY") started();
     };
-    const running = model.run();
-    const queued = model.run();
+    const query = model.query();
+    const running = query.run();
+    const queued = query.run();
     await queryStarted;
     lifetime.abort();
     const results = await Promise.allSettled([running, queued]);
@@ -284,7 +323,7 @@ test("session abort settles running and queued browser work and releases models"
       startupResult,
       closed: session.closed,
       results: results.map((result) => result.status),
-      after: await model.run().then(
+      after: await query.run().then(
         () => "resolved",
         (error: Error) => error.message,
       ),
@@ -295,5 +334,53 @@ test("session abort settles running and queued browser work and releases models"
     closed: true,
     results: ["rejected", "rejected"],
     after: "Model is closed",
+  });
+});
+
+test("repeated SQL cells observe schema changes and expose detached columns", async ({ page }) => {
+  let csv = "value\n42\n";
+  await page.route("**/schema.csv", (route) =>
+    route.fulfill({ contentType: "text/csv", body: csv }),
+  );
+  await page.route("**/advance-schema", (route) => {
+    csv = "value\nhi\n";
+    return route.fulfill({ body: "updated" });
+  });
+  await page.goto("/runtime.html");
+  const results = await page.evaluate(async () => {
+    const entry = "/runtime.mjs";
+    const { Session } = await import(entry);
+    const session = await Session.open({
+      bundles: {
+        mvp: {
+          mainModule: location.origin + "/duckdb/duckdb-mvp.wasm",
+          mainWorker: location.origin + "/duckdb/duckdb-browser-mvp.worker.js",
+        },
+      },
+    });
+    try {
+      const model = await session.model({
+        text: ">>>sql connection:duckdb\nSELECT * FROM 'data.csv'",
+        url: "https://pymalloy.local/query.malloysql",
+        files: { "data.csv": { url: location.origin + "/schema.csv" } },
+      });
+      const first = await model.query().run();
+      first.columns[0].type = "changed by caller";
+      const repeated = await model.query().run();
+      await fetch("/advance-schema");
+      const other = await session.model({
+        text: "run: duckdb.sql('SELECT 1 AS value') -> {select:value}",
+      });
+      other.close();
+      const changed = await model.query().run();
+      return { repeated: repeated.columns, changed: changed.columns, rows: changed.rows };
+    } finally {
+      await session.close();
+    }
+  });
+  expect(results).toEqual({
+    repeated: [{ name: "value", type: "BIGINT" }],
+    changed: [{ name: "value", type: "VARCHAR" }],
+    rows: [{ value: "hi" }],
   });
 });

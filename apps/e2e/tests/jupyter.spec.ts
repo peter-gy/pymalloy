@@ -16,16 +16,16 @@ test("an exported widget hydrates captured imports and synchronizes query change
     "files = {",
     "model_source = ModelSource(",
     "givens = {}",
-    "run_1 = Malloy(",
+    "run_0 = MalloyWidget(",
   ])
     await run(source);
   await expect(page.getByRole("table")).toContainText("North");
   await expect(page.getByRole("table")).toContainText("42");
   await page.getByRole("combobox", { name: "Query", exact: true }).selectOption("report.filtered");
   await expect(page.getByRole("table")).toContainText("42");
-  await run('run_1.givens = {"region_filter": "South"}');
+  await run('run_0.givens = {"region_filter": "South"}');
   await expect(page.getByRole("table")).toContainText("30");
-  await run('print("Export query:", run_1.query)');
+  await run('print("Export query:", run_0.query)');
   await expect(page.getByText("Export query: report.filtered", { exact: true })).toBeVisible();
   await run('print("Export closed")');
   await expect(page.getByRole("table")).toHaveCount(0);
