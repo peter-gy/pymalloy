@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from pymalloy._connection import DEFAULT_CONNECTION
+from pymalloy._errors import PyMalloyError
 from pymalloy._givens import given_values
 from pymalloy._inputs import DataInput
 from pymalloy._source import ModelSource
@@ -21,6 +23,7 @@ class ExecutionContext:
     malloy: str | None
     sql: str
     compiler_version: str
+    connection_name: str = DEFAULT_CONNECTION
     preview_limit: int | None = None
     _givens_json: str = field(default="{}", repr=False)
     _inputs: tuple[DataInput, ...] = field(default=(), repr=False)
@@ -31,7 +34,7 @@ class ExecutionContext:
         return given_values(json.loads(self._givens_json))
 
 
-class ExecutionError(RuntimeError):
+class ExecutionError(PyMalloyError):
     """Engine failure with replay context. The original exception is __cause__."""
 
     def __init__(self, context: ExecutionContext, cause: Exception) -> None:

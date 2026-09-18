@@ -7,10 +7,17 @@ from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import Literal
 
+from pymalloy._annotations import annotation_text
 from pymalloy._expression_ops import normalize
 from pymalloy._identifiers import identifier
 from pymalloy._inputs import DataInput
-from pymalloy._records import ScalarSyntax, SyntaxNode, TableSyntax
+from pymalloy._records import (
+    ScalarSyntax,
+    SyntaxNode,
+    SyntaxOperation,
+    SyntaxOperationKind,
+    TableSyntax,
+)
 from pymalloy._table import TableReference
 from pymalloy.expressions import Expr
 
@@ -26,6 +33,8 @@ class Fragment:
     parts: tuple[str | Fragment | Expr | TableReference, ...]
     kind: Kind = "expression"
     name: str | None = None
+    _operation: SyntaxOperation | None = None
+    _layout: bool = False
 
     def __post_init__(self) -> None:
         if self.kind not in {
@@ -53,9 +62,11 @@ class Fragment:
                     "A binding requires one expression and optional annotations"
                 )
         elif self.kind == "annotation":
-            if self.name != '"' or not all(isinstance(p, str) for p in self.parts):
+            if not isinstance(self.name, str) or not all(
+                isinstance(p, str) for p in self.parts
+            ):
                 raise ValueError(
-                    "An annotation requires the native description route and literal text"
+                    "An annotation requires a native route and literal text"
                 )
         elif self.name is not None:
             raise ValueError("Only a binding has a name")
@@ -70,11 +81,48 @@ class Fragment:
 
     def render(self, *, materialize: bool = False) -> str:
         parts = []
-        pending: list[str | Fragment | Expr | TableReference] = [self]
+        pending: list[tuple[str | Fragment | Expr | TableReference, int]] = [(self, 0)]
         while pending:
-            part = pending.pop()
+            part, depth = pending.pop()
             if isinstance(part, Fragment):
-                pending.extend(reversed(part.parts))
+                if part._layout and part.kind == "annotation":
+                    lines = "".join(str(value) for value in part.parts).splitlines(
+                        keepends=True
+                    )
+                    parts.append(("  " * depth).join(lines))
+                elif (
+                    part._layout
+                    and part._operation is not None
+                    and part._operation.kind == "block"
+                ):
+                    pending.append(("  " * depth + "}", depth))
+                    for clause in reversed(part._fragments):
+                        pending.extend(
+                            (
+                                ("\n", depth),
+                                (clause, depth + 1),
+                                ("  " * (depth + 1) if clause._layout else "", depth),
+                            )
+                        )
+                    pending.append(("{\n", depth))
+                else:
+                    for index in range(len(part.parts) - 1, -1, -1):
+                        value = part.parts[index]
+                        pending.append((value, depth))
+                        previous = part.parts[index - 1] if index else None
+                        # A trailing annotation newline cannot shift an opaque child's columns.
+                        if (
+                            isinstance(previous, Fragment)
+                            and previous.kind == "annotation"
+                            and previous._layout
+                            and (
+                                isinstance(value, str)
+                                and part._layout
+                                or isinstance(value, Fragment)
+                                and value._layout
+                            )
+                        ):
+                            pending.append(("  " * depth, depth))
             elif isinstance(part, TableReference):
                 parts.append(part.render(materialize=materialize))
             else:
@@ -174,7 +222,10 @@ class Fragment:
                     value if _is_expression(p) else p
                     for p in node.parts
                     if not (
-                        notes and isinstance(p, Fragment) and p.kind == "annotation"
+                        notes
+                        and isinstance(p, Fragment)
+                        and p.kind == "annotation"
+                        and p.name in {note.name for note in notes}
                     )
                 )
                 return replace(node, parts=(*notes, *parts))
@@ -194,6 +245,8 @@ class Fragment:
         return rewrite(self)
 
     def extend(self, *clauses: Fragment) -> Fragment:
+        if not clauses:
+            return self
         return self._suffix((" extend ", block(clauses)))
 
     def _suffix(
@@ -202,10 +255,14 @@ class Fragment:
         if self.kind != "expression":
             raise TypeError("Compose an expression, not a declaration")
         notes, value = _notes(self)
-        result = syntax(value, *parts)
-        return syntax(*notes, result) if notes else result
+        result = construct(
+            "extend" if parts[0] == " extend " else "pipe", value, *parts
+        )
+        return Fragment((*notes, result), _layout=True) if notes else result
 
     def pipe(self, *queries: Fragment) -> Fragment:
+        if not queries:
+            return self
         parts: list[str | Fragment] = []
         for query in queries:
             if not isinstance(query, Fragment):
@@ -213,15 +270,19 @@ class Fragment:
             parts.extend((" -> ", query))
         return self._suffix(tuple(parts))
 
-    def doc(self, text: str) -> Fragment:
-        """Prepend a Malloy documentation annotation at this grammar position."""
-        if not isinstance(text, str) or not text.strip():
-            raise ValueError("Documentation must be nonempty text")
+    def annotate(self, text: str, *, route: str = "") -> Fragment:
+        """Attach a native annotation, replacing only the same route."""
         if self.kind != "expression":
-            raise TypeError("Document an expression or clause before binding it")
-        _, value = _notes(self)
-        note = _annotation(text)
-        return syntax(note, value)
+            raise TypeError("Annotate an expression or clause before binding it")
+        notes, value = _notes(self)
+        note = _annotation(text, route)
+        return Fragment(
+            (*(n for n in notes if n.name != route), note, value), _layout=True
+        )
+
+    def doc(self, text: str) -> Fragment:
+        """Attach a Malloy documentation annotation at this grammar position."""
+        return self.annotate(text, route='"')
 
 
 def syntax(
@@ -231,6 +292,18 @@ def syntax(
 ) -> Fragment:
     """Compose literal syntax and nested editable bindings without parsing or I/O."""
     return Fragment(tuple(parts), kind, name)
+
+
+def construct(
+    operation: SyntaxOperationKind,
+    *parts: str | Fragment | Expr | TableReference,
+    arguments: tuple[str, ...] = (),
+) -> Fragment:
+    return Fragment(
+        tuple(parts),
+        _operation=SyntaxOperation(kind=operation, arguments=arguments),
+        _layout=True,
+    )
 
 
 def _is_expression(value: object) -> bool:
@@ -251,19 +324,15 @@ def scalar_expression(value: Fragment | Expr) -> Expr:
     return value
 
 
-def _annotation(text: str) -> Fragment:
-    return syntax(
-        "".join(f'#" {line}\n' for line in text.splitlines()),
-        kind="annotation",
-        name='"',
+def _annotation(text: str, route: str = '"') -> Fragment:
+    return Fragment(
+        (annotation_text(text, route),), kind="annotation", name=route, _layout=True
     )
 
 
 def _notes(value: Fragment | Expr) -> tuple[tuple[Fragment, ...], Fragment | Expr]:
     if isinstance(value, Expr):
-        notes = (
-            () if value._documentation is None else (_annotation(value._documentation),)
-        )
+        notes = tuple(_annotation(text, route) for route, text in value._annotations)
         return notes, Expr._from_node(
             value._node, source=value._source
         ) if notes else value
@@ -282,7 +351,9 @@ def binding(kind: Kind, name: str, value: Fragment | Expr) -> Fragment:
     notes, value = _notes(
         scalar_expression(value) if kind == "field" else expression(value)
     )
-    return syntax(*notes, identifier(name) + " is ", value, kind=kind, name=name)
+    return Fragment(
+        (*notes, identifier(name) + " is ", value), kind=kind, name=name, _layout=True
+    )
 
 
 def block(clauses: tuple[Fragment, ...]) -> Fragment:
@@ -291,15 +362,19 @@ def block(clauses: tuple[Fragment, ...]) -> Fragment:
         if not isinstance(clause, Fragment) or clause.kind not in {
             "expression",
             "annotation",
+            "clause",
         }:
             raise TypeError("A clause must be an anonymous syntax fragment")
         parts.extend(("  ", clause, "\n"))
     parts.append("}")
-    return syntax(*parts)
+    return construct("block", *parts)
 
 
 def named_clause(
-    keyword: str, values: Mapping[str, Fragment | Expr], *, kind: Kind = "field"
+    keyword: SyntaxOperationKind,
+    values: Mapping[str, Fragment | Expr],
+    *,
+    kind: Kind = "field",
 ) -> Fragment:
     if not values:
         raise ValueError(f"{keyword} requires a named expression")
@@ -308,16 +383,24 @@ def named_clause(
         if index:
             parts.append(", ")
         parts.append(binding(kind, name, value))
-    return syntax(*parts)
+    return construct(keyword, *parts)
 
 
 def from_wire(
     node: SyntaxNode, inputs: Mapping[str, DataInput] | None = None
 ) -> Fragment | Expr | TableReference:
     if isinstance(node, TableSyntax):
-        data = (inputs or {}).get(node.path) if node.connection == "duckdb" else None
+        data = (inputs or {}).get(node.path)
         return TableReference(node.connection, node.path, node.source, data)
     if isinstance(node, ScalarSyntax):
         return Expr._from_node(normalize(node.scalar), source=node.source)
     parts = tuple(p if isinstance(p, str) else from_wire(p, inputs) for p in node.parts)
-    return syntax(*parts, kind=node.kind, name=node.name)
+    operation = node.operation
+    return Fragment(
+        parts,
+        node.kind,
+        node.name,
+        None
+        if operation is None
+        else SyntaxOperation(kind=operation.kind, arguments=tuple(operation.arguments)),
+    )

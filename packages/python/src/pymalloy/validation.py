@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlsplit
 
 from msgspec import structs
 
+from pymalloy._connection import DEFAULT_CONNECTION
 from pymalloy._givens import given_values
 from pymalloy._records import NativeMetadata
 from pymalloy._source import ModelSource, read_text
@@ -41,12 +42,9 @@ class DocumentationPolicy:
             raise ValueError("Documentation severity must be warning or error")
 
 
-_DEFAULT_DOCUMENTATION = DocumentationPolicy()
-
-
 def _documentation(
     metadata: NativeMetadata,
-    policy: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION,
+    policy: DocumentationPolicy | None = None,
 ) -> tuple[Diagnostic, ...]:
     if policy is None:
         return ()
@@ -73,7 +71,7 @@ def _documentation(
 
 
 def _checked(
-    report: CheckReport, policy: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION
+    report: CheckReport, policy: DocumentationPolicy | None = None
 ) -> CheckReport:
     notes = _documentation(report.model, policy) if report.ok else ()
     return structs.replace(
@@ -103,6 +101,7 @@ class Validation:
     error: str | None = None
     _givens_json: str = field(default="{}", repr=False)
     queries: tuple[str, ...] = ()
+    connection_name: str = DEFAULT_CONNECTION
 
     @property
     def givens(self) -> dict[str, Any]:
@@ -142,6 +141,7 @@ class Validation:
             self.draft.url,
             self.draft.syntax.render(materialize=True),
             self.draft.imports,
+            self.draft.document_kind,
         )
 
     def save(

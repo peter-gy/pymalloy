@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import NoReturn
 
+from pymalloy._annotations import with_annotation
 from pymalloy._expression_ops import render
 from pymalloy._identifiers import identifier
 from pymalloy._records import (
@@ -62,7 +63,7 @@ class Expr:
 
     _node: Scalar
     _source: builtins.str | None
-    _documentation: builtins.str | None
+    _annotations: tuple[tuple[builtins.str, builtins.str], ...]
     __hash__ = None
 
     def __init__(self) -> None:
@@ -74,22 +75,28 @@ class Expr:
         node: Scalar,
         *,
         source: builtins.str | None = None,
-        documentation: builtins.str | None = None,
+        annotations: tuple[tuple[builtins.str, builtins.str], ...] = (),
     ) -> Expr:
         result = object.__new__(cls)
         object.__setattr__(result, "_node", node)
         object.__setattr__(result, "_source", source)
-        object.__setattr__(result, "_documentation", documentation)
+        object.__setattr__(result, "_annotations", annotations)
         return result
 
     def _with_node(self, node: Scalar) -> Expr:
-        return self._from_node(node, documentation=self._documentation)
+        return self._from_node(node, annotations=self._annotations)
+
+    def annotate(self, text: builtins.str, *, route: builtins.str = "") -> Expr:
+        """Attach a native annotation, replacing only the same route."""
+        return self._from_node(
+            self._node,
+            source=self._source,
+            annotations=with_annotation(self._annotations, text, route),
+        )
 
     def doc(self, text: builtins.str) -> Expr:
         """Attach documentation for a named field while retaining scalar operations."""
-        if not isinstance(text, builtins.str) or not text.strip():
-            raise ValueError("Documentation must be nonempty text")
-        return self._from_node(self._node, source=self._source, documentation=text)
+        return self.annotate(text, route='"')
 
     @cached_property
     def text(self) -> builtins.str:

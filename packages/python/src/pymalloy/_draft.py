@@ -6,13 +6,21 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from difflib import unified_diff
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Unpack
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Unpack
 
 from pymalloy._inputs import DataInput
 from pymalloy._persistence import write_text
-from pymalloy._source import ModelSource, freeze_imports, resolve_source, validate_url
-from pymalloy._syntax import Fragment, Kind, expression, from_wire, named_clause, syntax
-from pymalloy.validation import _DEFAULT_DOCUMENTATION, DocumentationPolicy
+from pymalloy._source import (
+    DEFAULT_SOURCE_FILENAME,
+    DocumentKind,
+    ModelSource,
+    freeze_imports,
+    resolve_document_kind,
+    resolve_source,
+    validate_url,
+)
+from pymalloy._syntax import Fragment, expression, from_wire, named_clause, syntax
+from pymalloy.validation import DocumentationPolicy
 
 if TYPE_CHECKING:
     from pymalloy._server.api import _RuntimeOptions
@@ -25,8 +33,11 @@ if TYPE_CHECKING:
 class Draft:
     """An immutable model syntax tree, independent of compiler and engine lifetime."""
 
+    document_kind: ClassVar[DocumentKind] = "model"
     syntax: Fragment = field(default_factory=lambda: syntax(kind="document"))
-    url: str = field(default_factory=lambda: (Path.cwd() / "model.malloy").as_uri())
+    url: str = field(
+        default_factory=lambda: (Path.cwd() / DEFAULT_SOURCE_FILENAME).as_uri()
+    )
     imports: Mapping[str, str] | None = None
     path: Path | None = field(default=None, repr=False, compare=False)
     _original: str | None = field(default=None, repr=False, compare=False)
@@ -53,7 +64,9 @@ class Draft:
         """Append syntax verbatim. Use declarations to introduce named editing slots."""
         return replace(self, syntax=syntax(*self.syntax.parts, *parts, kind="document"))
 
-    def _define(self, kind: Kind, values: Mapping[str, Fragment]) -> Draft:
+    def _define(
+        self, kind: Literal["source", "query"], values: Mapping[str, Fragment]
+    ) -> Draft:
         existing = self.syntax._scope
         updates = {name: value for name, value in values.items() if name in existing}
         for name, target in self.syntax._select(updates).items():
@@ -120,16 +133,18 @@ class Draft:
     def _input(self) -> str | ModelSource:
         text = self.syntax.render(materialize=True)
         return (
-            text if self.imports is None else ModelSource(self.url, text, self.imports)
+            text
+            if self.imports is None
+            else ModelSource(self.url, text, self.imports, self.document_kind)
         )
 
     def check(
         self,
         *,
-        documentation: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION,
+        documentation: DocumentationPolicy | None = None,
         **options: Unpack[_RuntimeOptions],
     ) -> CheckReport:
-        """Compile and return language diagnostics plus documentation warnings."""
+        """Compile and return language diagnostics, with optional documentation checks."""
         from pymalloy._server import load_api
         from pymalloy.validation import _checked
 
@@ -145,7 +160,7 @@ class Draft:
         checks: Mapping[str, Fragment] | None = None,
         *,
         givens: Mapping[str, Any] | None = None,
-        documentation: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION,
+        documentation: DocumentationPolicy | None = None,
         **options: Unpack[_RuntimeOptions],
     ) -> Validation:
         """Compile once and execute named queries that must return no counterexamples."""
@@ -195,9 +210,14 @@ def read_model(source: str | Path | ModelSource, *, url: str | None = None) -> D
     """Parse a plain Malloy model into lossless editable syntax using the installed compiler."""
     from pymalloy._server.tooling import parse_syntax
 
-    identity, text, imports = resolve_source(
-        source, url=url or (Path.cwd() / "model.malloy").as_uri(), root=Path.cwd()
+    identity, text, imports = resolve_source(source, url=url, root=Path.cwd())
+    kind = (
+        source.document_kind
+        if isinstance(source, ModelSource)
+        else resolve_document_kind(identity)
     )
+    if kind != "model":
+        raise ValueError("Structured authoring requires a .malloy document")
     path = source.resolve() if isinstance(source, Path) else None
     parsed = from_wire(parse_syntax(text, url=identity))
     if not isinstance(parsed, Fragment):

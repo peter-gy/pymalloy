@@ -6,12 +6,15 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+from pymalloy._connection import DEFAULT_CONNECTION
 from pymalloy._identifiers import identifier
 from pymalloy._inputs import snapshot_data
+from pymalloy._records import SyntaxOperationKind
 from pymalloy._syntax import (
     Fragment,
     binding,
     block,
+    construct,
     named_clause,
     syntax,
 )
@@ -45,22 +48,28 @@ __all__ = [
 ]
 
 
-def table(path: str | Path) -> Fragment:
-    return syntax(TableReference("duckdb", table_path(path)))
+def table(path: str | Path, *, connection: str = DEFAULT_CONNECTION) -> Fragment:
+    return syntax(TableReference(connection, table_path(path)))
 
 
-def data(frame: Any, *, name: str | None = None) -> Fragment:
+def data(
+    frame: Any, *, name: str | None = None, connection: str = DEFAULT_CONNECTION
+) -> Fragment:
     """Capture dataframe-like input as an immutable, composable Malloy source."""
     captured = snapshot_data(frame, name=name)
-    return syntax(TableReference("duckdb", captured.reference, data=captured))
+    return syntax(TableReference(connection, captured.reference, data=captured))
 
 
-def sql(text: str) -> Fragment:
-    return syntax(f"duckdb.sql({json.dumps(text, ensure_ascii=False)})")
+def sql(text: str, *, connection: str = DEFAULT_CONNECTION) -> Fragment:
+    return construct(
+        "sql",
+        f"{identifier(connection)}.sql({json.dumps(text, ensure_ascii=False)})",
+        arguments=(text, connection),
+    )
 
 
 def ref(name: str) -> Fragment:
-    return syntax(identifier(name))
+    return construct("ref", identifier(name), arguments=(name,))
 
 
 def dimension(**fields: Expr) -> Fragment:
@@ -79,7 +88,9 @@ def query(*clauses: Fragment) -> Fragment:
     return block(clauses)
 
 
-def _fields(keyword: str, fields: tuple[Expr, ...], named: dict[str, Expr]) -> Fragment:
+def _fields(
+    keyword: SyntaxOperationKind, fields: tuple[Expr, ...], named: dict[str, Expr]
+) -> Fragment:
     values: list[Fragment | Expr] = [_scalar(field) for field in fields]
     values.extend(binding("field", name, value) for name, value in named.items())
     if not values:
@@ -89,7 +100,7 @@ def _fields(keyword: str, fields: tuple[Expr, ...], named: dict[str, Expr]) -> F
         if index:
             parts.append(", ")
         parts.append(value)
-    return syntax(*parts)
+    return construct(keyword, *parts)
 
 
 def group_by(*fields: Expr, **named: Expr) -> Fragment:
@@ -109,11 +120,11 @@ def nest(**queries: Fragment) -> Fragment:
 
 
 def where(predicate: Expr) -> Fragment:
-    return syntax("where: ", _scalar(predicate))
+    return construct("where", "where: ", _scalar(predicate))
 
 
 def having(predicate: Expr) -> Fragment:
-    return syntax("having: ", _scalar(predicate))
+    return construct("having", "having: ", _scalar(predicate))
 
 
 def order_by(*fields: Expr | Sort) -> Fragment:
@@ -124,22 +135,25 @@ def order_by(*fields: Expr | Sort) -> Fragment:
         if index:
             parts.append(", ")
         if isinstance(field, Sort):
-            parts.extend(
-                (_scalar(field.expression), " desc" if field.descending else " asc")
+            direction = "desc" if field.descending else "asc"
+            parts.append(
+                construct(direction, _scalar(field.expression), " " + direction)
             )
         else:
             parts.append(_scalar(field))
-    return syntax(*parts)
+    return construct("order_by", *parts)
 
 
 def limit(rows: int) -> Fragment:
     if type(rows) is not int or rows < 0:
         raise ValueError("Limit must be a nonnegative integer")
-    return syntax(f"limit: {rows}")
+    return construct("limit", f"limit: {rows}", arguments=(str(rows),))
 
 
 def primary_key(field: str) -> Fragment:
-    return syntax("primary_key: ", identifier(field))
+    return construct(
+        "primary_key", "primary_key: ", identifier(field), arguments=(field,)
+    )
 
 
 def join(
@@ -149,11 +163,10 @@ def join(
         raise ValueError("Join kind must be one, many, or cross")
     value = binding("source", name, source)
     # The condition is syntax owned by the join, not a second named RHS slot.
-    value = syntax(
-        *value.parts,
-        " on ",
-        syntax(_scalar(on), kind="clause"),
+    value = Fragment(
+        (*value.parts, " on ", syntax(_scalar(on), kind="clause")),
         kind="source",
         name=name,
+        _layout=True,
     )
-    return syntax(f"join_{kind}: ", value)
+    return Fragment((f"join_{kind}: ", value), _layout=True)

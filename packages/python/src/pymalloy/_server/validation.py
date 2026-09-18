@@ -8,14 +8,12 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Unpack
 
-import duckdb
-
-from pymalloy._errors import CompilationError, ModelError
+from pymalloy._connection import DEFAULT_CONNECTION
+from pymalloy._errors import CompilationError
 from pymalloy._givens import encode_givens
 from pymalloy._syntax import Fragment
 from pymalloy.execution import ExecutionError
 from pymalloy.validation import (
-    _DEFAULT_DOCUMENTATION,
     DataCheck,
     DocumentationPolicy,
     Validation,
@@ -33,12 +31,13 @@ def validate(
     checks: Mapping[str, Fragment],
     *,
     givens: Mapping[str, Any] | None,
-    documentation: DocumentationPolicy | None = _DEFAULT_DOCUMENTATION,
+    documentation: DocumentationPolicy | None = None,
     **options: Unpack[_RuntimeOptions],
 ) -> Validation:
     # One budget covers compilation, metadata, and every data assertion.
     deadline = time.monotonic() + options.get("timeout", 120)
     bindings = json.dumps(encode_givens(givens))
+    connection_name = options.get("connection_name", DEFAULT_CONNECTION)
     selected = tuple(checks.items())
     if not all(
         isinstance(name, str)
@@ -55,10 +54,13 @@ def validate(
         model = draft.compile(**options)
     except CompilationError as error:
         return Validation(
-            draft, tuple(error.diagnostics), skipped, str(error), bindings
+            draft,
+            tuple(error.diagnostics),
+            skipped,
+            str(error),
+            bindings,
+            connection_name=connection_name,
         )
-    except (ModelError, TimeoutError) as error:
-        return Validation(draft, (), skipped, str(error), bindings)
     try:
 
         def remaining() -> float:
@@ -82,14 +84,7 @@ def validate(
                 results.append(
                     DataCheck(name, "failed" if result.rows() else "passed", result)
                 )
-            except (
-                CompilationError,
-                ModelError,
-                TimeoutError,
-                ValueError,
-                duckdb.Error,
-                ExecutionError,
-            ) as error:
+            except (CompilationError, ExecutionError) as error:
                 results.append(
                     DataCheck(
                         name,
@@ -109,8 +104,11 @@ def validate(
             tuple(results),
             _givens_json=bindings,
             queries=tuple(query.name for query in model.queries),
+            connection_name=connection_name,
         )
-    except (CompilationError, ModelError, TimeoutError) as error:
-        return Validation(draft, (), skipped, str(error), bindings)
+    except CompilationError as error:
+        return Validation(
+            draft, (), skipped, str(error), bindings, connection_name=connection_name
+        )
     finally:
         model.close()

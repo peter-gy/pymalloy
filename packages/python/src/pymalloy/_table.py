@@ -32,9 +32,7 @@ class TableReference:
             return self.source
         else:
             path = self.path
-        connection = (
-            "duckdb" if self.connection == "duckdb" else identifier(self.connection)
-        )
+        connection = identifier(self.connection)
         return f"{connection}.table({json.dumps(path, ensure_ascii=False)})"
 
     @property
