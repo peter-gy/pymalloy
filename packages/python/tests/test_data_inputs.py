@@ -14,6 +14,7 @@ import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from traitlets import TraitError
 
 import pymalloy as pm
 from pymalloy.export import bundle
@@ -182,6 +183,22 @@ def test_runtime_retains_temporary_input_owner_for_direct_queries():
         assert query.run().rows() == [{"total": 7}]
     finally:
         model.close()
+
+
+def test_widget_publishes_managed_parquet_and_rejects_file_overrides():
+    draft = totals(pm.data(pl.DataFrame({"amount": [12, 20]}), name="orders"))
+    widget = pm.MalloyWidget(draft, query="total")
+    try:
+        definition = widget.get_state()["_definition"]
+        assert definition["source"] == draft.text
+        key = draft.inputs[0].reference
+        published = pq.read_table(pa.BufferReader(definition["files"][key]))
+        assert published.to_pydict() == {"amount": [12, 20]}
+        with pytest.raises(TraitError, match="replace captured"):
+            widget.files = {key: b"invalid"}
+        assert widget.get_state()["_definition"] == definition
+    finally:
+        widget.close()
 
 
 def test_arrow_capsule_and_record_batch_inputs():

@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 import anywidget
 import traitlets as t
 
+from pymalloy._draft import Draft
 from pymalloy._givens import encode_givens
 from pymalloy._snapshot import snapshot
 from pymalloy._source import ModelSource
@@ -71,7 +72,7 @@ class MalloyWidget(anywidget.AnyWidget):
     _esm = Path(__file__).with_name("_assets") / "widget.js"
     _css = Path(__file__).with_name("_assets") / "widget.css"
 
-    source = t.Union([t.Unicode(), t.Instance(ModelSource)])
+    source = t.Union([t.Unicode(), t.Instance(ModelSource), t.Instance(Draft)])
     query = t.Unicode(default_value=None, allow_none=True).tag(sync=True)
     givens = _Snapshot(default_value={})
     files = _Snapshot(default_value={})
@@ -90,7 +91,7 @@ class MalloyWidget(anywidget.AnyWidget):
 
     def __init__(
         self,
-        source: str | ModelSource,
+        source: str | ModelSource | Draft,
         *,
         files: Mapping[str, Any] | None = None,
         query: str | None = None,
@@ -121,6 +122,13 @@ class MalloyWidget(anywidget.AnyWidget):
         if self._closed:
             raise t.TraitError("The widget is closed. Create a new MalloyWidget")
         name, value = proposal.trait.name, proposal.value
+        if name in {"source", "files"}:
+            source = value if name == "source" else self.source
+            files = value if name == "files" else self.files
+            if isinstance(source, Draft) and any(
+                item.reference in files for item in source.inputs
+            ):
+                raise t.TraitError("Files cannot replace captured dataframe inputs")
         if name == "query" and value is not None and not value.strip():
             raise t.TraitError("Query must be a nonempty name or None")
         if name == "givens":
@@ -169,18 +177,27 @@ class MalloyWidget(anywidget.AnyWidget):
             if definition_changed:
                 self._definition_revision += 1
                 source = self.source
+                files = self.files
+                if isinstance(source, Draft):
+                    for captured in source.inputs:
+                        files[captured.reference] = (
+                            captured.materialize().path.read_bytes()
+                        )
                 self.set_trait(
                     "_definition",
                     {
                         "revision": self._definition_revision,
                         "source": source.text
-                        if isinstance(source, ModelSource)
+                        if isinstance(source, (ModelSource, Draft))
                         else source,
-                        "url": source.url if isinstance(source, ModelSource) else None,
-                        "imports": dict(source.imports)
-                        if isinstance(source, ModelSource)
+                        "url": source.url
+                        if isinstance(source, (ModelSource, Draft))
                         else None,
-                        "files": self.files,
+                        "imports": dict(source.imports)
+                        if isinstance(source, (ModelSource, Draft))
+                        and source.imports is not None
+                        else None,
+                        "files": files,
                     },
                 )
             self.set_trait(
