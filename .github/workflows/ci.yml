@@ -108,6 +108,10 @@ jobs:
           - "3.12"
           - "3.13"
           - "3.14"
+        dependencies: [locked]
+        include:
+          - python-version: "3.12"
+            dependencies: lowest-direct
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/setup
@@ -119,9 +123,20 @@ jobs:
           name: python-assets
           path: packages/python/src/pymalloy/_assets/
       - name: Test Python contracts
+        if: matrix.dependencies == 'locked'
         run: |
           uv sync --frozen --all-packages --all-extras
           uv run --frozen pytest -q
+      - name: Test dependency lower bounds
+        if: matrix.dependencies == 'lowest-direct'
+        run: |
+          uv venv
+          export PATH="$PWD/.venv/bin:$PATH"
+          uv pip install pytest
+          uv pip install --resolution lowest-direct -e packages/python
+          python -m pytest packages/python/tests/test_widget.py -q
+          uv pip install --resolution lowest-direct -e 'packages/python[server,dataframes,marimo,jupyter]'
+          python -m pytest -q
   package:
     runs-on: ubuntu-latest
     timeout-minutes: 25
