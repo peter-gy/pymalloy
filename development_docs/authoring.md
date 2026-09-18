@@ -142,6 +142,13 @@ so partially reconstructing an unsupported literal is unsafe. Supported operatio
 use generated scalar records. Numeric token spelling is retained with `number`
 when ordinary Python numeric construction would change its inferred type.
 
+## Source artifacts and failures
+
+Runtime compilation retains the source graph and compiler version. An engine
+failure wraps the original exception with detached query evidence. Source imports
+read during ad hoc compilation are retained for replay. Schema errors preserve
+DESCRIBE SQL through the compiler's exception chain.
+
 `NativeMetadata.annotations` projects stable source and field annotations through
 Malloy's exported `routeOf` and `payloadOf` helpers. Python documentation policy
 selects routes and severity from that projection. It does not parse annotations.

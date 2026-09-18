@@ -55,6 +55,7 @@ ordered tuple of typed `MarkdownCell` and `QueryCell` records. `queries=None` us
 the default selection. `queries=[]` selects no query cells. Authored Markdown or a
 source inventory may remain.
 Passing query names together with `all=True` is invalid.
+`model.compiler_version` reports the compiler packaged with this runtime.
 `model.connection` exposes the DuckDB connection. Coordinate direct connection use
 with model operations. `model.closed` reports whether execution is available.
 
@@ -80,13 +81,25 @@ with the `dataframes` extra. Results remain readable after model cleanup.
 
 `CompilationError` carries compiler diagnostics. `ModelError` identifies a
 closed model or failed compiler process. Invalid options raise `TypeError` or
-`ValueError`. DuckDB errors retain their exception types. An active timeout
+`ValueError`. Engine query failures raise `ExecutionError` and retain the original
+DuckDB exception in `__cause__`. An active timeout
 closes the model. A timeout waiting for its operation lock leaves active work
 running. Heap exhaustion closes the model with `ModelError`.
 
 Author models with [immutable drafts and source builders](authoring.md).
 `pm.check` also accepts a `Path` or captured `ModelSource`, plus `url` and
 registered Python `tables`. `Query.preview(limit=20)` bounds returned rows.
+
+`ExecutionError.context` is detached from the live model. It exposes `source`
+(the captured model and imports), `query` (`QueryDescriptor`), `malloy` (ad hoc
+query text, when supplied), generated `sql`, `givens`, `compiler_version`, and
+`preview_limit`. Each `givens` read returns a detached dictionary of the bindings
+used by the compiler. The context remains readable after `pm.run()` closes its
+model. Replay against the same data and connection settings.
+
+Schema-discovery failures retain `SchemaError` as the cause of `CompilationError`.
+Its `sql` is the DESCRIBE statement, and its own cause is the original engine
+exception. Compiler diagnostics remain on `CompilationError.diagnostics`.
 
 `Inspection.model.annotations` enumerates source and field paths with native
 annotation routes, payloads and original text. Malloy parses routes, including

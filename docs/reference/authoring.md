@@ -159,7 +159,8 @@ check retains one row. The timeout budget covers compilation, metadata, and all
 assertions. Owned runtime resources are closed before the report returns.
 
 `Validation` exposes `draft`, `diagnostics`, `checks`, `error`, and `ok`.
-Each `DataCheck` exposes `name`, `status`, `result`, `error`, and `diagnostics`.
+Each `DataCheck` exposes `name`, `status`, `result`, `error`, `diagnostics`, and
+`execution`. Engine failures retain detached execution evidence in `execution`.
 Statuses are `passed`, `failed`, `error`, or `skipped`. Compiler errors, runtime
 errors, and every nonpassed check make `ok` false.
 
