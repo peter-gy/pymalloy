@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pymalloy._draft import Draft, draft, read_model
-from pymalloy._errors import CompilationError, ModelError
+from pymalloy._errors import CompilationError, ModelError, SchemaError
 from pymalloy._source import ModelSource
 from pymalloy.analysis import QueryDescriptor
 from pymalloy.authoring import (
@@ -27,6 +27,7 @@ from pymalloy.authoring import (
     view,
     where,
 )
+from pymalloy.execution import ExecutionContext, ExecutionError
 from pymalloy.expressions import (
     Expr,
     Sort,
@@ -49,6 +50,8 @@ if TYPE_CHECKING:
 __all__ = [
     "CompilationError",
     "Draft",
+    "ExecutionContext",
+    "ExecutionError",
     "Expr",
     "Fragment",
     "MalloyWidget",
@@ -58,6 +61,7 @@ __all__ = [
     "Query",
     "QueryDescriptor",
     "Result",
+    "SchemaError",
     "Sort",
     "aggregate",
     "call",

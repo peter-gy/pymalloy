@@ -17,3 +17,7 @@ class ModelError(RuntimeError):
 
 class SchemaError(RuntimeError):
     """The data engine could not describe a compiler schema request."""
+
+    def __init__(self, message: str, *, sql: str) -> None:
+        self.sql = sql
+        super().__init__(message)
