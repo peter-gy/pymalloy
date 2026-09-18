@@ -1,0 +1,55 @@
+packages/python/src/pymalloy/_draft.py
+  s_eb8331ad77ae5f::t_482bf497f762dc 14
+  s_eb8331ad77ae5f::t_c10f68367f052c 117-119
+development_docs/authoring.md
+  s_eb8331ad77ae5f::t_f977a7b9b368fe 144-149
+  s_eb8331ad77ae5f::t_c10f68367f052c 34
+packages/python/src/pymalloy/_syntax.py
+  s_eb8331ad77ae5f::t_ea60a8bbb05bfc 54,56,227,229
+docs/guide/authoring.md
+  s_eb8331ad77ae5f::t_c10f68367f052c 128
+docs/reference/authoring.md
+  s_eb8331ad77ae5f::t_f977a7b9b368fe 137,139,182-198
+  s_eb8331ad77ae5f::t_c10f68367f052c 94
+  s_eb8331ad77ae5f::t_17b2f7d740468b 126-136,138,140
+skills/pymalloy/references/modeling.md
+  s_eb8331ad77ae5f::t_c10f68367f052c 24
+packages/python/tests/test_authoring.py
+  s_eb8331ad77ae5f::t_c10f68367f052c 100,117,163,185,249
+  s_eb8331ad77ae5f::t_d03aab2d7d39cc 540
+  s_eb8331ad77ae5f::t_84c521a4daf6b8 499-539
+packages/python/src/pymalloy/_server/validation.py
+  s_eb8331ad77ae5f::t_c10f68367f052c 14,16-20,33,67-69
+  s_eb8331ad77ae5f::t_482bf497f762dc 15
+packages/core/src/syntax.ts
+  s_eb8331ad77ae5f::t_3699cb78be9775 1,173-176,179
+packages/core/tests/syntax.test.ts
+  s_eb8331ad77ae5f::t_62ea9cd1c6faf9 50,155-158,160,164,173,179,184-186,323
+  s_eb8331ad77ae5f::t_2c5714f4d40b79 159,187
+skills/pymalloy/SKILL.md
+  s_eb8331ad77ae5f::t_c10f68367f052c 83
+  s_eb8331ad77ae5f::t_8e43d7959c7f2c 134-138
+packages/python/tests/test_expressions.py
+  s_eb8331ad77ae5f::t_c10f68367f052c 402
+skills/pymalloy/references/api.md
+  s_eb8331ad77ae5f::t_c10f68367f052c 65
+packages/python/src/pymalloy/validation.py
+  s_eb8331ad77ae5f::t_482bf497f762dc 44-45
+  s_eb8331ad77ae5f::t_c10f68367f052c 10,12,21-32,34-35,37-43,46-66,68,72-75,78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1ceb2c1e7da56c8dea0b911839edf9daf627a20d",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
