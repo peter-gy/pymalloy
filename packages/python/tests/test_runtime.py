@@ -299,7 +299,7 @@ def test_query_errors_leave_the_model_reusable():
     model = pm.model("source: bad_values is duckdb.sql(\"SELECT 'bad' AS text\")")
     with pytest.raises(CompilationError):
         model.query(malloy="run: undefined_source -> {select:missing}").run()
-    with pytest.raises(duckdb.ConversionException):
+    with pytest.raises(pm.ExecutionError):
         model.query(
             malloy="run: bad_values -> { select: parsed_number is text::number }"
         ).run()
@@ -380,7 +380,7 @@ run: numbers -> {aggregate:total is i.sum()}""",
 
 def test_one_shot_failure_preserves_the_borrowed_connection():
     with duckdb.connect() as connection:
-        with pytest.raises(duckdb.ConversionException):
+        with pytest.raises(pm.ExecutionError):
             pm.run(
                 "run: duckdb.sql(\"SELECT 'bad' AS text\") -> { select: n is text::number }",
                 connection=connection,
