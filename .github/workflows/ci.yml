@@ -47,7 +47,7 @@ jobs:
         run: |
           uv sync --frozen --all-packages --all-extras
           pnpm records
-          git diff --exit-code -- packages/python/schema/protocol.json packages/python/src/pymalloy/_records.py
+          git diff --exit-code -- packages/python/schema/protocol.json packages/python/src/pymalloy/_records.py packages/python/src/pymalloy/_lexicon.py
       - name: Build Python distributions
         run: uv build --package pymalloy --no-sources
       - name: Check distribution metadata
@@ -67,6 +67,15 @@ jobs:
         with:
           name: python-assets
           path: packages/python/src/pymalloy/_assets/
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: javascript-debug
+          path: |
+            packages/server/dist/server.mjs.map
+            packages/widget/dist/widget.js.map
           if-no-files-found: error
           retention-days: 7
           overwrite: true
@@ -134,8 +143,10 @@ jobs:
           export PATH="$PWD/.venv/bin:$PATH"
           uv pip install pytest
           uv pip install --resolution lowest-direct -e packages/python
+          python -c 'import importlib.util; import pymalloy as pm; assert pm.draft().text == ""; assert importlib.util.find_spec("anywidget") is None; assert importlib.util.find_spec("deno") is None'
+          uv pip install --resolution lowest-direct -e 'packages/python[widget]'
           python -m pytest packages/python/tests/test_widget.py -q
-          uv pip install --resolution lowest-direct -e 'packages/python[server,dataframes,marimo,jupyter]'
+          uv pip install --resolution lowest-direct -e 'packages/python[widget,server,agent,dataframes,marimo,jupyter]'
           python -m pytest -q
   package:
     runs-on: ubuntu-latest
@@ -154,7 +165,9 @@ jobs:
         run: |
           uv build --wheel dist/pymalloy-*.tar.gz --out-dir dist/from-sdist
           for wheel in dist/pymalloy-*.whl dist/from-sdist/pymalloy-*.whl; do
-            uv run --no-project --isolated --with "$wheel" python -c 'from pymalloy import MalloyWidget; MalloyWidget("").close()'
+            uv run --no-project --isolated --with "$wheel" python -c 'import importlib.util; import pymalloy as pm; assert pm.draft().text == ""; assert importlib.util.find_spec("deno") is None; assert importlib.util.find_spec("anywidget") is None'
+            uv run --no-project --isolated --with "${wheel}[widget]" python -c 'import importlib.util; from pymalloy import MalloyWidget; MalloyWidget("").close(); assert importlib.util.find_spec("deno") is None'
+            uv run --no-project --isolated --with "${wheel}[agent]" python -c 'from pymalloy.agent import agent_skill; assert agent_skill().file("references/api.md").is_file()'
             uv run --no-project --isolated --with "${wheel}[server]" python - <<'PY'
           import pymalloy as pm
           assert pm.run("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }").rows() == [{"answer": 42}]
@@ -184,7 +197,8 @@ jobs:
       - name: Install the widget kernel without server dependencies
         run: |
           uv venv "$RUNNER_TEMP/pymalloy-widget"
-          uv pip install --python "$RUNNER_TEMP/pymalloy-widget/bin/python" 'ipykernel>=7.3' 'pyarrow>=25.0' dist/pymalloy-*.whl
+          set -- dist/pymalloy-*.whl
+          uv pip install --python "$RUNNER_TEMP/pymalloy-widget/bin/python" 'ipykernel>=7.3' 'pyarrow>=25.0' "${1}[widget]"
           "$RUNNER_TEMP/pymalloy-widget/bin/python" -c 'import importlib.util; assert importlib.util.find_spec("deno") is None; assert importlib.util.find_spec("duckdb") is None'
           echo "PYMALLOY_KERNEL_PYTHON=$RUNNER_TEMP/pymalloy-widget/bin/python" >> "$GITHUB_ENV"
       - name: Test marimo, JupyterLab, and Pyodide
