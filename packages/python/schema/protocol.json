@@ -589,6 +589,20 @@
       "required": ["kind", "needs"],
       "type": "object"
     },
+    "CompilerFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "failure",
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "message"],
+      "type": "object"
+    },
     "CompilerReady": {
       "additionalProperties": false,
       "properties": {
@@ -610,6 +624,16 @@
         "name": {
           "type": ["string", "null"]
         },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SyntaxOperation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "parts": {
           "items": {
             "anyOf": [
@@ -628,7 +652,7 @@
           "type": "string"
         }
       },
-      "required": ["type", "kind", "name", "parts"],
+      "required": ["type", "kind", "name", "parts", "operation"],
       "type": "object"
     },
     "Data": {
@@ -742,6 +766,10 @@
           "$ref": "#/definitions/QueryCell"
         }
       ]
+    },
+    "DocumentKind": {
+      "enum": ["model", "notebook"],
+      "type": "string"
     },
     "DocumentReady": {
       "additionalProperties": false,
@@ -1685,6 +1713,9 @@
     "ModelSource": {
       "additionalProperties": false,
       "properties": {
+        "documentKind": {
+          "$ref": "#/definitions/DocumentKind"
+        },
         "imports": {
           "additionalProperties": {
             "type": "string"
@@ -1698,7 +1729,7 @@
           "type": "string"
         }
       },
-      "required": ["url", "text", "imports"],
+      "required": ["documentKind", "url", "text", "imports"],
       "title": "ModelSource",
       "type": "object"
     },
@@ -2394,6 +2425,9 @@
           "$ref": "#/definitions/CompileError"
         },
         {
+          "$ref": "#/definitions/CompilerFailure"
+        },
+        {
           "$ref": "#/definitions/ModelReady"
         },
         {
@@ -2477,6 +2511,27 @@
         }
       },
       "required": ["route", "content", "text"],
+      "type": "object"
+    },
+    "SQLSchemaNeed": {
+      "additionalProperties": false,
+      "properties": {
+        "connection": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "sql",
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "key", "connection", "sql"],
+      "title": "SQLSchemaNeed",
       "type": "object"
     },
     "Scalar": {
@@ -2787,24 +2842,15 @@
       "type": "object"
     },
     "SchemaNeed": {
-      "additionalProperties": false,
-      "properties": {
-        "connection": {
-          "type": "string"
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TableSchemaNeed"
         },
-        "key": {
-          "type": "string"
-        },
-        "sql": {
-          "type": "string"
-        },
-        "tablePath": {
-          "type": "string"
+        {
+          "$ref": "#/definitions/SQLSchemaNeed"
         }
-      },
-      "required": ["key", "connection", "sql"],
-      "title": "SchemaNeed",
-      "type": "object"
+      ],
+      "title": "SchemaNeed"
     },
     "SourceInfo": {
       "additionalProperties": false,
@@ -2985,6 +3031,49 @@
       ],
       "description": "Lossless authored syntax. Strings retain all syntax outside editable bindings."
     },
+    "SyntaxOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/definitions/SyntaxOperationKind"
+        }
+      },
+      "required": ["kind", "arguments"],
+      "type": "object"
+    },
+    "SyntaxOperationKind": {
+      "description": "Constructor structure identified by Malloy's parser, independently of spelling.",
+      "enum": [
+        "source",
+        "query",
+        "block",
+        "extend",
+        "pipe",
+        "ref",
+        "sql",
+        "dimension",
+        "measure",
+        "view",
+        "nest",
+        "group_by",
+        "select",
+        "aggregate",
+        "where",
+        "having",
+        "limit",
+        "primary_key",
+        "order_by",
+        "asc",
+        "desc"
+      ],
+      "type": "string"
+    },
     "SyntaxReady": {
       "additionalProperties": false,
       "properties": {
@@ -2997,6 +3086,27 @@
         }
       },
       "required": ["kind", "syntax"],
+      "type": "object"
+    },
+    "TableSchemaNeed": {
+      "additionalProperties": false,
+      "properties": {
+        "connection": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "table",
+          "type": "string"
+        },
+        "tablePath": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "key", "connection", "tablePath"],
+      "title": "TableSchemaNeed",
       "type": "object"
     },
     "TableSyntax": {

@@ -1,10 +1,24 @@
-"""Generate the Python protocol records from the TypeScript protocol."""
+"""Generate Python protocol records and identifier metadata from their owners."""
 
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+subprocess.run(
+    ["pnpm", "--filter", "@malloy-runtime/compiler", "lexicon"], cwd=root, check=True
+)
+subprocess.run(
+    [
+        sys.executable,
+        "-m",
+        "ruff",
+        "format",
+        str(root / "packages/python/src/pymalloy/_lexicon.py"),
+    ],
+    cwd=root,
+    check=True,
+)
 schema = root / "packages/python/schema/protocol.json"
 with schema.open("w") as output:
     subprocess.run(

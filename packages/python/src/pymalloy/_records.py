@@ -69,11 +69,18 @@ class Help(Record):
     type: str
 
 
+class CompilerFailure(Record, tag_field="kind", tag="failure"):
+    message: str
+
+
 class CompilerReady(Record, tag_field="kind", tag="ready"):
     pass
 
 
 type DateTimeframe = Literal["year", "quarter", "month", "week", "day"]
+
+
+type DocumentKind = Literal["model", "notebook"]
 
 
 class FilterableTypeWithBooleanType(Record, tag_field="kind", tag="boolean_type"):
@@ -122,6 +129,7 @@ class MarkdownCell(Record, tag_field="kind", tag="markdown"):
 
 
 class ModelSource(Record):
+    document_kind: DocumentKind = field(name="documentKind")
     imports: Mapping[str, str]
     text: str
     url: str
@@ -187,6 +195,12 @@ class RoutedAnnotation(Record):
     text: str
 
 
+class SQLSchemaNeed(Record, tag_field="kind", tag="sql"):
+    connection: str
+    key: str
+    sql: str
+
+
 class ScalarField(Record, tag_field="kind", tag="field"):
     path: Sequence[str]
 
@@ -202,13 +216,6 @@ class ScalarLiteral(Record, tag_field="kind", tag="literal"):
 
 class ScalarRaw(Record, tag_field="kind", tag="raw"):
     code: str
-
-
-class SchemaNeed(Record):
-    connection: str
-    key: str
-    sql: str
-    table_path: str | UnsetType = field(name="tablePath", default=UNSET)
 
 
 class SourcePosition(Record):
@@ -236,6 +243,42 @@ class SymbolInfo(Record):
     name: str
     range: SourceRange
     type: str
+
+
+type SyntaxOperationKind = Annotated[
+    Literal[
+        "source",
+        "query",
+        "block",
+        "extend",
+        "pipe",
+        "ref",
+        "sql",
+        "dimension",
+        "measure",
+        "view",
+        "nest",
+        "group_by",
+        "select",
+        "aggregate",
+        "where",
+        "having",
+        "limit",
+        "primary_key",
+        "order_by",
+        "asc",
+        "desc",
+    ],
+    Meta(
+        description="Constructor structure identified by Malloy's parser, independently of spelling."
+    ),
+]
+
+
+class TableSchemaNeed(Record, tag_field="kind", tag="table"):
+    connection: str
+    key: str
+    table_path: str = field(name="tablePath")
 
 
 class TableSyntax(Record, tag_field="type", tag="table"):
@@ -321,11 +364,6 @@ class Location(Record):
     url: str
 
 
-class Needs(Record):
-    schemas: Sequence[SchemaNeed]
-    urls: Sequence[str]
-
-
 class ParameterTypeWithTimestampType(Record, tag_field="kind", tag="timestamp_type"):
     timeframe: TimestampTimeframe | UnsetType = UNSET
 
@@ -336,9 +374,17 @@ class ParameterTypeWithTimestamptzType(
     timeframe: TimestampTimeframe | UnsetType = UNSET
 
 
+type SchemaNeed = Annotated[TableSchemaNeed | SQLSchemaNeed, Meta(title="SchemaNeed")]
+
+
 class SourceLocation(Record):
     range: SourceRange
     url: str
+
+
+class SyntaxOperation(Record):
+    arguments: Sequence[str]
+    kind: SyntaxOperationKind
 
 
 class AnnotationInfo(Record):
@@ -346,10 +392,6 @@ class AnnotationInfo(Record):
     location: SourceLocation
     route: str
     text: str
-
-
-class CompileNeeds(Record, tag_field="kind", tag="needs"):
-    needs: Needs
 
 
 class Diagnostic(Record):
@@ -412,6 +454,11 @@ type LiteralValue = (
 )
 
 
+class Needs(Record):
+    schemas: Sequence[SchemaNeed]
+    urls: Sequence[str]
+
+
 class ParameterTypeWithFilterExpressionType(
     Record, tag_field="kind", tag="filter_expression_type"
 ):
@@ -471,6 +518,10 @@ class ViewOperationWithOrderBy(Record, tag_field="kind", tag="order_by"):
 class CompileError(Record, tag_field="kind", tag="error"):
     diagnostics: Sequence[Diagnostic]
     message: str
+
+
+class CompileNeeds(Record, tag_field="kind", tag="needs"):
+    needs: Needs
 
 
 class ExpressionWithFieldReference(Record, tag_field="kind", tag="field_reference"):
@@ -594,6 +645,7 @@ class ConcreteSyntax(Record, tag_field="type", tag="syntax"):
         "document", "source", "query", "field", "expression", "annotation", "clause"
     ]
     name: str | None
+    operation: SyntaxOperation | None
     parts: Sequence[str | SyntaxNode]
 
 
@@ -813,6 +865,7 @@ type Response = (
     CompilerReady
     | CompileNeeds
     | CompileError
+    | CompilerFailure
     | ModelReady
     | QueryReady
     | DocumentReady

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from decimal import Decimal, InvalidOperation
 from operator import itemgetter
 from typing import Any
@@ -24,7 +24,7 @@ def to_dict(value: Any) -> Any:
         if config.tag is not None:
             result[config.tag_field] = config.tag
         return result
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {key: to_dict(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [to_dict(item) for item in value]
