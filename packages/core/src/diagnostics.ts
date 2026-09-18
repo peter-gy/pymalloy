@@ -1,13 +1,14 @@
 import { type DocumentLocation, type LogMessage, MalloyError } from "@malloydata/malloy";
-import type { Location } from "./metadata.js";
+import type { SourceLocation } from "./metadata.js";
 
+/** @title Diagnostic */
 export interface Diagnostic {
   code: string;
   severity: "error" | "warning" | "debug";
   message: string;
-  location: Location | null;
+  location: SourceLocation | null;
   replacement: string | null;
-  error_tag: string | null;
+  errorTag: string | null;
   data: unknown;
 }
 
@@ -30,7 +31,7 @@ export function diagnostics(problems: readonly LogMessage[], locations?: Locatio
         message: problem.message,
         location: problem.at ?? null,
         replacement: problem.replacement ?? null,
-        error_tag: problem.errorTag ?? null,
+        errorTag: problem.errorTag ?? null,
         data: problem.data ?? null,
       },
       locations,

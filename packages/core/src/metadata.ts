@@ -1,35 +1,43 @@
-export interface Position {
+/** @title SourcePosition */
+export interface SourcePosition {
+  /** @asType integer @minimum 0 */
   line: number;
+  /** @asType integer @minimum 0 */
   character: number;
 }
 
-export interface Range {
-  start: Position;
-  end: Position;
+/** @title SourceRange */
+export interface SourceRange {
+  start: SourcePosition;
+  end: SourcePosition;
 }
 
-export interface Location {
+/** @title SourceLocation */
+export interface SourceLocation {
   url: string;
-  range: Range;
+  range: SourceRange;
 }
 
+/** @title ImportInfo */
 export interface ImportInfo {
   url: string;
-  location: Location;
+  location: SourceLocation;
 }
 
+/** @title AnnotationInfo */
 export interface AnnotationInfo {
   route: string;
   text: string;
   content: string;
-  location: Location;
+  location: SourceLocation;
 }
 
+/** @title GivenInfo */
 export interface GivenInfo {
   name: string;
   type: string;
   required: boolean;
-  default_text: string | null;
-  location: Location | null;
+  defaultText: string | null;
+  location: SourceLocation | null;
   annotations: AnnotationInfo[];
 }
