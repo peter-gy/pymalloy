@@ -1,0 +1,382 @@
+import { expect, test } from "vite-plus/test";
+import { syntaxSource, type Scalar, type SyntaxNode } from "../src/tooling.js";
+import { compile, drive } from "./host.js";
+
+function isNode(part: string | SyntaxNode): part is SyntaxNode {
+  return typeof part !== "string";
+}
+
+function text(node: SyntaxNode): string {
+  if (node.type === "scalar") return node.source;
+  return node.parts.map((part) => (isNode(part) ? text(part) : part)).join("");
+}
+
+function children(node: SyntaxNode): SyntaxNode[] {
+  return node.type === "scalar" ? [] : node.parts.filter(isNode);
+}
+
+function expression(node: SyntaxNode): SyntaxNode {
+  const values = children(node).filter(
+    (part) => part.type === "scalar" || part.kind === "expression",
+  );
+  expect(values).toHaveLength(1);
+  return values[0];
+}
+
+function name(node: SyntaxNode): string | null {
+  return node.type === "scalar" ? null : node.name;
+}
+
+function scalarValue(node: SyntaxNode): Scalar {
+  if (node.type !== "scalar") throw new Error("Expected scalar syntax");
+  return node.scalar;
+}
+
+function replaceText(node: SyntaxNode, source: string): void {
+  if (node.type === "scalar") {
+    node.source = source;
+    node.scalar = { kind: "raw", code: source };
+  } else {
+    node.parts = [source];
+  }
+}
+
+test("syntax roundtrips unsupported constructs, annotations, Unicode, and CRLF exactly", () => {
+  const source = [
+    "// 😀 keep this comment",
+    "##! experimental.givens",
+    "given: threshold :: number is 2",
+    "import {base is original} from 'base.malloy'",
+    "#(doc) A source",
+    "source: `a\\`b`(p :: number is 1) is # note=kept",
+    "  duckdb.sql(\"SELECT '😀' AS face\") extend {",
+    "    dimension: `path\\\\name` is face",
+    "    view: detail is {select: face}",
+    "  }, other is base;",
+    "export {other}",
+    "run: other -> {select: *}",
+    "// final comment",
+    "",
+  ].join("\r\n");
+  const syntax = syntaxSource(source);
+  expect(text(syntax)).toBe(source);
+  const [first, second] = children(syntax);
+  expect([name(first), name(second)]).toEqual(["a`b", "other"]);
+  const rhs = expression(first);
+  expect(text(rhs)).toMatch(/^duckdb\.sql/);
+  expect(
+    children(rhs).map((node) => [node.type === "syntax" ? node.kind : "scalar", name(node)]),
+  ).toEqual([
+    ["field", "path\\name"],
+    ["query", "detail"],
+  ]);
+  expect(text(expression(second))).toBe("base");
+  expect(text(syntaxSource(""))).toBe("");
+});
+
+test("edits target one binding without crossing nested source and query scopes", async () => {
+  const source = [
+    "source: s is duckdb.sql('SELECT 42 AS value') extend {",
+    "  dimension: doubled is value * 2",
+    "  join_one: other is duckdb.sql('SELECT 42 AS value') extend {",
+    "    dimension: doubled is value * 3",
+    "  } on value = other.value",
+    "  view: detail is {select: doubled}",
+    "}",
+    "query: result is s -> detail",
+    "run: result",
+  ].join("\n");
+  const syntax = syntaxSource(source);
+  const [namedSource, query] = children(syntax);
+  expect(query).toMatchObject({ kind: "query", name: "result" });
+  const [field, join, view] = children(expression(namedSource));
+  expect([name(field), name(join), name(view)]).toEqual(["doubled", "other", "detail"]);
+  expect(children(expression(join)).map((node) => name(node))).toEqual(["doubled"]);
+  replaceText(expression(field), "value * 4");
+  const edited = text(syntax);
+  expect(edited).toBe(source.replace("value * 2", "value * 4"));
+  const url = new URL("memory://project/model.malloy");
+  const fixture = {
+    url,
+    describe: async () => [{ name: "value", type: "INTEGER" }],
+    readURL: async () => "",
+  };
+  const original = await compile({ ...fixture, source });
+  const restored = await compile({ ...fixture, source: text(syntaxSource(source)) });
+  expect((await drive(restored.prepare())).sql).toBe((await drive(original.prepare())).sql);
+  expect((await drive((await compile({ ...fixture, source: edited })).prepare())).sql).toContain(
+    "*4",
+  );
+});
+
+test("malformed Malloy and notebook inputs are rejected before exposing editable bindings", () => {
+  expect(() => syntaxSource("source: incomplete is")).toThrowError(
+    expect.objectContaining({
+      name: "ToolingError",
+      diagnostics: expect.arrayContaining([expect.objectContaining({ severity: "error" })]),
+    }),
+  );
+  expect(() => syntaxSource("", new URL("file:///model.malloynb"))).toThrow(/\.malloy document/);
+  expect(() => syntaxSource("", new URL("file:///model.malloysql"))).toThrow(/\.malloy document/);
+});
+
+test("named nests own their fields while anonymous nests and runs remain opaque", () => {
+  const source = [
+    "source: s is duckdb.sql('SELECT 1 AS value') extend {",
+    "  view: detail is {",
+    "    select: outer_value is value",
+    "    nest: named is {select: inner_value is value}",
+    "    nest: {select: anonymous_value is value}",
+    "  }",
+    "}",
+    "run: s -> {select: run_value is value nest: hidden is {select: nested_value is value}}",
+  ].join("\n");
+  const syntax = syntaxSource(source);
+  expect(text(syntax)).toBe(source);
+  const sources = children(syntax);
+  expect(sources.map((node) => name(node))).toEqual(["s"]);
+  const [view] = children(expression(sources[0]));
+  const members = children(expression(view));
+  expect(
+    members.map((node) => [node.type === "syntax" ? node.kind : "scalar", name(node)]),
+  ).toEqual([
+    ["field", "outer_value"],
+    ["query", "named"],
+  ]);
+  expect(children(expression(members[1])).map((node) => name(node))).toEqual(["inner_value"]);
+  expect(scalarValue(expression(children(expression(members[1]))[0]))).toEqual({
+    kind: "field",
+    path: ["value"],
+  });
+});
+
+test("owned doc annotations are editable without changing shared tags, formatting, or literals", () => {
+  const source = [
+    "#(doc) Shared statement documentation",
+    "source: #(doc) Before the name",
+    "  orders #(doc) Before is",
+    "  is #(doc) After is",
+    "  duckdb.sql(\"SELECT '#(doc) literal' AS value\") extend {",
+    "    dimension: #(doc) Field documentation",
+    "      label is # currency=USD",
+    "        value",
+    "  }",
+    "query: result is #(doc) Query documentation",
+    "  orders -> {select: label}",
+  ].join("\r\n");
+  const syntax = syntaxSource(source);
+  expect(text(syntax)).toBe(source);
+  const [orders, query] = children(syntax);
+  const docs = children(orders).filter(
+    (part) => part.type === "syntax" && part.kind === "annotation",
+  );
+  expect(docs.map(text)).toEqual([
+    "#(doc) Before the name\r\n",
+    "#(doc) Before is\r\n",
+    "#(doc) After is\r\n",
+  ]);
+  const [field] = children(expression(orders));
+  expect(
+    children(field)
+      .filter((part) => part.type === "syntax" && part.kind === "annotation")
+      .map(text),
+  ).toEqual(["#(doc) Field documentation\r\n"]);
+  expect(
+    children(query)
+      .filter((part) => part.type === "syntax" && part.kind === "annotation")
+      .map(text),
+  ).toEqual(["#(doc) Query documentation\r\n"]);
+  replaceText(docs[1], "#(doc) Revised documentation\r\n");
+  expect(text(syntax)).toBe(source.replace("#(doc) Before is", "#(doc) Revised documentation"));
+  expect(text(expression(orders))).toContain("'#(doc) literal'");
+});
+
+function scalar(authored: string): Scalar | undefined {
+  const source = `source: s is duckdb.sql('SELECT 1') extend {dimension: x is ${authored}}`;
+  const syntax = syntaxSource(source);
+  expect(text(syntax)).toBe(source);
+  const [field] = children(expression(children(syntax)[0]));
+  return scalarValue(expression(field));
+}
+
+test("scalar projections preserve precision, decoded identifiers, and aggregate receivers", () => {
+  expect(scalar("-9007199254740993")).toEqual({
+    kind: "literal",
+    type: "number",
+    value: "-9007199254740993",
+  });
+  expect(scalar("1.2300e-5")).toEqual({ kind: "literal", type: "number", value: "1.2300e-5" });
+  expect(scalar("upper(`customer name`)")).toEqual({
+    kind: "call",
+    name: "upper",
+    receiver: null,
+    args: [{ kind: "field", path: ["customer name"] }],
+  });
+  expect(scalar("orders.amount.sum()")).toEqual({
+    kind: "call",
+    name: "sum",
+    receiver: ["orders", "amount"],
+    args: [],
+  });
+  expect(scalar("sum(amount + 1)")).toEqual({
+    kind: "call",
+    name: "sum",
+    receiver: null,
+    args: [
+      {
+        kind: "binary",
+        operator: "+",
+        left: { kind: "field", path: ["amount"] },
+        right: { kind: "literal", type: "number", value: "1" },
+      },
+    ],
+  });
+  expect(scalar("$minimum")).toEqual({ kind: "given", name: "minimum" });
+});
+
+test("scalar projections distinguish casts, temporal truncation, and predicate operations", () => {
+  expect(scalar("not (amount is null) and amount >= 0")).toMatchObject({
+    kind: "binary",
+    operator: "and",
+    left: { kind: "unary", operator: "not", value: { kind: "null_test", negated: false } },
+    right: { kind: "binary", operator: ">=" },
+  });
+  expect(scalar("amount ::: number")).toEqual({
+    kind: "cast",
+    type: "number",
+    safe: true,
+    value: { kind: "field", path: ["amount"] },
+  });
+  expect(scalar("CAST(amount AS 'INTEGER')")).toEqual({
+    kind: "cast",
+    type: "INTEGER",
+    safe: false,
+    value: { kind: "field", path: ["amount"] },
+  });
+  expect(scalar("(created).month")).toEqual({
+    kind: "truncate",
+    unit: "month",
+    value: { kind: "field", path: ["created"] },
+  });
+  expect(scalar("@2025-03-14")).toEqual({ kind: "literal", type: "date", value: "2025-03-14" });
+  expect(scalar("created = @2022-01-01")).toMatchObject({
+    kind: "binary",
+    right: { kind: "literal", type: "date", value: "2022-01-01" },
+  });
+  expect(scalar("coalesce(null, true, '😀')")).toMatchObject({
+    kind: "call",
+    name: "coalesce",
+    args: [
+      { kind: "literal", type: "null", value: "null" },
+      { kind: "literal", type: "boolean", value: "true" },
+      { kind: "literal", type: "string", value: "😀" },
+    ],
+  });
+});
+
+test("unsupported scalar syntax remains opaque rather than promoting supported descendants", () => {
+  const unsupported = [
+    "pick amount when active else 0",
+    "amount.sum() {where: amount > 0}",
+    "special!(amount)",
+    "`upper`(name)",
+    "orders.`max`(amount)",
+    "r'prefix.*'",
+    "@2025-03-14 10:00:00",
+    "@0000-01-01",
+    "@2025-02-30",
+    "source.count()",
+    "amount :: 'number'",
+    "created = @2022",
+    "created = (@2022-01-01)",
+  ];
+  for (const code of unsupported) expect(scalar(code)).toEqual({ kind: "raw", code });
+  expect(scalar("special!(amount) + 1")).toEqual({
+    kind: "raw",
+    code: "special!(amount) + 1",
+  });
+});
+
+test("temporal keyword spellings share the same symbolic truncation", async () => {
+  expect(scalar("created.YEARS")).toEqual(scalar("created.year"));
+  expect(scalar("created.Months")).toEqual(scalar("created.month"));
+  expect(scalar("@2024-02-29")).toEqual({
+    kind: "literal",
+    type: "date",
+    value: "2024-02-29",
+  });
+  const fixture = {
+    url: new URL("memory://project/temporal.malloy"),
+    source:
+      "source: s is duckdb.sql('SELECT 1') extend {dimension: y is created.YEARS m is created.Months} run: s -> {select: y, m}",
+    describe: async () => [{ name: "created", type: "TIMESTAMP" }],
+    readURL: async () => "",
+  };
+  const authored = await compile(fixture);
+  const normalized = await compile({
+    ...fixture,
+    source: fixture.source.replace(".YEARS", ".year").replace(".Months", ".month"),
+  });
+  expect((await drive(authored.prepare())).sql).toBe((await drive(normalized.prepare())).sql);
+});
+
+test("where, having, and join predicates retain their named owner and exact surrounding text", () => {
+  const source = [
+    "source: s is duckdb.sql('SELECT 1 AS value') extend {",
+    "  where: value > 0, value < 100,",
+    "  join_one: #(doc) Joined source",
+    "    other is duckdb.sql('SELECT 1 AS value') extend {where: value = 1}",
+    "    on value = other.value",
+    "  view: stats is {",
+    "    aggregate: total is value.sum() {where: value > 0}",
+    "    where: value > 10",
+    "    having: total > 0, value.sum() {where: value > 0} > 0",
+    "    nest: named is {aggregate: n is count() where: value > 20}",
+    "    nest: {aggregate: n is count() where: value > 30}",
+    "  }",
+    "}",
+    "run: s -> {select: value where: value > 40}",
+  ].join("\r\n");
+  const syntax = syntaxSource(source);
+  expect(text(syntax)).toBe(source);
+  const [sourceWhere, join, view] = children(expression(children(syntax)[0]));
+  expect(sourceWhere).toMatchObject({ type: "syntax", kind: "clause" });
+  expect(children(sourceWhere).map(scalarValue)).toMatchObject([
+    { kind: "binary", operator: ">" },
+    { kind: "binary", operator: "<" },
+  ]);
+  const joinCondition = children(join).find(
+    (node) => node.type === "syntax" && node.kind === "clause",
+  )!;
+  expect(scalarValue(expression(joinCondition))).toEqual({
+    kind: "binary",
+    operator: "=",
+    left: { kind: "field", path: ["value"] },
+    right: { kind: "field", path: ["other", "value"] },
+  });
+  expect(
+    children(expression(join)).map((node) => (node.type === "syntax" ? node.kind : "scalar")),
+  ).toEqual(["clause"]);
+  const members = children(expression(view));
+  expect(
+    members.map((node) => [node.type === "syntax" ? node.kind : "scalar", name(node)]),
+  ).toEqual([
+    ["field", "total"],
+    ["clause", null],
+    ["clause", null],
+    ["query", "named"],
+  ]);
+  expect(scalarValue(expression(members[0]))).toEqual({
+    kind: "raw",
+    code: "value.sum() {where: value > 0}",
+  });
+  expect(scalarValue(children(members[2])[1])).toEqual({
+    kind: "raw",
+    code: "value.sum() {where: value > 0} > 0",
+  });
+  expect(
+    children(expression(members[3])).map((node) => (node.type === "syntax" ? node.kind : "scalar")),
+  ).toEqual(["field", "clause"]);
+  replaceText(children(sourceWhere)[0], "value > 1");
+  expect(text(syntax)).toBe(source.replace("where: value > 0,", "where: value > 1,"));
+});
