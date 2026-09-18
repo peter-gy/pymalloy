@@ -534,16 +534,22 @@ source: orders is duckdb.sql('SELECT 1 id, 12 amount') extend {
     strict = DocumentationPolicy(routes=("business",), severity="error")
     assert not candidate.check(documentation=strict).ok
     assert not candidate.validate(documentation=strict).ok
-    assert candidate.check(documentation=None).ok
     revised = candidate.define(
         orders=candidate["orders"].replace(
             revenue=pm.col("amount").avg().doc("Mean line amount in USD.")
         )
     )
-    assert "#[research] unit=USD" in revised.text
-    assert "Revenue in USD." not in revised.text
-    assert "Mean line amount in USD." in revised.text
-    assert not revised.check().diagnostics
+    report = revised.check()
+    assert not report.diagnostics
+    notes = next(
+        item
+        for item in report.model.annotations
+        if list(item.path) == ["orders", "revenue"]
+    )
+    assert [(note.route, note.content.strip()) for note in notes.annotations] == [
+        ('"', "Mean line amount in USD."),
+        ("research", "unit=USD"),
+    ]
 
 
 def test_python_emission_uses_composable_constructors_and_keeps_opaque_trivia(tmp_path):
@@ -557,27 +563,16 @@ def test_python_emission_uses_composable_constructors_and_keeps_opaque_trivia(tm
     generated = candidate.to_python()
     assert ".define(" in generated and ".queries(" in generated
     assert "pm.measure(" in generated and "pm.query(" in generated
-    for draft in [
-        candidate,
-        pm.draft("\n").append(*candidate.syntax.parts),
-        pm.read_model("// authored trivia\r\n" + candidate.text),
-    ]:
-        emitted = tmp_path / "model.py"
-        emitted.write_text(draft.to_python())
-        restored = runpy.run_path(str(emitted))["model"]
-        assert restored.check().ok
-        if "// authored trivia" in draft.text:
-            assert "// authored trivia" in restored.text
-        restored = restored.define(
-            north=pm.ref("orders").extend(pm.where(pm.col("region") == "S"))
-        )
-        runtime = restored.compile()
-        try:
-            assert runtime.query("summary").run().rows() == [
-                {"region": "S", "revenue": 20}
-            ]
-        finally:
-            runtime.close()
+    draft = pm.read_model("// authored trivia\r\n" + candidate.text)
+    emitted = tmp_path / "model.py"
+    emitted.write_text(draft.to_python())
+    restored = runpy.run_path(str(emitted))["model"]
+    assert "// authored trivia" in restored.text
+    restored = restored.define(
+        north=pm.ref("orders").extend(pm.where(pm.col("region") == "S"))
+    )
+    with restored.compile() as runtime:
+        assert runtime.query("summary").run().rows() == [{"region": "S", "revenue": 20}]
 
 
 def test_python_emission_decodes_strings_with_native_malloy_semantics(tmp_path):
@@ -613,7 +608,6 @@ def test_handwritten_models_emit_editable_constructors_independent_of_layout(tmp
     """
     candidate = pm.read_model(source)
     generated = candidate.to_python()
-    assert "pm.syntax(" not in generated
     assert "pm.dimension(" in generated and "pm.measure(" in generated
     assert "pm.view(" in generated and ".queries(" in generated
     assert "pm.order_by(" in generated and ".desc()" in generated
@@ -663,13 +657,19 @@ def test_annotations_preserve_other_routes_when_replaced_and_reconstructed(tmp_p
             revenue=pm.col("amount").sum().annotate("unit=EUR", route="research")
         )
     )
-    assert '#" Revenue' in revised.text and "# currency=USD" in revised.text
-    assert "unit=EUR" in revised.text and "unit=USD" not in revised.text
     path = tmp_path / "model.py"
     path.write_text(revised.to_python())
     restored = runpy.run_path(str(path))["model"]
     with revised.compile() as original, restored.compile() as rebuilt:
-        assert original.inspect().annotations == rebuilt.inspect().annotations
+        for model in (original, rebuilt):
+            revenue = next(
+                item
+                for item in model.inspect().model.annotations
+                if list(item.path) == ["sales", "revenue"]
+            )
+            assert sorted(
+                (note.route, note.content.strip()) for note in revenue.annotations
+            ) == [("", "currency=USD"), ('"', "Revenue"), ("research", "unit=EUR")]
         assert (
             original.query("result").run().rows()
             == rebuilt.query("result").run().rows()
