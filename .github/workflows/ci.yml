@@ -47,7 +47,7 @@ jobs:
         run: |
           uv sync --frozen --all-packages --all-extras
           pnpm records
-          git diff --exit-code -- packages/python/schema/protocol.json packages/python/src/pymalloy/_records.py packages/python/src/pymalloy/_lexicon.py
+          git diff --exit-code -- packages/python/schema/protocol.json packages/python/src/pymalloy/_protocol/records.py packages/python/src/pymalloy/_authoring/lexicon.py
       - name: Build Python distributions
         run: uv build --package pymalloy --no-sources
       - name: Check distribution metadata
