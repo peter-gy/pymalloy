@@ -1,0 +1,21 @@
+.github/workflows/publish.yml
+  s_eb8331ad77ae5f::t_51ef4cb8a603c2 43
+pyproject.toml
+  s_eb8331ad77ae5f::t_51ef4cb8a603c2 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "bfcbacd3d8e6f92dc0ca39eedaa72675ca4c0dcc",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
