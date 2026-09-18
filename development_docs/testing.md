@@ -124,3 +124,35 @@ Missing data and incompatible samples return a nonzero exit status. Per-source
 results distinguish missing data from compiler or runtime failures.
 `--execute-writes` enables COPY and requires an isolated data directory containing
 its output destinations.
+
+### Check symbolic Python roundtrips
+
+```sh
+uv run python packages/python/tests/check_roundtrip.py /path/to/malloy-samples \
+  --data-root /path/to/data --output /tmp/roundtrip-results
+```
+
+The checker reads each `.malloy` model, emits and executes Python, and recompiles
+the reconstructed source with its captured imports. Notebook and SQL document
+roots stay unchanged while their captured `.malloy` imports are reconstructed.
+Every SELECT runs through both models on the same single-thread DuckDB connection.
+COPY statements are compiled and recorded but not executed.
+
+`results.json` records source hashes, the sample revision, compilation failures,
+SQL equivalence, column names and types, row counts, and result hashes. A passing
+query requires identical SQL or identical DuckDB syntax trees after removing
+source-location metadata, plus matching results. Matching rows alone cannot prove
+equivalence: different filters can return the same rows on one dataset.
+
+Results preserve row order and exact floats by default. `--unordered` explicitly
+compares top-level rows as a multiset; `--float-precision 9` explicitly rounds
+floats to nine significant digits. The report records both options. Nested-list
+order always remains significant. These options never relax the SQL-equivalence
+gate. Value mismatches trigger another original-query execution to check whether
+the baseline itself varies; baseline variability is evidence for review, not an
+automatic pass.
+
+Generated Python is retained under `sources/`. The command returns nonzero for
+compilation failures, mismatches, skipped writes, and timeouts. Inspect per-source
+outcomes before interpreting an incomplete corpus as a regression. `--match`
+restricts the run to paths containing the supplied text.
