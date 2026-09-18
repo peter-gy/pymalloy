@@ -22,6 +22,7 @@ export function tableReferences(translator: MalloyTranslator): TableReference[] 
       return [`${start.line}:${start.character}`, table];
     }),
   );
+  if (!metadata.size) return [];
   const tables: TableReference[] = [];
   const listener: ParseTreeListener & { enterExploreTable(context: ParserRuleContext): void } = {
     enterExploreTable(context: ParserRuleContext) {

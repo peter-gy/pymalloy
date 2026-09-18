@@ -67,7 +67,7 @@ export function inspectModel(
       queries: [...queries],
       givens: [...model.givens.values()].map((given) => ({
         name: given.name,
-        ...givenDetails(model, definition, given.name),
+        ...givenDetails(given, definition),
         location: given.location ?? null,
         annotations: annotations(given.annotations),
       })),

@@ -28,8 +28,8 @@ export interface ModelSource {
 }
 
 type QueryEntry =
-  | { kind: "run" | "named"; query: PreparedQuery }
-  | { kind: "view"; source: string; view: string; query?: PreparedQuery }
+  | { kind: "run" | "named"; query: PreparedQuery; result?: PreparedResult }
+  | { kind: "view"; source: string; view: string; query?: PreparedQuery; result?: PreparedResult }
   | { kind: "sql"; prepared: PreparedSQL };
 
 export class CompiledModel {
@@ -173,7 +173,12 @@ export class CompiledModel {
       }
       query = entry.query;
     } else query = entry.query;
-    return this.output(name, query.getPreparedResult({ givens }), query.location?.range.start.line);
+    // Like Malloy's QueryMaterializer, retain the default compilation, never parameter variants.
+    const result =
+      givens && Object.keys(givens).length
+        ? query.getPreparedResult({ givens })
+        : (entry.result ??= query.getPreparedResult());
+    return this.output(name, result, query.location?.range.start.line);
   }
 
   private output(name: string, result: PreparedResult, line?: number) {

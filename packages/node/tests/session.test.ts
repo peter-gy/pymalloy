@@ -512,13 +512,21 @@ test("retained source views bind each call and read current data", async () => {
     text: `##! experimental.givens
     given: cutoff :: number is 0
     source: numbers is duckdb.table('numbers') extend {
-      view: filtered is {where:value > $cutoff select:value}
+      # bar_chart
+      view: filtered is {where:value > $cutoff select:value order_by:value}
     }`,
   });
   const query = model.query("numbers.filtered");
-  expect(await query.sql({ givens: { cutoff: 50 } })).toContain(">50");
+  const original = await query.run();
+  expect(original.rows).toEqual([{ value: 42 }]);
+  expect(original.malloy.annotations).toContainEqual({ value: "# bar_chart\n" });
   expect((await query.run({ givens: { cutoff: 50 } })).rows).toEqual([]);
   await runtime.connection.run("INSERT INTO numbers VALUES (99)");
-  expect((await query.run({ givens: { cutoff: 50 } })).rows).toEqual([{ value: 99 }]);
-  expect((await query.run({ givens: { cutoff: 0 } })).rows).toHaveLength(2);
+  const sql = await query.sql({ givens: { cutoff: 50 } });
+  expect((await runtime.connection.runAndReadAll(sql)).getRowObjectsJS()).toEqual([{ value: 99 }]);
+  expect((await query.run({ givens: {} })).rows).toEqual([{ value: 42 }, { value: 99 }]);
+  original.malloy.schema.fields.length = 0;
+  expect((await query.run()).malloy.schema.fields.map((field) => field.name)).toEqual(["value"]);
+  await expect(query.run({ givens: { cutoff: "invalid" } })).rejects.toThrow(/cutoff/);
+  expect((await query.run()).rows).toEqual([{ value: 42 }, { value: 99 }]);
 });

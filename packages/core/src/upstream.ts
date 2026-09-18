@@ -73,12 +73,19 @@ export function nativeMetadata(model: Model, definition: ModelDef): NativeMetada
   const required = queries.some((query) =>
     [...query.givens.values()].some((given) => given.default === undefined),
   );
-  const sources = model.exportedExplores.map((explore) =>
+  const stable = required ? null : modelDefToModelInfo(definition);
+  const entries = new Map(stable?.entries.map((entry) => [entry.name, entry]));
+  const sources = model.exportedExplores.map((explore) => {
+    const entry = entries.get(explore.name);
+    if (entry?.kind === "source") {
+      const { kind: _kind, ...source } = entry;
+      return source;
+    }
     // SAFETY: Malloy builds exportedExplores from source definitions in model contents.
-    sourceDefToSourceInfo(model.getContent(explore.name) as SourceDef),
-  );
+    return sourceDefToSourceInfo(model.getContent(explore.name) as SourceDef);
+  });
   return {
-    model: required ? null : modelDefToModelInfo(definition),
+    model: stable,
     sources,
     annotations: objectAnnotations(sources),
   };
@@ -91,8 +98,7 @@ export function modelImports(definition: ModelDef) {
   }));
 }
 
-export function givenDetails(model: Model, definition: ModelDef, name: string) {
-  const given = model.givens.get(name)!;
+export function givenDetails(given: Given, definition: ModelDef) {
   return {
     type: givenType(given.type),
     required: given.default === undefined,

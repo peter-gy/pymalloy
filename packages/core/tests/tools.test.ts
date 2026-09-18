@@ -314,3 +314,21 @@ test("import literal spans address authored Unicode and CRLF notebook text", () 
   const span = parsed.imports[0].reference;
   expect(Array.from(authored).slice(span.start, span.end).join("")).toBe('"base.malloy"');
 });
+
+test("inspection keeps source schemas distinct from named query outputs and caller edits", async () => {
+  const model = await compile(
+    options(source + "\nquery: projected is values -> {select: renamed is value}"),
+  );
+  const inspection = model.inspect();
+  expect(inspection.model.sources.map((item) => item.name)).toEqual(["values"]);
+  const projected = inspection.model.model?.entries.find((entry) => entry.name === "projected");
+  expect(projected).toMatchObject({ schema: { fields: [{ name: "renamed" }] } });
+  const stableSource = inspection.model.model?.entries.find((entry) => entry.name === "values");
+  if (stableSource?.kind !== "source") throw new Error("Missing source schema");
+  stableSource.schema.fields.length = 0;
+  expect(inspection.model.sources[0].schema.fields.map((field) => field.name)).toEqual(["value"]);
+  inspection.model.sources[0].schema.fields.length = 0;
+  expect(model.inspect().model.sources[0].schema.fields.map((field) => field.name)).toEqual([
+    "value",
+  ]);
+});
