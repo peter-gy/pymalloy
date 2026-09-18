@@ -12,11 +12,15 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@pymalloy/browser": "workspace:*"
+    "@malloy-runtime/browser": "workspace:*",
+    "@malloy-runtime/compiler": "workspace:*",
+    "@malloydata/malloy-interfaces": "catalog:",
+    "@malloydata/render": "catalog:",
+    "@pymalloy/protocol": "workspace:*",
+    "process": "catalog:"
   },
   "devDependencies": {
     "@anywidget/types": "catalog:",
-    "@pymalloy/core": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"

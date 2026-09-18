@@ -1,8 +1,7 @@
 import type { InitializeProps } from "@anywidget/types";
-import type { Model, ModelOptions, SessionOptions, ToolingError } from "@pymalloy/browser";
+import type { Model, ModelSpec, SessionOptions, ToolingError } from "@malloy-runtime/browser";
 import {
   givens,
-  resultRows,
   type Definition,
   type Diagnostic,
   type Input,
@@ -12,12 +11,12 @@ import {
 interface WidgetQuery {
   readonly queries: Model["queries"];
   inspect(): Pick<ReturnType<Model["inspect"]>, "diagnostics">;
-  run(options: { query?: string; givens?: ReturnType<typeof givens> }): ReturnType<Model["run"]>;
+  query(selection?: string): Pick<ReturnType<Model["query"]>, "run">;
   close(): void;
 }
 interface WidgetSession {
   readonly closed: boolean;
-  model(source: string, options: ModelOptions): Promise<WidgetQuery>;
+  model(spec: ModelSpec): Promise<WidgetQuery>;
   close(): Promise<void>;
 }
 
@@ -29,7 +28,7 @@ export function initialize(
     let closed = false;
     let generation = 0;
     let session: Promise<WidgetSession> | undefined;
-    let retained: { revision: number; model: WidgetQuery } | undefined;
+    let retained: { revision: number; model: WidgetQuery; diagnostics: Diagnostic[] } | undefined;
     let pending: { input: Input; definition: Definition; generation: number } | undefined;
     let running = false;
     const lifetime = new AbortController();
@@ -70,9 +69,7 @@ export function initialize(
       };
       const empty = {
         queries: [],
-        sql: null,
-        columns: [],
-        rows: [],
+        result: null,
         error: null,
         diagnostics: [],
       };
@@ -82,7 +79,7 @@ export function initialize(
         return;
       }
       publish({ ...empty, status: "loading" });
-      let queries: string[] = [];
+      let queries: Model["queries"][number][] = [];
       let diagnostics: Diagnostic[] = [];
       try {
         const runtime = await getSession();
@@ -97,40 +94,48 @@ export function initialize(
                 : file,
             ]),
           );
-          const loaded = await runtime.model(definition.source, {
-            files,
-            url: definition.url ?? undefined,
-            imports: definition.imports ?? undefined,
-          });
+          const loaded = await runtime.model(
+            definition.imports && definition.url
+              ? {
+                  source: {
+                    text: definition.source,
+                    url: definition.url,
+                    imports: definition.imports,
+                  },
+                  files,
+                }
+              : { text: definition.source, url: definition.url ?? undefined, files },
+          );
           if (closed) {
             loaded.close();
             return;
           }
-          retained = { revision: definition.revision, model: loaded };
+          retained = {
+            revision: definition.revision,
+            model: loaded,
+            diagnostics: loaded.inspect().diagnostics,
+          };
         }
         const loaded = retained.model;
         queries = [...loaded.queries];
-        diagnostics = loaded.inspect().diagnostics;
+        diagnostics = retained.diagnostics;
         if (closed || generation !== current) return;
         if (
           !input.query &&
           (queries.length === 0 ||
-            (queries.length > 1 && !queries.some((name) => name.startsWith("run:"))))
+            (queries.length > 1 && !queries.some((query) => query.kind === "run")))
         ) {
           publish({ ...empty, queries, diagnostics, status: "idle" });
           return;
         }
         publish({ ...empty, queries, diagnostics, status: "loading" });
-        const result = await loaded.run({
-          query: input.query ?? undefined,
+        const result = await loaded.query(input.query ?? undefined).run({
           givens: givens(input),
         });
         publish({
           status: "ready",
-          queries: [...result.queries],
-          sql: result.sql,
-          columns: result.columns.map((column) => column.name),
-          ...resultRows(result.rows),
+          queries,
+          result: result.malloy,
           error: null,
           diagnostics,
         });
@@ -162,7 +167,7 @@ export function initialize(
       pending = undefined;
       const input = model.get("_input");
       const definition = model.get("_definition");
-      if (!input || !definition || input.definition_revision !== definition.revision) return;
+      if (!input || !definition || input.definitionRevision !== definition.revision) return;
       pending = { input, definition, generation: current };
       if (!running) void drain();
     };

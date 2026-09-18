@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import type { AnyModel } from "@anywidget/types";
-import { ToolingError } from "@pymalloy/core";
+import { ToolingError } from "@malloy-runtime/compiler";
 import { initialize as initializeWith } from "../src/initialize";
 import type { Definition, Diagnostic, Input, State, WidgetModel } from "../src/protocol";
 
@@ -33,7 +33,7 @@ class Widget implements AnyModel<WidgetModel> {
       _input:
         input === null
           ? null
-          : { revision: 1, definition_revision: 1, query: null, givens: {}, ...input },
+          : { revision: 1, definitionRevision: 1, query: null, givens: {}, ...input },
       _definition:
         input === null ? null : { revision: 1, source: "run: example", files: {}, ...input },
       _runtime: null,
@@ -64,7 +64,7 @@ class Widget implements AnyModel<WidgetModel> {
   update(input: Partial<Input & Definition> = {}): void {
     const previous = this.get("_input") ?? {
       revision: 0,
-      definition_revision: 1,
+      definitionRevision: 1,
       query: null,
       givens: {},
     };
@@ -82,24 +82,48 @@ class Widget implements AnyModel<WidgetModel> {
       ...previous,
       ...input,
       revision: previous.revision + 1,
-      definition_revision: definitionRevision,
+      definitionRevision: definitionRevision,
     });
   }
 }
 
 function result(sql = "SELECT 1") {
   return {
-    queries: ["run:1"],
+    queries: ["run:0"],
     sql,
     columns: [{ name: "value", type: "INTEGER" }],
     rows: [{ value: 1 }],
+    malloy: {
+      connection_name: "duckdb",
+      sql,
+      schema: {
+        fields: [
+          { kind: "dimension" as const, name: "value", type: { kind: "number_type" as const } },
+        ],
+      },
+      data: {
+        kind: "array_cell" as const,
+        array_value: [
+          {
+            kind: "record_cell" as const,
+            record_value: [{ kind: "number_cell" as const, number_value: 1 }],
+          },
+        ],
+      },
+    },
   };
 }
-function model(queries = ["run:1"], diagnostics: Diagnostic[] = []) {
+function model(queries = ["run:0"], diagnostics: Diagnostic[] = []) {
+  const run = vi.fn(async () => result());
   return {
-    queries,
+    queries: queries.map((name) => ({
+      name,
+      kind: name.startsWith("run:") ? ("run" as const) : ("view" as const),
+      location: null,
+    })),
+    query: vi.fn(() => ({ run })),
     inspect: vi.fn(() => ({ diagnostics })),
-    run: vi.fn(async () => result()),
+    run,
     close: vi.fn(),
   };
 }
@@ -142,17 +166,17 @@ test("a later input owns the published result while earlier work finishes", asyn
   widget.update({ source: "run: newer" });
   widget.update({ source: "run: newest" });
   pending.resolve(result("SELECT 'old'"));
-  await vi.waitFor(() => expect(widget.get("_state")?.sql).toBe("SELECT 'new'"));
+  await vi.waitFor(() => expect(widget.get("_state")?.result?.sql).toBe("SELECT 'new'"));
   await vi.waitFor(() => expect(oldModel.close).toHaveBeenCalled());
   expect(widget.get("_state")?.revision).toBe(3);
   expect(
-    widget.saved.filter((state) => state.status === "ready").map((state) => state.sql),
+    widget.saved.filter((state) => state.status === "ready").map((state) => state.result?.sql),
   ).toEqual(["SELECT 'new'"]);
   expect(runtime.model).toHaveBeenCalledTimes(2);
-  expect(runtime.model).toHaveBeenLastCalledWith("run: newest", {
+  expect(runtime.model).toHaveBeenLastCalledWith({
+    text: "run: newest",
     files: {},
     url: undefined,
-    imports: undefined,
   });
   expect(newModel.close).not.toHaveBeenCalled();
 });
@@ -181,13 +205,14 @@ test("selector and given updates reuse the model and coalesce pending work", asy
   const widget = new Widget();
   const dispose = await initialize(widget);
   await vi.waitFor(() => expect(loaded.run).toHaveBeenCalledTimes(1));
-  widget.update({ givens: { threshold: 1 } });
-  widget.update({ query: "selected", givens: { threshold: 2 } });
+  widget.update({ givens: { threshold: { type: "number", value: 1 } } });
+  widget.update({ query: "selected", givens: { threshold: { type: "number", value: 2 } } });
   pending.resolve(result());
   await vi.waitFor(() => expect(widget.get("_state")?.revision).toBe(3));
   expect(runtime.model).toHaveBeenCalledTimes(1);
   expect(loaded.run).toHaveBeenCalledTimes(2);
-  expect(loaded.run).toHaveBeenLastCalledWith({ query: "selected", givens: { threshold: 2 } });
+  expect(loaded.query).toHaveBeenLastCalledWith("selected");
+  expect(loaded.run).toHaveBeenLastCalledWith({ givens: { threshold: 2 } });
   expect(
     widget.saved.filter((state) => state.status === "ready").map((state) => state.revision),
   ).toEqual([3]);
@@ -202,15 +227,15 @@ test("a definition can arrive after the input that references it", async () => {
   await initialize(widget);
   expect(create).not.toHaveBeenCalled();
   expect(widget.saved).toEqual([]);
-  widget.set("_input", { revision: 1, definition_revision: 3, query: null, givens: {} });
+  widget.set("_input", { revision: 1, definitionRevision: 3, query: null, givens: {} });
   widget.set("_definition", { revision: 2, source: "run: obsolete", files: {} });
   expect(create).not.toHaveBeenCalled();
   widget.set("_definition", { revision: 3, source: "run: current", files: {} });
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
-  expect(runtime.model).toHaveBeenCalledExactlyOnceWith("run: current", {
+  expect(runtime.model).toHaveBeenCalledExactlyOnceWith({
+    text: "run: current",
     files: {},
     url: undefined,
-    imports: undefined,
   });
 });
 
@@ -240,18 +265,25 @@ test("query choices support selection and recovery after a failed query", async 
   const widget = new Widget();
   await initialize(widget);
   await vi.waitFor(() =>
-    expect(widget.get("_state")?.queries).toEqual(["orders.summary", "orders.detail"]),
+    expect(widget.get("_state")?.queries.map((q) => q.name)).toEqual([
+      "orders.summary",
+      "orders.detail",
+    ]),
   );
   expect(widget.get("_state")?.status).toBe("idle");
   expect(loaded.run).not.toHaveBeenCalled();
   widget.update({ query: "orders.summary" });
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("error"));
-  expect(widget.get("_state")?.queries).toEqual(["orders.summary", "orders.detail"]);
+  expect(widget.get("_state")?.queries.map((q) => q.name)).toEqual([
+    "orders.summary",
+    "orders.detail",
+  ]);
   expect(widget.get("_state")?.error).toBe("Invalid given");
   widget.update({ query: "orders.detail" });
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
-  expect(loaded.run).toHaveBeenLastCalledWith({ query: "orders.detail", givens: {} });
-  expect(widget.get("_state")?.rows).toEqual([{ value: 1 }]);
+  expect(loaded.query).toHaveBeenLastCalledWith("orders.detail");
+  expect(loaded.run).toHaveBeenLastCalledWith({ givens: {} });
+  expect(widget.get("_state")?.result?.data).toEqual(result().malloy.data);
   expect(widget.get("_state")?.error).toBeNull();
 });
 
@@ -261,7 +293,7 @@ test("source-only models stay idle until a query is added", async () => {
   const widget = new Widget({ source: "source: example is data" });
   await initialize(widget);
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("idle"));
-  expect(widget.get("_state")?.queries).toEqual([]);
+  expect(widget.get("_state")?.queries.map((q) => q.name)).toEqual([]);
   runtime.model.mockResolvedValue(model());
   widget.update({ source: "run: example" });
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
@@ -278,7 +310,7 @@ test("compiler diagnostics retain their locations and clear after source recover
     },
     replacement: null,
     data: { name: "missing_source" },
-    error_tag: null,
+    errorTag: null,
   };
   const error = new ToolingError(diagnostic.message, [diagnostic]);
   const runtime = session();
@@ -301,9 +333,9 @@ test("successful model diagnostics accompany the query result", async () => {
     location: null,
     replacement: "source: orders",
     data: null,
-    error_tag: null,
+    errorTag: null,
   };
-  create.mockResolvedValue(session(model(["run:1"], [warning])));
+  create.mockResolvedValue(session(model(["run:0"], [warning])));
   const widget = new Widget();
   await initialize(widget);
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
