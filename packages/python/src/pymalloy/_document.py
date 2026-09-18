@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from types import MappingProxyType
+from typing import Any, Literal
 
+from pymalloy._givens import encode_givens, given_values
 from pymalloy._source import ModelSource
 
 
@@ -24,6 +27,20 @@ class Markdown:
     text: str
 
 
+class Profile(StrEnum):
+    PRECOMPILED = "precompiled"
+    SERVER = "server"
+    WIDGET = "widget"
+
+
+def _freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
 @dataclass(frozen=True)
 class Document:
     title: str
@@ -31,22 +48,20 @@ class Document:
     data_root: Path
     database: Path | None = None
     source: ModelSource | None = None
-    _givens_json: str = field(default="{}", repr=False)
-    profile: Literal["precompiled", "native", "widget"] = "precompiled"
-    _widget_files: tuple[tuple[str, str], ...] = field(default=(), repr=False)
+    givens: Mapping[str, Any] = field(default_factory=dict)
+    profile: Profile = Profile.PRECOMPILED
+    files: Mapping[str, Path] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.profile not in {"precompiled", "native", "widget"}:
-            raise ValueError("profile must be 'precompiled', 'native', or 'widget'")
-        if (self.profile == "precompiled") != (self.source is None):
+        object.__setattr__(self, "profile", Profile(self.profile))
+        object.__setattr__(
+            self, "givens", _freeze(given_values(encode_givens(self.givens)))
+        )
+        object.__setattr__(self, "files", MappingProxyType(dict(self.files)))
+        if (self.profile == Profile.PRECOMPILED) != (self.source is None):
             raise ValueError(
-                "Native and widget documents require captured model source"
+                "Server and widget documents require captured model source"
             )
-
-    @property
-    def givens(self) -> dict:
-        """A detached snapshot of the values supplied to the hydrated model."""
-        return json.loads(self._givens_json)
 
     @property
     def queries(self) -> tuple[Query, ...]:

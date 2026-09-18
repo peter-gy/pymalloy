@@ -2,10 +2,10 @@ import keyword
 import os
 import pprint
 import re
-from importlib.metadata import version
 from pathlib import Path
 
 from pymalloy._document import Document
+from pymalloy._givens import encode_givens, given_values
 
 _RESERVED = {
     "BaseException",
@@ -18,11 +18,10 @@ _RESERVED = {
     "connection",
     "data_root",
     "database",
-    "Malloy",
+    "MalloyWidget",
     "ModelSource",
-    "Session",
+    "pm",
     "model_source",
-    "session",
     "model",
     "givens",
     "files",
@@ -53,17 +52,23 @@ def query_variables(document: Document) -> tuple[str, ...]:
     return tuple(variable(query.name, used) for query in document.queries)
 
 
-def connection_setup(document: Document, output_path: str | Path, base: str) -> str:
+def data_setup(document: Document, output_path: str | Path, base: str) -> str:
     parent = Path(output_path).resolve().parent
     root = Path(os.path.relpath(document.data_root, parent)).as_posix()
     setup = [f"data_root = ({base} / {root!r}).resolve()"]
-    database_argument = '":memory:"'
     if document.database is not None:
         database = Path(os.path.relpath(document.database, parent)).as_posix()
         setup.append(f"database = ({base} / {database!r}).resolve()")
-        database_argument = "str(database), read_only=True"
-    if document.profile == "native":
-        return "\n".join(setup)
+    return "\n".join(setup)
+
+
+def connection_setup(document: Document, output_path: str | Path, base: str) -> str:
+    database_argument = (
+        "str(database), read_only=True"
+        if document.database is not None
+        else '":memory:"'
+    )
+    setup = [data_setup(document, output_path, base)]
     setup.extend(
         [
             "",
@@ -71,6 +76,7 @@ def connection_setup(document: Document, output_path: str | Path, base: str) -> 
             "def connect():",
             f"    with duckdb.connect({database_argument}) as connection:",
             '        connection.execute("SET VARIABLE data_root = ?", [data_root.as_posix()])',
+            '        connection.execute("SET file_search_path = ?", [data_root.as_posix()])',
             "        connection.execute(\"SET TimeZone = 'UTC'\")",
             "        yield connection",
         ]
@@ -78,55 +84,10 @@ def connection_setup(document: Document, output_path: str | Path, base: str) -> 
     return "\n".join(setup)
 
 
-def dependencies(document: Document) -> list[str]:
-    if document.profile == "native":
-        return [f"pymalloy[server]=={version('pymalloy')}"]
-    if document.profile == "widget":
-        return [f"pymalloy=={version('pymalloy')}"]
-    return ["duckdb>=1.5.5", "polars>=1.44.2"]
-
-
-def runtime_imports(document: Document) -> str:
-    if document.profile == "native":
-        return "from pymalloy import ModelSource\nfrom pymalloy.server import Session"
-    if document.profile == "widget":
-        return "from pymalloy import Malloy, ModelSource"
-    return "from contextlib import contextmanager\n\nimport duckdb\nimport polars as pl"
-
-
-def runtime_description(document: Document) -> str:
-    if document.profile == "native":
-        return (
-            "## Malloy model\n\n"
-            "Edit `model_source` to change the model or its captured imports. "
-            "Edit `givens` to change query inputs. Query cells compile and execute "
-            "against the current data through `model.run()`. "
-            "Use `model.queries` to discover queries or pass new Malloy query text "
-            "to `model.run()`. Call `session.close()` when finished using the model."
-        )
-    if document.profile == "widget":
-        return (
-            "## Interactive Malloy model\n\n"
-            "Edit `model_source` to change the model or its captured imports, "
-            "and `givens` to change query inputs. Each widget offers the full "
-            "model's queries in its selector and runs them in browser DuckDB "
-            "WebAssembly. `files` reads local data into the widgets when the "
-            "notebook runs. Remote data requires browser network access and "
-            "cross-origin resource sharing (CORS) permission from its server. "
-            "Its `.state` updates asynchronously "
-            "and has status `ready` when results are available. "
-            "Call `.close()` on each widget when finished."
-        )
-    return (
-        "## Data access\n\nEach query opens a connection using this data directory "
-        "and closes it after reading its result."
-    )
-
-
 def model_source_setup(document: Document) -> str:
     source = document.source
     if source is None:
-        raise ValueError("The native and widget profiles require model source")
+        raise ValueError("The server and widget profiles require model source")
     lines = ["model_source = ModelSource(", f"    url={source.url!r},", "    text=("]
 
     def append_text(text: str, indent: str) -> None:
@@ -145,13 +106,15 @@ def model_source_setup(document: Document) -> str:
 
 
 def givens_setup(document: Document) -> str:
-    return "givens = " + pprint.pformat(document.givens, sort_dicts=True)
+    return "givens = " + pprint.pformat(
+        given_values(encode_givens(document.givens)), sort_dicts=True
+    )
 
 
 def files_setup(document: Document, output_path: str | Path, base: str) -> str:
     parent = Path(output_path).resolve().parent
     lines = ["files = {"]
-    for alias, path in document._widget_files:
+    for alias, path in sorted(document.files.items()):
         relative = Path(os.path.relpath(path, parent)).as_posix()
         lines.append(f"    {alias!r}: ({base} / {relative!r}).read_bytes(),")
     lines.append("}")
@@ -162,7 +125,7 @@ def widget_setup(name: str, query: str | None = None) -> str:
     arguments = "source=model_source, files=files, givens=givens"
     if query is not None:
         arguments += f", query={query!r}"
-    return f"{name} = Malloy({arguments})\n{name}"
+    return f"{name} = MalloyWidget({arguments})\n{name}"
 
 
 def model_setup(document: Document) -> str:
@@ -170,12 +133,8 @@ def model_setup(document: Document) -> str:
     if document.database is not None:
         arguments += ", database=database, read_only=True"
     return (
-        f"session = Session({arguments})\n"
-        "try:\n"
-        "    model = session.load_source(model_source)\n"
-        "except BaseException:\n"
-        "    session.close()\n"
-        "    raise"
+        f"model = pm.model(model_source, {arguments})\n"
+        'model.connection.execute("SET VARIABLE data_root = ?", [str(data_root)])'
     )
 
 
