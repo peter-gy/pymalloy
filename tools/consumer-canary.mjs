@@ -23,6 +23,15 @@ try {
       private: true,
       type: "module",
       dependencies,
+      devDependencies: Object.fromEntries(
+        await Promise.all(
+          ["typescript", "@types/node"].map(async (name) => [
+            name,
+            JSON.parse(await readFile(join(root, "node_modules", name, "package.json"), "utf8"))
+              .version,
+          ]),
+        ),
+      ),
     }),
   );
   await writeFile(
@@ -30,6 +39,38 @@ try {
     JSON.stringify({ overrides: dependencies }),
   );
   execFileSync("pnpm", ["install", "--ignore-scripts"], { cwd: directory, stdio: "inherit" });
+  await writeFile(
+    join(directory, "consumer.ts"),
+    `
+    export * as compiler from '@malloy-runtime/compiler';
+    export * as tooling from '@malloy-runtime/compiler/tooling';
+    export * as types from '@malloy-runtime/compiler/types';
+    export * as duckdb from '@malloy-runtime/duckdb';
+    export * as arrow from '@malloy-runtime/duckdb/arrow';
+    export * as native from '@malloy-runtime/node';
+    export * as browser from '@malloy-runtime/browser';
+  `,
+  );
+  for (const [module, moduleResolution] of [
+    ["NodeNext", "NodeNext"],
+    ["ESNext", "Bundler"],
+  ]) {
+    await writeFile(
+      join(directory, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          target: "ES2023",
+          module,
+          moduleResolution,
+          strict: true,
+          noEmit: true,
+          types: ["node"],
+        },
+        files: ["consumer.ts"],
+      }),
+    );
+    execFileSync("pnpm", ["exec", "tsc"], { cwd: directory, stdio: "inherit" });
+  }
   await writeFile(
     join(directory, "native.mjs"),
     `
@@ -63,7 +104,9 @@ try {
       emptyOutDir: true,
     },
   });
-  console.log("Installed Node packages executed exact results. Browser consumer bundle built.");
+  console.log(
+    "Installed declarations passed NodeNext and Bundler typechecks. Node executed exact results. Browser consumer bundle built.",
+  );
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
