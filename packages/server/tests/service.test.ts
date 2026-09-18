@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { CompilerService } from "../src/service.js";
+import { CompilerService } from "../src/service";
 import type { Response } from "@pymalloy/protocol";
 
 function finish(service: CompilerService, first: Response): Response {

@@ -1,4 +1,4 @@
-export { Session, type SessionOptions, type ModelSpec, type CheckOptions } from "./session.js";
+export { Session, type SessionOptions, type ModelSpec, type CheckOptions } from "./session";
 export {
   Model,
   Query,

@@ -6,7 +6,7 @@ import type {
   Schema,
 } from "@malloydata/malloy-interfaces";
 import type { Column, Row, Value } from "@malloy-runtime/compiler";
-import { fields } from "./schema.js";
+import { fields } from "./schema";
 
 export function stableResult(
   sql: string,

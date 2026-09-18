@@ -13,7 +13,7 @@ import {
   type SourcePosition,
 } from "@malloy-runtime/compiler";
 import { connection, drive, fileSearchPath, type Host } from "@malloy-runtime/duckdb";
-import { DuckDBBackend } from "./duckdb.js";
+import { DuckDBBackend } from "./duckdb";
 import { Operations } from "@malloy-runtime/compiler";
 
 export interface SessionOptions {

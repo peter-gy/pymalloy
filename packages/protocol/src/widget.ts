@@ -1,6 +1,6 @@
 import type { QueryDescriptor, Diagnostic } from "@malloy-runtime/compiler";
 import type { Result } from "@malloydata/malloy-interfaces";
-import type { Given } from "./givens.js";
+import type { Given } from "./givens";
 /** @title Input */
 export interface Input {
   /** @asType integer @minimum 0 */

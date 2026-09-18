@@ -12,7 +12,7 @@ import type {
   Diagnostic,
   Column,
 } from "@malloy-runtime/compiler";
-import type { Given } from "./givens.js";
+import type { Given } from "./givens";
 import type { SyntaxNode } from "@malloy-runtime/compiler/tooling";
 
 type SchemaAnswer = { value: Column[] } | { error: string };

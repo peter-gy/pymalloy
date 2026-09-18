@@ -1,5 +1,5 @@
-export { Session, type SessionOptions, type ModelSpec, type DuckDBBundles } from "./session.js";
-export type { File, Files } from "./files.js";
+export { Session, type SessionOptions, type ModelSpec, type DuckDBBundles } from "./session";
+export type { File, Files } from "./files";
 export {
   Model,
   Query,

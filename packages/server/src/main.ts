@@ -1,6 +1,6 @@
 import { readSync, writeSync } from "node:fs";
 import type { Request, Response } from "@pymalloy/protocol";
-import { CompilerService } from "./service.js";
+import { CompilerService } from "./service";
 
 const limit = 64 * 1024 * 1024;
 const encoder = new TextEncoder();

@@ -1,5 +1,5 @@
-import { fields } from "./schema.js";
-export { fields, connection } from "./schema.js";
+import { fields } from "./schema";
+export { fields, connection } from "./schema";
 import type { Column, Job, Needs, Fulfilled } from "@malloy-runtime/compiler";
 export const fileSearchPath = (root: string) =>
   `SET file_search_path = '${root.replaceAll("'", "''")}'`;
@@ -36,4 +36,4 @@ export async function drive<T>(job: Job<T>, host: Host): Promise<T> {
     job.close();
   }
 }
-export { stableResult } from "./result.js";
+export { stableResult } from "./result";

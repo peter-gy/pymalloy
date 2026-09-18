@@ -1,11 +1,11 @@
-import type { Response } from "./server.js";
+import type { Response } from "./server";
 import type {
   CheckReport,
   Inspection,
   Diagnostic,
   QueryDescriptor,
 } from "@malloy-runtime/compiler";
-import type { State } from "./widget.js";
+import type { State } from "./widget";
 export interface Records {
   response: Response;
   check: CheckReport;

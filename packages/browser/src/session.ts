@@ -26,7 +26,7 @@ import {
   stableResult,
   type Host,
 } from "@malloy-runtime/duckdb";
-import { type File, type Files, modelURL, snapshot, readImport } from "./files.js";
+import { type File, type Files, modelURL, snapshot, readImport } from "./files";
 
 export interface SessionOptions {
   bundles?: DuckDBBundles;

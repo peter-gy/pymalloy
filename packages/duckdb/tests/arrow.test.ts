@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import { Field, Int32, Map_, Struct, Table, Utf8, vectorFromArray } from "apache-arrow";
-import { materialize } from "../src/arrow.js";
+import { materialize } from "../src/arrow";
 
 test("preserves map keys and values, including empty and null maps", () => {
   const type = new Map_(

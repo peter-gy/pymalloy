@@ -4,7 +4,7 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { Session } from "../src/session.js";
+import { Session } from "../src/session";
 const sessions: Session[] = [];
 const directories: string[] = [];
 async function session(options: Parameters<typeof Session.open>[0] = {}) {
