@@ -1,0 +1,30 @@
+{
+  "name": "@pymalloy/browser",
+  "version": "0.1.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "vp pack",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "catalog:",
+    "@pymalloy/core": "workspace:*",
+    "apache-arrow": "catalog:",
+    "process": "0.11.10"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
