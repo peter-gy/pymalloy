@@ -16,14 +16,14 @@ from itertools import accumulate
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._draft import Draft
-from pymalloy._errors import CompilationError
-from pymalloy._givens import encode_givens, given_values
-from pymalloy._records import FormatReady, SyntaxReady
-from pymalloy._source import ModelSource
-from pymalloy._syntax import Fragment, from_wire
-from pymalloy._table import table_path
+from pymalloy._authoring.draft import Draft
+from pymalloy._authoring.syntax import Fragment, from_wire
+from pymalloy._authoring.tables import table_path
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.errors import CompilationError
+from pymalloy._model.source import ModelSource
+from pymalloy._protocol.givens import encode_givens, given_values
+from pymalloy._protocol.records import FormatReady, SyntaxReady
 from pymalloy.authoring import table
 from pymalloy.export._python import file_guard
 from pymalloy.validation import Validation

@@ -4,9 +4,9 @@ import pprint
 import re
 from pathlib import Path
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._document import Document
-from pymalloy._givens import encode_givens, given_values
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._protocol.givens import encode_givens, given_values
+from pymalloy.export._document import Document
 
 
 def literal(text: str) -> str:

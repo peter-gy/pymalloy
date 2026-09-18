@@ -4,7 +4,7 @@ import json
 import textwrap
 from pathlib import Path
 
-from pymalloy._document import Document, Markdown
+from pymalloy.export._document import Document, Markdown
 from pymalloy.export._plan import SQL, plan
 from pymalloy.export._python import literal
 

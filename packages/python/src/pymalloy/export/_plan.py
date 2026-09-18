@@ -4,7 +4,7 @@ from functools import cached_property, partial
 from importlib.metadata import version
 from pathlib import Path
 
-from pymalloy._document import Document, Markdown, Profile, QueryCell
+from pymalloy.export._document import Document, Markdown, Profile, QueryCell
 from pymalloy.export._python import (
     connection_setup,
     data_setup,

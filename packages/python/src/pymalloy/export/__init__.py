@@ -2,11 +2,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._document import Document, Markdown, Profile, QueryCell
-from pymalloy._errors import CompilationError, SchemaError
-from pymalloy._selection import query_names
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.errors import CompilationError, SchemaError
+from pymalloy._model.selection import query_names
 from pymalloy.export._bundle import SourceBundle, bundle
+from pymalloy.export._document import Document, Markdown, Profile, QueryCell
 
 __all__ = [
     "Document",

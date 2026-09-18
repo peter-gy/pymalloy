@@ -10,10 +10,10 @@ from urllib.parse import unquote, urlsplit
 import duckdb
 
 import pymalloy as pm
-from pymalloy._document import Document, Markdown, Profile, QueryCell
 from pymalloy._server.tooling import compiler_lease
 from pymalloy.analysis import MarkdownCell
 from pymalloy.analysis import QueryCell as CompiledQueryCell
+from pymalloy.export._document import Document, Markdown, Profile, QueryCell
 from pymalloy.export._files import check_files, file_config
 from pymalloy.export._sql import export_sql
 

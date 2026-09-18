@@ -8,10 +8,10 @@ from types import MappingProxyType
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pymalloy._connection import DEFAULT_CONNECTION
-from pymalloy._givens import encode_givens, given_values
-from pymalloy._snapshot import freeze
-from pymalloy._source import ModelSource
+from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.source import ModelSource
+from pymalloy._protocol.givens import encode_givens, given_values
+from pymalloy._protocol.snapshot import freeze
 
 
 @dataclass(frozen=True)
