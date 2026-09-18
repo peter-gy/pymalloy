@@ -67,6 +67,14 @@ class Engine:
         rows = tuple(self.connection.fetchall())
         return Result(sql, columns, rows)
 
+    def preview(self, sql: str, limit: int) -> Result:
+        statements = self.connection.extract_statements(sql)
+        if len(statements) != 1 or statements[0].type != duckdb.StatementType.SELECT:
+            raise ValueError("Preview requires one SELECT statement")
+        relation = self.connection.sql(sql)
+        assert relation is not None
+        return self.run(relation.limit(limit).sql_query())
+
     def close(self) -> None:
         if self.owned:
             self.connection.close()

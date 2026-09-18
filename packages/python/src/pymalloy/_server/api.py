@@ -13,12 +13,12 @@ from pymalloy.analysis import CheckReport, SourcePosition
 from pymalloy.result import Result
 
 from .runtime import Model, Query, _Runtime
+from .validation import validate
 
-__all__ = ["Model", "Query", "check", "model", "run"]
+__all__ = ["Model", "Query", "check", "model", "run", "validate"]
 
 
-class _ModelOptions(TypedDict, total=False):
-    url: str | None
+class _RuntimeOptions(TypedDict, total=False):
     data_root: str | Path | None
     database: str | Path | None
     connection: duckdb.DuckDBPyConnection | None
@@ -26,6 +26,10 @@ class _ModelOptions(TypedDict, total=False):
     read_only: bool
     timeout: float
     compiler_memory_mb: int
+
+
+class _ModelOptions(_RuntimeOptions, total=False):
+    url: str | None
 
 
 def model(
@@ -78,9 +82,11 @@ def run(
 
 
 def check(
-    source: str,
+    source: str | Path | ModelSource,
     *,
     path: str | Path | None = None,
+    url: str | None = None,
+    tables: Mapping[str, Any] | None = None,
     syntax_only: bool = False,
     position: SourcePosition | None = None,
     data_root: str | Path | None = None,
@@ -88,6 +94,7 @@ def check(
     connection: duckdb.DuckDBPyConnection | None = None,
     read_only: bool = False,
     timeout: float = 120,
+    compiler_memory_mb: int = 256,
 ) -> CheckReport:
     """Check a draft and return diagnostics, schemas, and source metadata."""
     deadline = time.monotonic() + timeout
@@ -98,12 +105,15 @@ def check(
             connection=connection,
             read_only=read_only,
             timeout=timeout,
+            compiler_memory_mb=compiler_memory_mb,
             deadline=deadline,
         )
     ) as runtime:
         return runtime.check(
             source,
             path=path,
+            url=url,
+            tables=tables,
             syntax_only=syntax_only,
             position=position,
             deadline=deadline,

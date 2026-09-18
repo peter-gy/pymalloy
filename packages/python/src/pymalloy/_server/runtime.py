@@ -23,7 +23,7 @@ from pymalloy._records import (
     SourceReady,
 )
 from pymalloy._selection import query_names
-from pymalloy._source import ModelSource
+from pymalloy._source import ModelSource, resolve_source
 from pymalloy.analysis import (
     CheckReport,
     Inspection,
@@ -166,16 +166,7 @@ class _Runtime:
         tables: Mapping[str, Any] | None = None,
     ) -> Model:
         """Compile text, a Path, or a closed ModelSource snapshot."""
-        captured = source if isinstance(source, ModelSource) else None
-        if isinstance(source, Path):
-            identity = source.resolve().as_uri()
-            text = source.read_text(encoding="utf-8")
-        elif captured is not None:
-            identity, text = captured.url, captured.text
-        elif isinstance(source, str):
-            identity, text = url or (self._root / "inline.malloy").as_uri(), source
-        else:
-            raise TypeError("source must be Malloy text, a Path, or ModelSource")
+        identity, text, imports = resolve_source(source, url=url, root=self._root)
         with self.operation(deadline=deadline):
             for name, data in (tables or {}).items():
                 self.connection.register(name, data)
@@ -183,19 +174,21 @@ class _Runtime:
                 {"op": "begin", "url": identity, "source": text},
                 ModelReady,
                 deadline=deadline,
-                imports=captured.imports if captured else None,
+                imports=imports,
             )
             return Model(
                 self,
                 tuple(result.queries),
-                captured.imports if captured else None,
+                imports,
             )
 
     def check(
         self,
-        source: str,
+        source: str | Path | ModelSource,
         *,
         path: str | Path | None = None,
+        url: str | None = None,
+        tables: Mapping[str, Any] | None = None,
         syntax_only: bool = False,
         position: SourcePosition | None = None,
         deadline: float,
@@ -204,13 +197,17 @@ class _Runtime:
             raise TypeError("syntax_only must be a boolean")
         if position is not None and not isinstance(position, SourcePosition):
             raise TypeError("position must be a SourcePosition")
-        identity = (
-            Path(path).resolve() if path is not None else self._root / "inline.malloy"
+        if path is not None and url is not None:
+            raise ValueError("Choose path or url")
+        identity, text, imports = resolve_source(
+            source,
+            url=Path(path).resolve().as_uri() if path is not None else url,
+            root=self._root,
         )
         request: dict[str, Any] = {
             "op": "check",
-            "source": source,
-            "url": identity.as_uri(),
+            "source": text,
+            "url": identity,
             "syntaxOnly": syntax_only,
         }
         if position is not None:
@@ -219,7 +216,11 @@ class _Runtime:
                 "character": position.character,
             }
         with self.operation(deadline=deadline):
-            return self.request(request, CheckReady, deadline=deadline).report
+            for name, data in (tables or {}).items():
+                self.connection.register(name, data)
+            return self.request(
+                request, CheckReady, deadline=deadline, imports=imports
+            ).report
 
     def close(self) -> None:
         with self._lock:
@@ -388,3 +389,20 @@ class Query:
             if time.monotonic() >= deadline:
                 raise TimeoutError("Query execution exceeded its deadline")
             return runtime._engine.run(sql)
+
+    def preview(
+        self,
+        *,
+        limit: int = 20,
+        givens: Mapping[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> Result:
+        """Execute a SELECT with an outer row limit. COPY is rejected before execution."""
+        if type(limit) is not int or not 1 <= limit <= 10000:
+            raise ValueError("Preview limit must be an integer from 1 to 10000")
+        runtime = self._model._owner
+        with runtime.operation(timeout) as deadline:
+            sql = self._sql(givens, deadline)
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Query preview exceeded its deadline")
+            return runtime._engine.preview(sql, limit)
