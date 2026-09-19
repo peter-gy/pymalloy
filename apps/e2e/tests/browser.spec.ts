@@ -26,6 +26,11 @@ test("retained models own competing file mappings and preserve exact result valu
     });
     try {
       const source = "run: duckdb.table('data.csv') -> { select: value }";
+      const checkOptions = { syntaxOnly: true, position: { line: 0, character: 0 } };
+      const checking = session.check("source: missing is duckdb.table('absent.csv')", checkOptions);
+      checkOptions.syntaxOnly = false;
+      checkOptions.position.character = 100;
+      const checked = (await checking).ok;
       const first = await session.model({
         text: source,
         files: { "data.csv": new TextEncoder().encode("value\n42\n") },
@@ -92,6 +97,7 @@ test("retained models own competing file mappings and preserve exact result valu
       return JSON.parse(
         JSON.stringify(
           {
+            checked,
             values,
             remaining,
             remoteValues,
@@ -108,6 +114,7 @@ test("retained models own competing file mappings and preserve exact result valu
       await session.close();
     }
   });
+  expect(output.checked).toBe(true);
   expect(output.values.map(String)).toEqual(["42", "42", "99", "42"]);
   expect(output.remoteValues.map(String)).toEqual(["1", "1", "2"]);
   expect(output.submitted.map((result: { rows: [] }) => result.rows)).toEqual([[], []]);
@@ -132,6 +139,53 @@ test("retained models own competing file mappings and preserve exact result valu
   expect(requested).toContain("/duckdb/duckdb-mvp.wasm");
   expect(requested).toContain("/duckdb/duckdb-browser-mvp.worker.js");
 });
+test("rejects mutating SQL before execution or schema discovery", async ({ page }) => {
+  await page.goto("/runtime.html");
+  const output = await page.evaluate(async () => {
+    const entry = "/runtime.mjs";
+    const { Session } = await import(entry);
+    const session = await Session.open({
+      bundles: {
+        mvp: {
+          mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
+          mainWorker: new URL("/duckdb/duckdb-browser-mvp.worker.js", location.href).href,
+        },
+      },
+    });
+    try {
+      const rejected = [];
+      for (const sql of [
+        "CREATE TABLE touched AS SELECT 2 AS value",
+        "SELECT 1 AS value; CREATE TABLE touched AS SELECT 2 AS value",
+      ]) {
+        const model = await session.model({
+          text: `>>>sql connection:duckdb\n${sql}`,
+          documentKind: "notebook",
+        });
+        rejected.push(
+          await model
+            .query()
+            .run()
+            .then(
+              () => false,
+              () => true,
+            ),
+        );
+      }
+      const report = await session.check(
+        'source: numbers is duckdb.sql("SELECT 1 AS value; CREATE TABLE touched AS SELECT 2 AS value")',
+      );
+      const result = await session.run(
+        `run: duckdb.sql("SELECT count(*)::INTEGER AS total FROM duckdb_tables() WHERE table_name = 'touched'") -> { select: total }`,
+      );
+      return { rejected, checked: report.ok, rows: result.rows };
+    } finally {
+      await session.close();
+    }
+  });
+  expect(output).toEqual({ rejected: [true, true], checked: false, rows: [{ total: 0 }] });
+});
+
 test("captured documents retain imports, source identity, and literal data paths", async ({
   page,
 }) => {
@@ -310,7 +364,8 @@ test("session abort settles running and queued browser work and releases models"
     // Abort after DuckDB receives the query, exercising termination during execution.
     Worker.prototype.postMessage = function (message, transfer) {
       post.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
-      if (message.type === "START_PENDING_QUERY") started();
+      if (message.type === "START_PENDING_QUERY" && !message.data[1].startsWith("DESCRIBE"))
+        started();
     };
     const query = model.query();
     const running = query.run();
@@ -417,7 +472,8 @@ test("cancelling one browser query preserves its model and queued work", async (
       });
       Worker.prototype.postMessage = function (message, transfer) {
         post.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
-        if (message.type === "START_PENDING_QUERY") started();
+        if (message.type === "START_PENDING_QUERY" && !message.data[1].startsWith("DESCRIBE"))
+          started();
       };
       try {
         const running = model.query("slow").run({ signal: controller.signal });

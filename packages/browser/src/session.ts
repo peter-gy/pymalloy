@@ -177,21 +177,21 @@ export class Session {
         compile: (job) => drive(job, this.host(files, root, captured)),
         run: async (sql, template) => {
           const host = this.host(files, root, captured);
+          const cached = schemas.get(sql);
+          let columns = cached?.columns ?? (await host.describe(`DESCRIBE ${sql}`));
           const table = await this.query(sql);
           const data = materialize(table);
           const signature = JSON.stringify(table.schema, (_key, value) =>
             value instanceof Map ? [...value] : value,
           );
-          const cached = schemas.get(sql);
           const reusable =
             table.schema.dictionaries.size === 0 && sql.length + signature.length <= 65_536;
-          let columns = reusable && cached?.signature === signature ? cached.columns : undefined;
-          if (!columns) {
+          if (cached && (!reusable || cached.signature !== signature)) {
             columns = await host.describe(`DESCRIBE ${sql}`);
-            if (reusable) {
-              if (schemas.size === 32) schemas.delete(schemas.keys().next().value!);
-              schemas.set(sql, { signature, columns });
-            }
+          }
+          if (reusable && cached?.signature !== signature) {
+            if (schemas.size === 32) schemas.delete(schemas.keys().next().value!);
+            schemas.set(sql, { signature, columns });
           }
           return {
             sql,
@@ -233,22 +233,27 @@ export class Session {
       position?: SourcePosition;
     } & OperationOptions = {},
   ) {
-    const files = snapshot(options.files);
-    const root = new URL(options.url ?? modelURL);
-    return this.enqueue(async () => {
-      await this.activate(files);
-      return drive(
-        checkSource({
-          url: root,
-          source: text,
-          connection: { ...compilerConnection, name: this.connectionName },
-          syntaxOnly: options.syntaxOnly,
-          documentKind: options.documentKind ?? documentKind(root),
-          position: options.position,
-        }),
-        this.host(files, root),
-      );
-    }, options);
+    const { signal, files: inputFiles, ...input } = options;
+    const files = snapshot(inputFiles);
+    const captured = structuredClone(input);
+    const root = new URL(captured.url ?? modelURL);
+    return this.enqueue(
+      async () => {
+        await this.activate(files);
+        return drive(
+          checkSource({
+            url: root,
+            source: text,
+            connection: { ...compilerConnection, name: this.connectionName },
+            syntaxOnly: captured.syntaxOnly,
+            documentKind: captured.documentKind ?? documentKind(root),
+            position: captured.position,
+          }),
+          this.host(files, root),
+        );
+      },
+      { signal },
+    );
   }
   format(text: string) {
     const result = formatSource(text);
@@ -314,6 +319,9 @@ export class Session {
     return {
       signal,
       describe: async (sql) => {
+        signal.throwIfAborted();
+        const statement = await this.connection.prepare(sql);
+        await statement.close();
         const result = await this.query(sql);
         return result
           .toArray()
