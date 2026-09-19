@@ -22,10 +22,10 @@ MalloyWidget
 
 Notes
 -----
-Syntax construction uses the lightweight base package. Native execution and
-compiler tooling require ``pymalloy[server]``. Widgets need ``pymalloy[widget]``
-and run without Deno. ``pymalloy[dataframes]`` adds Polars and Arrow, while
-``pymalloy[agent]`` supplies installed agent guidance. Combine extras as needed.
+The base package includes symbolic authoring, browser widgets, and agent guidance.
+Native execution and compiler tooling require ``pymalloy[headless]``. Widgets
+run without Deno. Install PyArrow directly for Python dataframe capture and
+Polars directly for ``Result.polars()``. The headless extra already includes PyArrow.
 
 Examples
 --------
@@ -90,8 +90,8 @@ from pymalloy.expressions import (
 from pymalloy.result import Result
 
 if TYPE_CHECKING:
-    from pymalloy._server.api import Model, Query, check, model, run
-    from pymalloy._server.tooling import format, parse
+    from pymalloy._headless.api import Model, Query, check, model, run
+    from pymalloy._headless.tooling import format, parse
     from pymalloy.widget import MalloyWidget
 
 __all__ = [
@@ -155,19 +155,15 @@ def __dir__() -> list[str]:
 
 def __getattr__(name: str):
     if name == "MalloyWidget":
-        try:
-            from pymalloy.widget import MalloyWidget
-        except ModuleNotFoundError as error:
-            if error.name in {"anywidget", "traitlets", "ipywidgets"}:
-                raise ImportError("Browser widgets require pymalloy[widget]") from error
-            raise
+        from pymalloy.widget import MalloyWidget
+
         return MalloyWidget
     if name in {"model", "run", "check", "Model", "Query"}:
-        from pymalloy._server import load_api
+        from pymalloy._headless import load_api
 
         return getattr(load_api(), name)
     if name in {"format", "parse"}:
-        from pymalloy._server import tooling
+        from pymalloy._headless import tooling
 
         return getattr(tooling, name)
     raise AttributeError(name)

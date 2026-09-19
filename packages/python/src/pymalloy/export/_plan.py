@@ -54,7 +54,7 @@ def _precompiled(query: QueryCell, name: str, after: str | None) -> Code | SQL:
     )
 
 
-def _server(query: QueryCell, name: str, after: str | None) -> Code:
+def _headless(query: QueryCell, name: str, after: str | None) -> Code:
     if query.kind == "copy":
         source = f"_ = model.connection.execute({query.sql!r})\n{name} = pl.DataFrame()"
     else:
@@ -83,8 +83,11 @@ def plan(
             )
             setup = [connection_setup(document, output_path, base)]
             queries = _precompiled
-        case Profile.SERVER:
-            requirements = (f"pymalloy[server,dataframes]=={version('pymalloy')}",)
+        case Profile.HEADLESS:
+            requirements = (
+                f"pymalloy[headless]=={version('pymalloy')}",
+                "polars>=1.44",
+            )
             runtime_imports = "from pathlib import Path\nimport pymalloy as pm\nfrom pymalloy import ModelSource\nimport polars as pl"
             description = (
                 "## Malloy model\n\n"
@@ -100,9 +103,9 @@ def plan(
                 givens_setup(document),
                 model_setup(document),
             ]
-            queries = _server
+            queries = _headless
         case Profile.WIDGET:
-            requirements = (f"pymalloy[widget]=={version('pymalloy')}",)
+            requirements = (f"pymalloy=={version('pymalloy')}",)
             runtime_imports = "from pymalloy import MalloyWidget, ModelSource"
             description = (
                 "## Interactive Malloy model\n\n"
@@ -165,7 +168,7 @@ def plan(
             cells.append(Markdown("## " + query_title(cell.name)))
         name = next(names)
         query = queries(cell, name, writer)
-        if document.files and document.profile == Profile.SERVER:
+        if document.files and document.profile == Profile.HEADLESS:
             assert isinstance(query, Code)
             query = Code("check_files()\n" + query.source, query.after)
         cells.append(query)

@@ -32,7 +32,7 @@ class Markdown:
 
 class Profile(StrEnum):
     PRECOMPILED = "precompiled"
-    SERVER = "server"
+    HEADLESS = "headless"
     WIDGET = "widget"
 
 
@@ -84,7 +84,7 @@ class Document:
         object.__setattr__(self, "profile", Profile(self.profile))
         if self.profile == Profile.WIDGET and self.extensions:
             raise ValueError(
-                "Native extensions apply only to precompiled or server notebooks"
+                "Native extensions apply only to precompiled or headless notebooks"
             )
         object.__setattr__(
             self, "givens", freeze(given_values(encode_givens(self.givens)))
@@ -100,7 +100,7 @@ class Document:
             )
         if (self.profile == Profile.PRECOMPILED) != (self.source is None):
             raise ValueError(
-                "Server and widget documents require captured model source"
+                "Headless and widget documents require captured model source"
             )
 
     @property

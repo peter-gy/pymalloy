@@ -27,8 +27,13 @@ members = [
 [manifest.dependency-groups]
 dev = [
     { name = "datamodel-code-generator", specifier = ">=0.82.0" },
+    { name = "ipykernel", specifier = ">=7.3" },
     { name = "jupyterlab", specifier = ">=4.6.2" },
-    { name = "pymalloy", extras = ["widget", "server", "agent", "dataframes", "marimo", "jupyter"], editable = "packages/python" },
+    { name = "marimo", specifier = ">=0.24" },
+    { name = "nbclient", specifier = ">=0.11" },
+    { name = "nbformat", specifier = ">=5.11" },
+    { name = "polars", specifier = ">=1.44" },
+    { name = "pymalloy", extras = ["headless"], editable = "packages/python" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.16.6" },
     { name = "ty", specifier = ">=0.0.80" },
@@ -1915,54 +1920,32 @@ name = "pymalloy"
 version = "0.1.0"
 source = { editable = "packages/python" }
 dependencies = [
+    { name = "agent-plugins" },
+    { name = "anywidget" },
     { name = "msgspec" },
+    { name = "traitlets" },
 ]
 
 [package.optional-dependencies]
-agent = [
-    { name = "agent-plugins" },
-]
-dataframes = [
-    { name = "polars" },
-    { name = "pyarrow" },
-]
-jupyter = [
-    { name = "ipykernel" },
-    { name = "nbclient" },
-    { name = "nbformat" },
-]
-marimo = [
-    { name = "marimo" },
-]
-server = [
+headless = [
     { name = "deno" },
     { name = "duckdb" },
     { name = "pyarrow" },
     { name = "tzdata" },
 ]
-widget = [
-    { name = "anywidget" },
-    { name = "traitlets" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-plugins", marker = "extra == 'agent'", specifier = ">=0.2" },
-    { name = "anywidget", marker = "extra == 'widget'", specifier = ">=0.11" },
-    { name = "deno", marker = "extra == 'server'", specifier = ">=2.9.6,<3" },
-    { name = "duckdb", marker = "extra == 'server'", specifier = ">=1.5" },
-    { name = "ipykernel", marker = "extra == 'jupyter'", specifier = ">=7.3" },
-    { name = "marimo", marker = "extra == 'marimo'", specifier = ">=0.24" },
+    { name = "agent-plugins", specifier = ">=0.2" },
+    { name = "anywidget", specifier = ">=0.11" },
+    { name = "deno", marker = "extra == 'headless'", specifier = ">=2.9.6,<3" },
+    { name = "duckdb", marker = "extra == 'headless'", specifier = ">=1.5" },
     { name = "msgspec", specifier = ">=0.19" },
-    { name = "nbclient", marker = "extra == 'jupyter'", specifier = ">=0.11" },
-    { name = "nbformat", marker = "extra == 'jupyter'", specifier = ">=5.11" },
-    { name = "polars", marker = "extra == 'dataframes'", specifier = ">=1.44" },
-    { name = "pyarrow", marker = "extra == 'dataframes'", specifier = ">=25.0" },
-    { name = "pyarrow", marker = "extra == 'server'", specifier = ">=25.0" },
-    { name = "traitlets", marker = "extra == 'widget'", specifier = ">=5" },
-    { name = "tzdata", marker = "extra == 'server'", specifier = ">=2026.3" },
+    { name = "pyarrow", marker = "extra == 'headless'", specifier = ">=25.0" },
+    { name = "traitlets", specifier = ">=5" },
+    { name = "tzdata", marker = "extra == 'headless'", specifier = ">=2026.3" },
 ]
-provides-extras = ["widget", "server", "agent", "dataframes", "marimo", "jupyter"]
+provides-extras = ["headless"]
 
 [[package]]
 name = "pymdown-extensions"

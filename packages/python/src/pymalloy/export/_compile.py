@@ -10,7 +10,7 @@ from urllib.parse import unquote, urlsplit
 import duckdb
 
 import pymalloy as pm
-from pymalloy._server.tooling import compiler_lease
+from pymalloy._headless.tooling import compiler_lease
 from pymalloy.analysis import MarkdownCell
 from pymalloy.analysis import QueryCell as CompiledQueryCell
 from pymalloy.export._document import Document, Markdown, Profile, QueryCell
@@ -61,7 +61,7 @@ def compile_document(
         raise ValueError("extensions must contain nonempty extension names")
     if profile == Profile.WIDGET and extensions:
         raise ValueError(
-            "Native extensions apply only to precompiled or server notebooks"
+            "Native extensions apply only to precompiled or headless notebooks"
         )
     remote = set(remote_files)
     registered = dict(files)

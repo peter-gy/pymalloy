@@ -185,7 +185,7 @@ def snapshot_data(value: Any, *, name: str | None = None) -> DataInput:
         import pyarrow as pa
     except ModuleNotFoundError as error:
         raise ImportError(
-            "Dataframe inputs require pyarrow or pymalloy[dataframes]"
+            "Dataframe capture requires PyArrow. Install it with pip install pyarrow."
         ) from error
     if type(value).__name__ == "LazyFrame" and type(value).__module__.startswith(
         "polars"

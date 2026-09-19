@@ -112,7 +112,7 @@ class Result:
 
         Notes
         -----
-        Requires Polars, available through pymalloy[dataframes]. The server extra
+        Requires Polars, installed directly with ``pip install polars``. The headless extra
         alone supports rows and arrow but does not install Polars.
 
         Examples

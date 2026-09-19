@@ -73,9 +73,9 @@ def main() -> None:
     )
     export.add_argument(
         "--profile",
-        choices=("precompiled", "server", "widget"),
+        choices=("precompiled", "headless", "widget"),
         default="precompiled",
-        help="precompiled SQL, server model, or interactive browser widget (default: precompiled)",
+        help="precompiled SQL, headless Python model, or interactive browser widget (default: precompiled)",
     )
     export.add_argument(
         "-o",
@@ -176,7 +176,7 @@ def _tool(args: argparse.Namespace) -> None:
         from pymalloy import CompilationError, PyMalloyError, check, format
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install language tools with pip install 'pymalloy[server]'",
+            f"pymalloy: {error}. Install language tools with pip install 'pymalloy[headless]'",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
@@ -266,7 +266,7 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
         from pymalloy.export import jupyter, marimo, prepare
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[server]'",
+            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[headless]'",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
@@ -291,7 +291,7 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
         args.output.write_text(source, encoding="utf-8")
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[server]'",
+            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[headless]'",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
@@ -341,7 +341,7 @@ def _run(args: argparse.Namespace) -> None:
             )
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install execution with pip install 'pymalloy[server]'",
+            f"pymalloy: {error}. Install execution with pip install 'pymalloy[headless]'",
             file=sys.stderr,
         )
         raise SystemExit(1) from None

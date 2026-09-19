@@ -29,8 +29,8 @@ from pymalloy._model.source import (
 from pymalloy.validation import DocumentationPolicy
 
 if TYPE_CHECKING:
-    from pymalloy._server.api import _RuntimeOptions
-    from pymalloy._server.runtime import Model
+    from pymalloy._headless.api import _RuntimeOptions
+    from pymalloy._headless.runtime import Model
     from pymalloy.analysis import CheckReport
     from pymalloy.validation import Validation
 
@@ -286,7 +286,7 @@ class Draft:
     def format(self) -> Draft:
         """Return a draft formatted by Malloy's formatter.
 
-        Requires the server compiler. Reparse the formatted source into editable
+        Requires the headless compiler. Reparse the formatted source into editable
         syntax while retaining identity, captured imports, and managed data owners.
 
         Returns
@@ -304,7 +304,7 @@ class Draft:
         >>> formatted.format().text == formatted.text
         True
         """
-        from pymalloy._server.tooling import parse_syntax
+        from pymalloy._headless.tooling import parse_syntax
 
         formatted = from_wire(
             parse_syntax(self.text, url=self.url, format=True),
@@ -357,7 +357,7 @@ class Draft:
         >>> candidate.check().ok
         True
         """
-        from pymalloy._server import load_api
+        from pymalloy._headless import load_api
         from pymalloy.validation import _checked
 
         return _checked(load_api().check(self, url=self.url, **options), documentation)
@@ -369,7 +369,7 @@ class Draft:
         ----------
         **options
             Runtime options accepted by model. The draft supplies its own identity,
-            imports and captured inputs. Requires pymalloy[server].
+            imports and captured inputs. Requires pymalloy[headless].
 
         Returns
         -------
@@ -387,7 +387,7 @@ class Draft:
         [{'n': 42}]
         >>> model.close()
         """
-        from pymalloy._server import load_api
+        from pymalloy._headless import load_api
 
         return load_api().model(self, url=self.url, **options)
 
@@ -433,7 +433,7 @@ class Draft:
         >>> accepted.ok, accepted.checks[0].status
         (True, 'passed')
         """
-        from pymalloy._server import load_api
+        from pymalloy._headless import load_api
 
         return load_api().validate(
             self, checks or {}, givens=givens, documentation=documentation, **options
@@ -585,7 +585,7 @@ def read_model(source: str | Path | ModelSource, *, url: str | None = None) -> D
 
     Notes
     -----
-    Requires ``pymalloy[server]`` for the native Malloy parser. A file-backed
+    Requires ``pymalloy[headless]`` for the native Malloy parser. A file-backed
     unchanged draft saves byte-equivalent UTF-8 source and detects previously
     observed external edits. Parsing does not prove semantic validity.
 
@@ -602,7 +602,7 @@ def read_model(source: str | Path | ModelSource, *, url: str | None = None) -> D
     >>> revised["orders"]["revenue"].equals(pm.col("amount").sum() * 2)
     True
     """
-    from pymalloy._server.tooling import parse_syntax
+    from pymalloy._headless.tooling import parse_syntax
 
     identity, text, imports = resolve_source(source, url=url, root=Path.cwd())
     kind = (

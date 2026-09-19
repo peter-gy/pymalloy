@@ -109,7 +109,7 @@ def connection_setup(document: Document, output_path: str | Path, base: str) -> 
 def model_source_setup(document: Document) -> str:
     source = document.source
     if source is None:
-        raise ValueError("The server and widget profiles require model source")
+        raise ValueError("The headless and widget profiles require model source")
     lines = [
         "model_source = ModelSource(",
         f"    url={source.url!r},",

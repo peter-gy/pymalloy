@@ -117,8 +117,8 @@ def data(
 
     Notes
     -----
-    Requires PyArrow, available in ``pymalloy[server]`` or
-    ``pymalloy[dataframes]``. Verified Parquet is materialized on demand and
+    Requires PyArrow, installed directly with ``pip install pyarrow`` or supplied
+    by ``pymalloy[headless]``. Verified Parquet is materialized on demand and
     retained by the draft/model that uses it. A widget sends those bytes to the
     browser. Use ``pymalloy.export.bundle`` to persist a portable model and
     its inputs. Keep preparation logic in the producing notebook or script.

@@ -9,9 +9,9 @@ class CustomBuildHook(BuildHookInterface):
         required = (
             "widget.js",
             "widget.css",
-            "server.mjs",
+            "headless.mjs",
             "widget.LICENSE.txt",
-            "server.LICENSE.txt",
+            "headless.LICENSE.txt",
             "agent/plugin.json",
             "agent/skills/pymalloy/SKILL.md",
         )

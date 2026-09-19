@@ -61,7 +61,7 @@ def bundle(
     SQL text and database identifiers without explicit bindings remain unchanged.
     The manifest records parameters, source identities and copied input hashes.
     """
-    from pymalloy._server.compiler import Compiler
+    from pymalloy._headless.compiler import Compiler
 
     accepted = source if isinstance(source, Validation) else None
     if connection_name is not None and (

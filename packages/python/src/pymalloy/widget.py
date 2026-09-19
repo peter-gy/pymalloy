@@ -69,7 +69,7 @@ class MalloyWidget(anywidget.AnyWidget):
     r"""Run Malloy in a browser widget and observe results from Python.
 
     Display in a notebook supporting anywidget, such as marimo or Jupyter.
-    Requires ``pymalloy[widget]``. Malloy and DuckDB WebAssembly run in the browser,
+    Requires ``pymalloy``. Malloy and DuckDB WebAssembly run in the browser,
     so the widget itself requires neither Deno nor native Python DuckDB.
 
     Parameters

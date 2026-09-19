@@ -14,7 +14,7 @@ def render(document: Document, *, output_path: str | Path) -> str:
 
     Execute the kernel from the exported notebook's directory. Query cells
     display widgets or materialize Polars dataframes according to the profile.
-    Server and precompiled COPY cells write their destinations.
+    Headless and precompiled COPY cells write their destinations.
     """
     notebook = plan(
         document, output_path, base="Path.cwd()", imports="from pathlib import Path"

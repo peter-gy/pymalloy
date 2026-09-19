@@ -5,7 +5,7 @@ description = "Author, check, run, and share Malloy models from Python"
 readme = "README.md"
 authors = [{ name = "Péter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
 requires-python = ">=3.12"
-dependencies = ["msgspec>=0.19"]
+dependencies = ["agent-plugins>=0.2", "anywidget>=0.11", "msgspec>=0.19", "traitlets>=5"]
 
 [project.urls]
 Homepage = "https://github.com/peter-gy/pymalloy"
@@ -14,13 +14,8 @@ Source = "https://github.com/peter-gy/pymalloy"
 Issues = "https://github.com/peter-gy/pymalloy/issues"
 
 [project.optional-dependencies]
-widget = ["anywidget>=0.11", "traitlets>=5"]
 # Arrow timestamp rows use stdlib zoneinfo; tzdata also covers systems without an IANA database.
-server = ["deno>=2.9.6,<3", "duckdb>=1.5", "pyarrow>=25.0", "tzdata>=2026.3"]
-agent = ["agent-plugins>=0.2"]
-dataframes = ["polars>=1.44", "pyarrow>=25.0"]
-marimo = ["marimo>=0.24"]
-jupyter = ["nbformat>=5.11", "nbclient>=0.11", "ipykernel>=7.3"]
+headless = ["deno>=2.9.6,<3", "duckdb>=1.5", "pyarrow>=25.0", "tzdata>=2026.3"]
 
 [project.scripts]
 pymalloy = "pymalloy.cli:main"
