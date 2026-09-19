@@ -5,7 +5,13 @@ description = "Author, check, run, and share Malloy models from Python"
 readme = "README.md"
 authors = [{ name = "Péter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
 requires-python = ">=3.12"
-dependencies = ["agent-plugins>=0.2", "anywidget>=0.11", "msgspec>=0.19", "traitlets>=5"]
+dependencies = [
+  "agent-plugins>=0.2",
+  "anywidget>=0.11",
+  "anywidget-bundle>=0.1.1",
+  "msgspec>=0.19",
+  "traitlets>=5",
+]
 
 [project.urls]
 Homepage = "https://github.com/peter-gy/pymalloy"

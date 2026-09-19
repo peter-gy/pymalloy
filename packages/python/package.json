@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "pnpm --filter @pymalloy/scripts stage:python"
   },
   "devDependencies": {
     "@pymalloy/headless": "workspace:*",
+    "@pymalloy/scripts": "workspace:*",
     "@pymalloy/widget": "workspace:*"
   }
 }

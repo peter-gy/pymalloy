@@ -102,6 +102,18 @@ wheels = [
 ]
 
 [[package]]
+name = "anywidget-bundle"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anywidget" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1a/f5/91dc12039712a63a7937e9fcf79c200776781a42d1718dbcadb40f78e7eb/anywidget_bundle-0.1.1.tar.gz", hash = "sha256:186dbdf694da0429cc989cd51408fe43e896f73ef6f9665a183caf1924380df6", size = 7164, upload-time = "2026-09-15T16:27:26.781Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/97/b061e70494f85a2f92becf3e820d4087c22cf8a77b5cad6626bf56292c97/anywidget_bundle-0.1.1-py3-none-any.whl", hash = "sha256:f2e46d31cc2c69e9d6abb9efe6bbd4884c901280bb0b1e75cdcb79f8941ca237", size = 8642, upload-time = "2026-09-15T16:27:25.675Z" },
+]
+
+[[package]]
 name = "appnope"
 version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2203,6 +2215,7 @@ source = { editable = "packages/python" }
 dependencies = [
     { name = "agent-plugins" },
     { name = "anywidget" },
+    { name = "anywidget-bundle" },
     { name = "msgspec" },
     { name = "traitlets" },
 ]
@@ -2219,6 +2232,7 @@ headless = [
 requires-dist = [
     { name = "agent-plugins", specifier = ">=0.2" },
     { name = "anywidget", specifier = ">=0.11" },
+    { name = "anywidget-bundle", specifier = ">=0.1.1" },
     { name = "deno", marker = "extra == 'headless'", specifier = ">=2.9.6,<3" },
     { name = "duckdb", marker = "extra == 'headless'", specifier = ">=1.5" },
     { name = "msgspec", specifier = ">=0.19" },
