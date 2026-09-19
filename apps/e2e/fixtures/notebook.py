@@ -74,9 +74,10 @@ def _(pm):
     notebook_draft = (
         pm.draft()
         .define(
-            values=pm.sql("SELECT 42 AS answer").extend(
-                pm.measure(total=pm.col("answer").sum())
-            )
+            values=pm.sql("SELECT 42 AS answer")
+            .extend(pm.measure(total=pm.col("answer").sum()))
+            .doc("One row per answer.")
+            .annotate("bar_chart x=answer")
         )
         .queries(answer=pm.ref("values").pipe(pm.query(pm.select(pm.col("answer")))))
     )

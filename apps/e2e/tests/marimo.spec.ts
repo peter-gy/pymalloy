@@ -40,6 +40,15 @@ test("marimo cell outputs inspect grammar and preview a bound native query", asy
   await expect(draft.getByRole("status")).toHaveText("Checked");
   await draft.getByRole("button", { name: "Run", exact: true }).click();
   await expect(draft.getByRole("table")).toContainText("42");
+  await draft.getByRole("tab", { name: "SQL", exact: true }).click();
+  const compiledSQL = draft.getByLabel("Compiled SQL", { exact: true });
+  await expect(
+    compiledSQL
+      .locator("span")
+      .filter({ hasText: /^SELECT$/ })
+      .first(),
+  ).toBeVisible();
+  await draft.screenshot({ path: testInfo.outputPath("highlighted-sql.png") });
   const native = views.nth(3);
   await native.getByRole("button", { name: "Check", exact: true }).click();
   await expect(native.getByRole("status")).toHaveText("Checked");
@@ -97,7 +106,20 @@ test.describe("notebook presentation", () => {
     await draft.getByRole("tab", { name: "Context", exact: true }).press("Home");
     await expect(sourceTab).toBeFocused();
     await expect(sourceTab).toHaveAttribute("aria-selected", "true");
-    await expect(draft.getByLabel("Malloy source", { exact: true })).toBeVisible();
+    const source = draft.getByLabel("Malloy source", { exact: true });
+    await expect(source).toBeVisible();
+    const keyword = source
+      .locator("span")
+      .filter({ hasText: /^source$/ })
+      .first();
+    const embeddedSQL = source.locator("span").filter({ hasText: /^SELECT$/ });
+    await expect(keyword).toBeVisible();
+    await expect(embeddedSQL).toBeVisible();
+    await expect(source.locator("span").filter({ hasText: /^bar_chart$/ })).toBeVisible();
+    const lightKeyword = await keyword.evaluate((element) => getComputedStyle(element).color);
+    expect(await embeddedSQL.evaluate((element) => getComputedStyle(element).color)).toBe(
+      lightKeyword,
+    );
     await page.screenshot({ path: testInfo.outputPath("inspector-light.png"), fullPage: true });
     const lightBackground = await draft.evaluate(
       (element) => getComputedStyle(element).backgroundColor,
@@ -107,6 +129,9 @@ test.describe("notebook presentation", () => {
       document.documentElement.style.colorScheme = "dark";
       document.documentElement.dir = "rtl";
     });
+    await expect
+      .poll(() => keyword.evaluate((element) => getComputedStyle(element).color))
+      .not.toBe(lightKeyword);
     await page.setViewportSize({ width: 320, height: 844 });
     await draft.scrollIntoViewIfNeeded();
     expect(await draft.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
