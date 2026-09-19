@@ -2306,6 +2306,7 @@
     },
     "QueryDescriptor": {
       "additionalProperties": false,
+      "description": "A query available on a compiled model.\n\nname identifies the selection accepted by Model.query, including zero-based run:N and sql:N names for unnamed document queries.\n\nkind distinguishes an authored run, named query, source view or SQL document cell using the values \"run\", \"named\", \"view\" and \"sql\".\n\nlocation supplies an authored URL and range when available, otherwise null. Python positions use zero-based lines and Unicode code-point character offsets.",
       "properties": {
         "kind": {
           "enum": ["run", "named", "view", "sql"],

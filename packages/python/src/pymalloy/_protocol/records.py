@@ -190,6 +190,10 @@ type Relationship = Literal["one", "many", "cross"]
 
 
 class RoutedAnnotation(Record):
+    """
+    Native annotation routes and payloads alongside the untouched stable annotation.
+    """
+
     content: str
     route: str | None
     text: str
@@ -282,6 +286,10 @@ class TableSchemaNeed(Record, tag_field="kind", tag="table"):
 
 
 class TableSyntax(Record, tag_field="type", tag="table"):
+    """
+    A native table source, retaining its exact spelling and resolved reference.
+    """
+
     connection: str
     path: str
     source: str
@@ -471,6 +479,10 @@ class ParameterValue(Record):
 
 
 class ParsedImport(Record):
+    """
+    The compiler-selected string literal, including delimiters, in Unicode codepoints.
+    """
+
     location: SourceLocation
     reference: SourceSpan
     url: str
@@ -493,6 +505,16 @@ class QueryDefinitionWithQueryReference(
 
 
 class QueryDescriptor(Record):
+    """
+    A query available on a compiled model.
+
+    name identifies the selection accepted by Model.query, including zero-based run:N and sql:N names for unnamed document queries.
+
+    kind distinguishes an authored run, named query, source view or SQL document cell using the values "run", "named", "view" and "sql".
+
+    location supplies an authored URL and range when available, otherwise null. Python positions use zero-based lines and Unicode code-point character offsets.
+    """
+
     kind: Literal["run", "named", "view", "sql"]
     location: SourceLocation | None
     name: str
@@ -947,6 +969,10 @@ class ScalarNullTest(Record, tag_field="kind", tag="null_test"):
 
 
 class ScalarSyntax(Record, tag_field="type", tag="scalar"):
+    """
+    A scalar operation tree paired with its original authored spelling.
+    """
+
     scalar: Scalar
     source: str
 

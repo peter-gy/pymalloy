@@ -56,6 +56,7 @@ subprocess.run(
         "--enum-field-as-literal",
         "all",
         "--disable-timestamp",
+        "--use-schema-description",
         "--use-standard-collections",
         "--target-python-version",
         "3.12",

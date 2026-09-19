@@ -27,7 +27,20 @@ export interface Result {
   rows: Row[];
   malloy: MalloyResult;
 }
-/** @title QueryDescriptor */
+/**
+ * A query available on a compiled model.
+ *
+ * name identifies the selection accepted by Model.query, including zero-based
+ * run:N and sql:N names for unnamed document queries.
+ *
+ * kind distinguishes an authored run, named query, source view or SQL document
+ * cell using the values "run", "named", "view" and "sql".
+ *
+ * location supplies an authored URL and range when available, otherwise null.
+ * Python positions use zero-based lines and Unicode code-point character offsets.
+ *
+ * @title QueryDescriptor
+ */
 export interface QueryDescriptor {
   name: string;
   kind: "run" | "named" | "view" | "sql";
