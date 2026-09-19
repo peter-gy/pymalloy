@@ -1,0 +1,43 @@
+scripts/licenses/README.md
+  ai_agent 13-15
+development_docs/architecture.md
+  s_eb8331ad77ae5f::t_bf850b3ac9e688 183-188
+pnpm-workspace.yaml
+  s_eb8331ad77ae5f::t_ea8e0246a6ff01 37
+packages/widget/src/view.tsx
+  s_eb8331ad77ae5f::t_708d989b7a196e 250
+packages/widget/package.json
+  s_eb8331ad77ae5f::t_ea8e0246a6ff01 20,22,28-29
+apps/e2e/fixtures/notebook.py
+  ai_agent 77-80
+packages/widget/tests/highlight.test.ts
+  ai_agent 1-21
+pnpm-lock.yaml
+  ai_agent 33-35,39-41,93-95,349-351,355-357,376-378,674-676,681-684,3462-3463,3478
+scripts/bundle-notices.ts
+  ai_agent 15-18
+packages/widget/src/highlight.ts
+  s_eb8331ad77ae5f::t_708d989b7a196e 1-3,6,9,11-13,15-24,32
+  s_eb8331ad77ae5f::t_8a1ea3945fb0a2 25-27,29-31
+  s_eb8331ad77ae5f::t_aee4011d987a2a 7-8,10,14
+  s_eb8331ad77ae5f::t_cec42af2640a50 4-5,28
+packages/widget/src/parts.tsx
+  s_eb8331ad77ae5f::t_cec42af2640a50 30-32,34-35,39-63
+  s_eb8331ad77ae5f::t_708d989b7a196e 1-2,10,14,16-29,33,38,64,127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "7be499e6176332dc2a4d3b4982e6d9f071b4d6b3",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
