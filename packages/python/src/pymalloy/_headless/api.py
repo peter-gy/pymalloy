@@ -58,7 +58,7 @@ def model(
 
     Use a retained model when preparing several queries or varying parameters.
     Use run for one execution whose resources can be released immediately.
-    Requires ``pymalloy[server]``.
+    Requires ``pymalloy[headless]``.
 
     Parameters
     ----------

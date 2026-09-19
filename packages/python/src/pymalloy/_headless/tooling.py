@@ -118,7 +118,7 @@ def format(source: str) -> str:
     Parameters
     ----------
     source : str
-        Plain Malloy source text. Requires pymalloy[server] for the compiler,
+        Plain Malloy source text. Requires pymalloy[headless] for the compiler,
         but this operation opens no DuckDB connection.
 
     Returns
@@ -165,7 +165,7 @@ def parse(
 
     Notes
     -----
-    Requires the server compiler but opens no DuckDB connection. Coordinates
+    Requires the headless compiler but opens no DuckDB connection. Coordinates
     are zero-based Unicode code-point offsets rather than JavaScript UTF-16 units.
 
     Examples

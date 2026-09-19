@@ -21,7 +21,7 @@ from .process import Process
 
 
 class Compiler:
-    """Fulfil source and schema needs from the packaged compiler server."""
+    """Fulfil source and schema needs from the packaged compiler host."""
 
     def __init__(self, *, memory_mb: int = 256, timeout: float = 30) -> None:
         self._process = Process(memory_mb=memory_mb, timeout=timeout)

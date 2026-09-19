@@ -1,4 +1,4 @@
-"""Execute draft assertions using the optional server runtime."""
+"""Execute draft assertions using the optional headless runtime."""
 
 from __future__ import annotations
 

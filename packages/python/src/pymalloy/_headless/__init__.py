@@ -7,5 +7,5 @@ def load_api():
     except ModuleNotFoundError as error:
         if error.name != "duckdb":
             raise
-        raise ImportError("Server execution requires pymalloy[server]") from error
+        raise ImportError("Headless execution requires pymalloy[headless]") from error
     return api

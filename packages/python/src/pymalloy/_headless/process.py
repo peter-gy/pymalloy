@@ -48,7 +48,9 @@ class Process:
         try:
             deno = distribution("deno")
         except PackageNotFoundError as error:
-            raise ImportError("Server execution requires pymalloy[server]") from error
+            raise ImportError(
+                "Headless execution requires pymalloy[headless]"
+            ) from error
         executable = "deno" + (sysconfig.get_config_var("EXE") or "")
         binaries = [
             Path(str(deno.locate_file(file)))
@@ -57,13 +59,13 @@ class Process:
         ]
         if len(binaries) != 1:
             raise FileNotFoundError(
-                "Deno's installed distribution must contain one executable. Reinstall pymalloy[server]."
+                "Deno's installed distribution must contain one executable. Reinstall pymalloy[headless]."
             )
         if type(memory_mb) is not int or memory_mb <= 0:
             raise ValueError("compiler_memory_mb must be a positive integer")
-        script = Path(__file__).parents[1] / "_assets" / "server.mjs"
+        script = Path(__file__).parents[1] / "_assets" / "headless.mjs"
         if not script.is_file():
-            raise FileNotFoundError(f"Packaged compiler server is missing: {script}")
+            raise FileNotFoundError(f"Packaged compiler host is missing: {script}")
         self._process = subprocess.Popen(
             [
                 str(binaries[0]),
