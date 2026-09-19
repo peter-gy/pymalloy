@@ -1,6 +1,5 @@
-import { executeNative } from "./native";
 import type { InitializeProps } from "@anywidget/types";
-import type { Model, ModelSpec, SessionOptions, ToolingError } from "@malloy-runtime/browser";
+import type { Model, ModelSpec, SessionOptions } from "@malloy-runtime/browser";
 import {
   givens,
   type Definition,
@@ -23,7 +22,7 @@ interface WidgetSession {
 
 export function initialize(
   createSession: (options: SessionOptions) => Promise<WidgetSession>,
-  DiagnosticError: typeof ToolingError,
+  diagnosticsForError: (error: Error) => Diagnostic[],
 ) {
   return ({ model }: InitializeProps<WidgetModel>) => {
     let closed = false;
@@ -96,9 +95,19 @@ export function initialize(
         }
         publish({ ...empty, queries, inspection, diagnostics, status: "loading" });
         if (backend === "python" || backend === "result") {
+          const { executeNative } = await import("./native");
           const response = await executeNative(model, input, operation.signal);
           if (closed || generation !== current) return;
-          if ("inspection" in response) {
+          if ("message" in response) {
+            publish({
+              ...empty,
+              queries,
+              inspection,
+              diagnostics: response.diagnostics,
+              error: response.message,
+              status: "error",
+            });
+          } else if ("inspection" in response) {
             inspection = response.inspection;
             inspected = { revision: definition.revision, inspection };
             publish({
@@ -187,7 +196,8 @@ export function initialize(
           inspection,
         });
       } catch (error) {
-        if (error instanceof DiagnosticError) diagnostics = error.diagnostics;
+        const errors = error instanceof Error ? diagnosticsForError(error) : [];
+        if (errors.length) diagnostics = errors;
         publish({
           ...empty,
           status: "error",
