@@ -1,5 +1,9 @@
 # Python authoring API
 
+Individual constructors and expression methods include parameter explanations,
+examples, and related operations in their Python docstrings. IDE hovers and
+`help(pm.data)`, `help(pm.col)`, or `help(pm.Expr.filter)` show those contracts.
+
 ```python
 import pymalloy as pm
 

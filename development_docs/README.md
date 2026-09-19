@@ -84,6 +84,17 @@ exports, docs, examples, and lifecycle tests together.
 
 ## Work on documentation
 
+Public Python functions and methods carry their parameter descriptions and
+examples in their defining docstrings. Use NumPy-style Parameters, Returns,
+Raises, Notes, See Also, and Examples sections where relevant. Explain accepted
+input forms, execution or materialization, resource ownership, and the choice
+between related operations. Read-only properties can use a short contract.
+
+Examples use `import pymalloy as pm` and small self-contained inputs. Include
+observable output and close retained runtimes. `test_docstrings.py` runs these
+examples in the normal Python suite. Browser display itself needs the browser
+suite, while construction and state examples run as doctests.
+
 Public pages live in `docs/`, contributor pages in `development_docs/`, and
 VitePress configuration and theme in `apps/docs/.vitepress/`.
 
