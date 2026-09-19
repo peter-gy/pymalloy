@@ -54,7 +54,9 @@ test("marimo cell outputs inspect grammar and preview a bound native query", asy
   await previous.waitForElementState("hidden");
   await expect(views).toHaveCount(4);
   await expression.getByRole("tab", { name: "Context", exact: true }).click();
-  await expect(expression).toContainText("Booked amount in USD for South.");
+  await expect(expression.getByRole("region", { name: "Annotations", exact: true })).toHaveText(
+    "Booked amount in USD for South.",
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   await native.scrollIntoViewIfNeeded();
   await page.screenshot({
