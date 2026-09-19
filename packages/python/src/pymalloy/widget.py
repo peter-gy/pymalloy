@@ -11,8 +11,10 @@ import traitlets as t
 from msgspec import to_builtins
 
 from pymalloy._authoring.draft import Draft
+from pymalloy._authoring.syntax import Fragment
 from pymalloy._model import DEFAULT_CONNECTION
-from pymalloy._model.source import ModelSource
+from pymalloy._notebook import NotebookDisplay
+from pymalloy._notebook.subject import Subject, describe
 from pymalloy._protocol.givens import encode_givens
 from pymalloy._protocol.snapshot import freeze
 from pymalloy.browser import Runtime
@@ -34,6 +36,7 @@ def _empty_state(status: str = "idle") -> Mapping[str, Any]:
             "rows": [],
             "error": None,
             "diagnostics": [],
+            "inspection": None,
         }
     )
 
@@ -66,19 +69,22 @@ def _decode_state(wire: dict[str, Any]) -> dict[str, Any]:
 
 
 class MalloyWidget(anywidget.AnyWidget):
-    r"""Run Malloy in a browser widget and observe results from Python.
+    r"""Inspect PyMalloy values and run queries in a notebook widget.
 
     Display in a notebook supporting anywidget, such as marimo or Jupyter.
-    Requires ``pymalloy``. Malloy and DuckDB WebAssembly run in the browser,
-    so the widget itself requires neither Deno nor native Python DuckDB.
+    Browser execution uses ``pymalloy`` and DuckDB WebAssembly. A native Model
+    or Query supplies its own Python execution context from ``pymalloy[headless]``.
 
     Parameters
     ----------
-    source : str, ModelSource, or Draft
-        Model text, closed source snapshot, or symbolic draft. Captured Python
-        inputs on a draft are materialized and sent as Parquet bytes.
+    source : str, Expr, Sort, Fragment, Draft, ModelSource, Model, Query, or Result
+        Authored syntax, a complete model, a bound native query, or materialized
+        results. Syntax shows its Malloy text, references and annotations.
+        Complete drafts run in the browser. Native models and queries preview
+        at most 20 rows on their existing Python connection, with a 30-second
+        timeout. Results show up to 20 retained rows without executing SQL.
     files : mapping, optional
-        Virtual names mapped to UTF-8 text, bytes, or {"url": "https://..."}.
+        Browser virtual names mapped to UTF-8 text, bytes, or {"url": "https://..."}.
         Remote files require browser-accessible URLs with suitable CORS headers.
     query : str, optional
         Inventory name to select. None uses the last run or sole available
@@ -91,14 +97,21 @@ class MalloyWidget(anywidget.AnyWidget):
         Explicit WebAssembly/worker asset URLs for the widget's lifetime.
         Omitted uses the bundled runtime's defaults, downloaded on first use.
     connection_name : str, default "duckdb"
-        Malloy name for this widget's DuckDB connection. Fixed for its lifetime.
+        Malloy name for the browser's DuckDB connection. Fixed for its lifetime.
+        Native models and queries supply their own connection name.
+    auto_run : bool, default True
+        Execute when a browser attaches or inputs change. Set False to inspect
+        first and use the Check model and Run query buttons. Automatic notebook
+        representations of PyMalloy values always use False. Captured dataframe
+        inputs become Parquet at construction with True, or on the first Check
+        or Run request with False.
 
     Attributes
     ----------
     state : read-only mapping
-        status, queries, sql, columns, rows, result, error and diagnostics for
-        the current input revision. Nested mappings are read-only and sequences
-        are tuples. Read results after status becomes "ready".
+        status, queries, sql, columns, rows, result, inspection, error and
+        diagnostics for the current input revision. Nested mappings are read-only
+        and sequences are tuples. Read results after status becomes "ready".
 
     Notes
     -----
@@ -107,6 +120,11 @@ class MalloyWidget(anywidget.AnyWidget):
     for asynchronous readback. pymalloy.analysis.to_dict creates mutable copies.
     Construction alone does not execute anything until a browser view is attached.
     Call close when finished. New inputs supersede older in-flight results.
+    Native models and queries remain owned by the caller. Closing their widget
+    leaves the model and connection open. Isolated expressions and query clauses
+    expose authored structure until composed into a model that supplies context.
+    Native values reject browser-only files and runtime options. A bound Query
+    accepts its own query name or None. Supply a Model to select other queries.
 
     Examples
     --------
@@ -132,7 +150,10 @@ class MalloyWidget(anywidget.AnyWidget):
     _esm = Path(__file__).with_name("_assets") / "widget.js"
     _css = Path(__file__).with_name("_assets") / "widget.css"
 
-    source = t.Union([t.Unicode(), t.Instance(ModelSource), t.Instance(Draft)])
+    source = t.Union([t.Unicode(), t.Instance(NotebookDisplay)])
+    auto_run = t.Bool(default_value=True)
+    _request = t.Dict(default_value=None, allow_none=True).tag(sync=True)
+    _transient = t.Bool(default_value=False, read_only=True).tag(sync=True)
     query = t.Unicode(default_value=None, allow_none=True).tag(sync=True)
     connection_name = t.Unicode(default_value=DEFAULT_CONNECTION, read_only=True)
     givens = _ImmutableMapping(Mapping, default_value=freeze({}))
@@ -152,37 +173,60 @@ class MalloyWidget(anywidget.AnyWidget):
 
     def __init__(
         self,
-        source: str | ModelSource | Draft,
+        source: str | NotebookDisplay,
         *,
         files: Mapping[str, Any] | None = None,
         query: str | None = None,
         givens: Mapping[str, Any] | None = None,
         runtime: Runtime | None = None,
         connection_name: str = DEFAULT_CONNECTION,
+        auto_run: bool = True,
+        _transient: bool = False,
     ) -> None:
         self._initializing = True
         self._closed = False
+        self._views: set[str] = set()
+        self._prepared = False
+        self._dirty = True
         self._revision = 0
         self._definition_revision = 0
         self._accepted_wire: dict[str, Any] | None = None
         if not isinstance(connection_name, str) or not connection_name:
             raise t.TraitError("connection_name must be a nonempty string")
+        if not isinstance(source, (str, NotebookDisplay)):
+            raise t.TraitError(
+                "Source must be Malloy text or a PyMalloy notebook value"
+            )
         for name, value in (("files", files), ("givens", givens)):
             if value is not None and not isinstance(value, Mapping):
                 raise t.TraitError(f"{name} must be a mapping")
+        subject = (
+            describe(source) if isinstance(source, str) else source._notebook_subject()
+        )
         super().__init__(
             source=source,
+            auto_run=auto_run,
             files=dict(files) if files is not None else {},
             query=query,
             givens=dict(givens) if givens is not None else {},
         )
-        self.set_trait("connection_name", connection_name)
-        self.set_trait("runtime", runtime)
-        self.set_trait("_runtime", runtime._bundles() if runtime is not None else None)
-        self._initializing = False
-        self._publish_input(definition_changed=True)
+        try:
+            self.set_trait("_transient", _transient)
+            self.on_msg(self._view_message)
+            self.set_trait(
+                "connection_name", subject.connection_name or connection_name
+            )
+            self.set_trait("runtime", runtime)
+            self.set_trait(
+                "_runtime", runtime._bundles() if runtime is not None else None
+            )
+            self._initializing = False
+            self._publish_input(definition_changed=True, subject=subject)
+        except BaseException:
+            self.close()
+            raise
 
-    @t.validate("source", "query", "files", "givens")
+    @t.validate("source", "query", "files", "givens", "auto_run")
     def _validate_input(self, proposal: t.Bunch) -> Any:
         if self._closed:
             raise t.TraitError("The widget is closed. Create a new MalloyWidget")
@@ -190,7 +234,7 @@ class MalloyWidget(anywidget.AnyWidget):
         if name in {"source", "files"}:
             source = value if name == "source" else self.source
             files = value if name == "files" else self.files
-            if isinstance(source, Draft) and any(
+            if isinstance(source, (Draft, Fragment)) and any(
                 item.reference in files for item in source.inputs
             ):
                 raise t.TraitError("Files cannot replace captured dataframe inputs")
@@ -229,58 +273,151 @@ class MalloyWidget(anywidget.AnyWidget):
             return freeze(result)
         return value
 
-    @t.observe("source", "query", "files", "givens")
+    @t.observe("source", "query", "files", "givens", "auto_run")
     def _input_changed(self, change: t.Bunch) -> None:
         if not self._initializing:
             self._publish_input(definition_changed=change.name in {"source", "files"})
 
-    def _publish_input(self, *, definition_changed: bool = False) -> None:
-        self._revision += 1
-        givens = encode_givens(self.givens)
-        self.set_trait("state", _empty_state())
-        with self.hold_sync():
-            if definition_changed:
-                self._definition_revision += 1
-                source = self.source
-                files = {
-                    name: dict(item) if isinstance(item, Mapping) else item
-                    for name, item in self.files.items()
-                }
-                if isinstance(source, Draft):
-                    for captured in source.inputs:
-                        files[captured.reference] = (
-                            captured.materialize().path.read_bytes()
-                        )
-                self.set_trait(
-                    "_definition",
-                    {
-                        "revision": self._definition_revision,
-                        "connectionName": self.connection_name,
-                        "source": source.text
-                        if isinstance(source, (ModelSource, Draft))
-                        else source,
-                        "url": source.url
-                        if isinstance(source, (ModelSource, Draft))
-                        else None,
-                        "documentKind": source.document_kind
-                        if isinstance(source, (ModelSource, Draft))
-                        else "model",
-                        "imports": dict(source.imports)
-                        if isinstance(source, (ModelSource, Draft))
-                        and source.imports is not None
-                        else None,
-                        "files": files,
-                    },
+    def _publish_input(
+        self,
+        *,
+        definition_changed: bool = False,
+        action: str | None = None,
+        subject: Subject | None = None,
+    ) -> None:
+        action = action or ("run" if self.auto_run else "inspect")
+        self._dirty |= definition_changed
+        subject = subject or (
+            (
+                describe(self.source)
+                if isinstance(self.source, str)
+                else self.source._notebook_subject()
+            )
+            if self._dirty
+            else self._subject
+        )
+        if subject.info.execution in {"python", "result"} and (
+            self.files or self.runtime
+        ):
+            raise t.TraitError(
+                "files and runtime apply to browser sources. Native values use their existing Python context"
+            )
+        prepared = self._prepared and not self._dirty
+        definition_changed = self._dirty or (
+            bool(subject.inputs) and action != "inspect" and not prepared
+        )
+        definition = self._definition
+        if definition_changed:
+            files = {
+                name: dict(item) if isinstance(item, Mapping) else item
+                for name, item in self.files.items()
+            }
+            if action != "inspect":
+                files.update(
+                    (item.reference, item.materialize().path.read_bytes())
+                    for item in subject.inputs
                 )
+                prepared = True
+            definition = {
+                "revision": self._definition_revision + 1,
+                "connectionName": subject.connection_name or self.connection_name,
+                "source": subject.source,
+                "url": subject.url,
+                "documentKind": subject.document_kind,
+                "imports": dict(subject.imports)
+                if subject.imports is not None
+                else None,
+                "files": files,
+                "notebook": to_builtins(subject.info),
+                "queries": to_builtins(subject.queries),
+            }
+        inputs = {
+            "revision": self._revision + 1,
+            "definitionRevision": definition["revision"],
+            "query": self.query,
+            "givens": encode_givens(self.givens),
+            "action": action,
+        }
+        # Materialization and encoding must succeed before publishing a revision.
+        self._subject, self._prepared, self._dirty = subject, prepared, False
+        self._revision = inputs["revision"]
+        self._definition_revision = definition["revision"]
+        with self.hold_sync():
+            self.set_trait("state", _empty_state())
+            if definition_changed:
+                self.set_trait("_definition", definition)
+            self.set_trait("_input", inputs)
+
+    @t.observe("_request")
+    def _requested(self, change: t.Bunch) -> None:
+        request = change.new
+        if self._closed or not request:
+            return
+        self.set_trait("_request", None)
+        if (
+            type(request.get("revision")) is not int
+            or request["revision"] != self._revision
+            or request.get("action") not in ("check", "run")
+        ):
+            return
+        try:
+            self._publish_input(action=request["action"])
+        except Exception as error:  # noqa: BLE001 - Publish preparation failures to the requesting view.
             self.set_trait(
-                "_input",
+                "_state",
                 {
                     "revision": self._revision,
-                    "definitionRevision": self._definition_revision,
-                    "query": self.query,
-                    "givens": givens,
+                    "status": "error",
+                    "queries": [],
+                    "result": None,
+                    "inspection": None,
+                    "error": str(error),
+                    "diagnostics": [],
                 },
             )
+
+    def _view_message(self, _widget, content, _buffers) -> None:
+        if isinstance(content, dict) and content.get("kind") == "pymalloy-request":
+            request_id = content.get("id")
+            if not isinstance(request_id, str):
+                return
+            response, buffers = self._perform(content.get("input"), _buffers)
+            self.send(
+                {"kind": "pymalloy-response", "id": request_id, "response": response},
+                buffers=buffers,
+            )
+            return
+        if (
+            not self._transient
+            or not isinstance(content, dict)
+            or content.get("kind") != "pymalloy-view"
+        ):
+            return
+        view = content.get("id")
+        if not isinstance(view, str):
+            return
+        if content.get("action") == "mount":
+            self._views.add(view)
+        elif content.get("action") == "unmount" and view in self._views:
+            self._views.remove(view)
+            if not self._views:
+                self.close()
+
+    def _perform(self, request, buffers):
+        if self._closed or request != self._input or buffers:
+            return {
+                "kind": "error",
+                "message": "The displayed revision is no longer current",
+                "diagnostics": [],
+            }, []
+        try:
+            return self._subject.perform(request)
+        except Exception as error:  # noqa: BLE001 - Every comm request must receive a settled failure response.
+            return {
+                "kind": "error",
+                "message": str(error),
+                "diagnostics": to_builtins(getattr(error, "diagnostics", ())),
+            }, []
 
     @t.validate("_state")
     def _validate_state(self, proposal: t.Bunch) -> dict[str, Any] | None:

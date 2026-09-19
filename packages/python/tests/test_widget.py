@@ -61,6 +61,7 @@ def browser_state(widget, rows=None, **changes):
         },
         "error": None,
         "diagnostics": [],
+        "inspection": None,
         **changes,
     }
 
