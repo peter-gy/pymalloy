@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { DuckDBInstance } from "@duckdb/node-api";
+import { DuckDBInstance, type DuckDBConnection } from "@duckdb/node-api";
+import type { Result } from "@malloy-runtime/compiler";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -16,6 +17,30 @@ async function directory() {
   const value = await mkdtemp(resolve(tmpdir(), "pymalloy-node-"));
   directories.push(value);
   return value;
+}
+async function cancelExecuting(
+  connection: DuckDBConnection,
+  controller: AbortController,
+  running: Promise<Result>,
+) {
+  let outcome: PromiseSettledResult<Result> | undefined;
+  const settled = Promise.allSettled([running]).then(([value]) => (outcome = value));
+  try {
+    await expect
+      .poll(() => outcome !== undefined || connection.progress.total_rows_to_process > 0n, {
+        interval: 5,
+        timeout: 5000,
+      })
+      .toBe(true);
+    if (outcome) {
+      if (outcome.status === "rejected") throw outcome.reason;
+      throw new Error("The query finished before cancellation could be exercised");
+    }
+  } finally {
+    controller.abort();
+    await settled;
+  }
+  return settled;
 }
 const examples = resolve(import.meta.dirname, "../../../examples");
 afterEach(async () => {
@@ -91,25 +116,32 @@ describe("Node Session", () => {
       ).getRowObjectsJS(),
     ).toEqual([{ count: 0 }]);
   });
-  test("bounds active work and preserves ownership of an interrupted borrowed connection", async () => {
+  test("cancels active work without closing a borrowed connection", async () => {
     const instance = await DuckDBInstance.create();
     const connection = await instance.connect();
     try {
+      await connection.run(
+        "SET threads=1; SET enable_progress_bar=true; SET enable_progress_bar_print=false; SET progress_bar_time=0",
+      );
       const runtime = await session({ connection });
       const model = await runtime.model({
         text: "run: duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> { aggregate: total is value.sum() }",
       });
-      const running = model
-        .query()
-        .run({ signal: AbortSignal.timeout(20) })
-        .then((result) => result.rows);
+      const controller = new AbortController();
+      const running = model.query().run({ signal: controller.signal });
       const queued = runtime.run("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}");
-      const failures = await Promise.allSettled([running, queued]);
+      const settled = Promise.allSettled([running, queued]);
+      try {
+        await cancelExecuting(connection, controller, running);
+      } finally {
+        await settled;
+      }
+      const failures = await settled;
       expect(failures.map((result) => result.status)).toEqual(["rejected", "fulfilled"]);
       expect(failures[1]).toMatchObject({ value: { rows: [{ answer: 42 }] } });
       expect(runtime.closed).toBe(false);
       expect(model.inspect().queries).toHaveLength(1);
-      expect(failures[0]).toMatchObject({ reason: { name: "TimeoutError" } });
+      expect(failures[0]).toMatchObject({ reason: { name: "AbortError" } });
       await runtime.close();
       expect(runtime.closed).toBe(true);
       expect(() => model.inspect()).toThrow("Model is closed");
@@ -555,15 +587,22 @@ test("retained source views bind each call and read current data", async () => {
 
 test("a rejected active query allows an immediate new selection on its retained model", async () => {
   const runtime = await session();
+  await runtime.connection.run(
+    "SET threads=1; SET enable_progress_bar=true; SET enable_progress_bar_print=false; SET progress_bar_time=0",
+  );
   const model = await runtime.model({
     text: `
     query: slow is duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> {aggregate: total is value.sum()}
     query: fast is duckdb.sql('SELECT 42 AS answer') -> {select: answer}
   `,
   });
-  await expect(model.query("slow").run({ signal: AbortSignal.timeout(20) })).rejects.toMatchObject({
-    name: "TimeoutError",
-  });
+  const controller = new AbortController();
+  const outcome = await cancelExecuting(
+    runtime.connection,
+    controller,
+    model.query("slow").run({ signal: controller.signal }),
+  );
+  expect(outcome).toMatchObject({ status: "rejected", reason: { name: "AbortError" } });
   expect((await model.query("fast").run()).rows).toEqual([{ answer: 42 }]);
   expect(runtime.closed).toBe(false);
 });
