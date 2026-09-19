@@ -1,0 +1,40 @@
+packages/python/tests/test_widget.py
+  s_eb8331ad77ae5f::t_978ec07c87b582 282-285,287-288,290-292
+packages/python/src/pymalloy/_protocol/snapshot.py
+  s_eb8331ad77ae5f::t_3cde6368b28a65 10
+development_docs/architecture.md
+  s_eb8331ad77ae5f::t_1398e3f0f4090b 206-209,222-225
+packages/python/tests/test_notebook_display.py
+  s_eb8331ad77ae5f::t_1398e3f0f4090b 60-64,69
+packages/core/src/model.ts
+  s_eb8331ad77ae5f::t_b3a3c1c56a17de 39,98
+  s_eb8331ad77ae5f::t_0a613f76585e59 9,91
+packages/python/src/pymalloy/widget.py
+  s_eb8331ad77ae5f::t_3cde6368b28a65 209,258-262,264-267,448,459,462-474
+packages/core/tests/tools.test.ts
+  s_eb8331ad77ae5f::t_346bae7baca0a5 335-337
+  s_eb8331ad77ae5f::t_a6a6e243211fda 315-316,330-331,333-334
+  s_eb8331ad77ae5f::t_978ec07c87b582 329,332
+packages/python/src/pymalloy/_notebook/subject.py
+  s_eb8331ad77ae5f::t_4ae370969cb422 167-171
+packages/core/src/inspect.ts
+  s_eb8331ad77ae5f::t_0a613f76585e59 3,57,63-64,81
+packages/core/src/diagnostics.ts
+  s_eb8331ad77ae5f::t_0a613f76585e59 18-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f5d152328a1ec9d631995912248d9803d0351166",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
