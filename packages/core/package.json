@@ -21,7 +21,6 @@
   },
   "scripts": {
     "build": "vp pack",
-    "lexicon": "node scripts/lexicon.mjs",
     "test": "vp test",
     "typecheck": "tsc --noEmit"
   },

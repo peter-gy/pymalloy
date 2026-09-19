@@ -12,6 +12,16 @@ import { createTranslator, parseTree, type NativeContext, type NativeListener } 
 export type SyntaxNode = ConcreteSyntax | ScalarSyntax | TableSyntax;
 
 /** A native table source, retaining its exact spelling and resolved reference. */
+/** @public */
+export type SyntaxKind =
+  | "document"
+  | "source"
+  | "query"
+  | "field"
+  | "expression"
+  | "annotation"
+  | "clause";
+
 export interface TableSyntax {
   type: "table";
   source: string;
@@ -21,7 +31,7 @@ export interface TableSyntax {
 
 export interface ConcreteSyntax {
   type: "syntax";
-  kind: "document" | "source" | "query" | "field" | "expression" | "annotation" | "clause";
+  kind: SyntaxKind;
   name: string | null;
   parts: Array<string | SyntaxNode>;
   operation: SyntaxOperation | null;

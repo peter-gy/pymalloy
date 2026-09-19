@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from functools import cached_property
-from typing import Literal
+from typing import Literal, get_args
 
 from pymalloy._authoring.annotations import annotation_text
 from pymalloy._authoring.identifiers import identifier
@@ -20,11 +20,12 @@ from pymalloy._protocol.records import (
     SyntaxOperationKind,
     TableSyntax,
 )
+from pymalloy._protocol.records import (
+    SyntaxKind as Kind,
+)
 from pymalloy.expressions import Expr
 
-Kind = Literal[
-    "document", "source", "query", "field", "expression", "annotation", "clause"
-]
+_KINDS = frozenset(get_args(Kind.__value__))
 
 
 @dataclass(frozen=True, eq=False)
@@ -63,15 +64,7 @@ class Fragment(NotebookDisplay):
     _layout: bool = False
 
     def __post_init__(self) -> None:
-        if self.kind not in {
-            "document",
-            "source",
-            "query",
-            "field",
-            "expression",
-            "annotation",
-            "clause",
-        }:
+        if self.kind not in _KINDS:
             raise ValueError(f"Unknown syntax kind: {self.kind}")
         if not isinstance(self.parts, tuple) or not all(
             isinstance(p, (str, Fragment, Expr, TableReference)) for p in self.parts
@@ -357,17 +350,17 @@ class Fragment(NotebookDisplay):
         """
         if not clauses:
             return self
-        return self._suffix((" extend ", block(clauses)))
+        return self._suffix("extend", (" extend ", block(clauses)))
 
     def _suffix(
-        self, parts: tuple[str | Fragment | Expr | TableReference, ...]
+        self,
+        operation: Literal["extend", "pipe"],
+        parts: tuple[str | Fragment | Expr | TableReference, ...],
     ) -> Fragment:
         if self.kind != "expression":
             raise TypeError("Compose an expression, not a declaration")
         notes, value = _notes(self)
-        result = construct(
-            "extend" if parts[0] == " extend " else "pipe", value, *parts
-        )
+        result = construct(operation, value, *parts)
         return Fragment((*notes, result), _layout=True) if notes else result
 
     def pipe(self, *queries: Fragment) -> Fragment:
@@ -397,7 +390,7 @@ class Fragment(NotebookDisplay):
             if not isinstance(query, Fragment):
                 raise TypeError("Pipeline stages must be query fragments")
             parts.extend((" -> ", query))
-        return self._suffix(tuple(parts))
+        return self._suffix("pipe", tuple(parts))
 
     def annotate(self, text: str, *, route: str = "") -> Fragment:
         """Attach or replace an annotation on an unbound source/query expression.
