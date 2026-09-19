@@ -180,6 +180,12 @@ layout reset. Malloy's renderer owns result DOM and authored rendering tags insi
 one effect-managed adapter, including its style and accessibility observers.
 Initialization owns the shared session and input listeners.
 
+Source and SQL panels load one shared Shiki registry on demand. Only the Malloy,
+MOTLY and SQL grammars and GitHub light/dark themes enter that chunk. The JavaScript
+regex engine runs without additional WebAssembly. React renders token text, while
+StyleX follows the host color scheme. Plain source stays readable during loading
+or if highlighting fails.
+
 `anywidget-bundle` owns the bootstrap, manifest and module transport. Its Python
 `BundledWidget` base serves packaged JavaScript chunks over the existing comm.
 The browser compiler, native Arrow adapter and result visualization load on

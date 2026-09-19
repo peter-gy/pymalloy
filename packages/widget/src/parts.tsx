@@ -1,3 +1,5 @@
+import { Fragment, useEffect, useState } from "react";
+import type { highlight } from "./highlight";
 import * as stylex from "@stylexjs/stylex";
 import type { Diagnostic } from "./protocol";
 import { colors, tokens } from "./tokens.stylex";
@@ -5,13 +7,61 @@ import { colors, tokens } from "./tokens.stylex";
 export function SourceCode({
   source,
   label = "Malloy source",
+  language = "malloy",
 }: {
   source: string;
   label?: string;
+  language?: "malloy" | "sql";
 }) {
+  const [highlighted, setHighlighted] = useState<{
+    source: string;
+    language: string;
+    tokens: ReturnType<typeof highlight>;
+  } | null>(null);
+  useEffect(() => {
+    let active = true;
+    void import("./highlight")
+      .then(({ highlight }) => {
+        if (active) setHighlighted({ source, language, tokens: highlight(source, language) });
+      })
+      .catch(() => {
+        // Highlighting is optional; the original code remains readable if loading fails.
+      });
+    return () => {
+      active = false;
+    };
+  }, [source, language]);
+  const tokens =
+    highlighted?.source === source && highlighted.language === language ? highlighted.tokens : null;
   return (
     <pre {...stylex.props(styles.code)} tabIndex={0} aria-label={label} dir="ltr">
-      <code>{source}</code>
+      <code>
+        {tokens?.length
+          ? tokens.map((token, index) => (
+              <Fragment key={token.offset}>
+                {source.slice(
+                  index ? tokens[index - 1].offset + tokens[index - 1].content.length : 0,
+                  token.offset,
+                )}
+                <span
+                  {...stylex.props(
+                    styles.token(
+                      token.variants.light.color ?? colors.text,
+                      token.variants.dark.color ?? colors.text,
+                    ),
+                  )}
+                >
+                  {token.content}
+                </span>
+              </Fragment>
+            ))
+          : source}
+        {tokens?.length
+          ? source.slice(
+              tokens[tokens.length - 1].offset + tokens[tokens.length - 1].content.length,
+            )
+          : null}
+      </code>
     </pre>
   );
 }
@@ -74,6 +124,7 @@ export function Diagnostics({
 }
 
 const styles = stylex.create({
+  token: (light: string, dark: string) => ({ color: `light-dark(${light}, ${dark})` }),
   code: {
     margin: 0,
     padding: 14,

@@ -247,7 +247,7 @@ function InspectorPanel({
     case "context":
       return <ContextPanel info={info} inspection={state?.inspection ?? null} />;
     case "sql":
-      return <SourceCode source={sql} label="Compiled SQL" />;
+      return <SourceCode source={sql} label="Compiled SQL" language="sql" />;
     case "issues":
       return state ? <Diagnostics diagnostics={state.diagnostics} error={state.error} /> : null;
     case "result":
