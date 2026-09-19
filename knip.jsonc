@@ -16,7 +16,7 @@
     },
     "packages/python": {
       // These build dependencies produce the files copied by build.mjs.
-      "ignoreDependencies": ["@pymalloy/server", "@pymalloy/widget"],
+      "ignoreDependencies": ["@pymalloy/headless", "@pymalloy/widget"],
     },
   },
 }

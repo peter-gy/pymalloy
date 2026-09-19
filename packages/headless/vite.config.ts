@@ -3,7 +3,7 @@ import { defineConfig } from "vite-plus";
 import { bundleNotices } from "../../tools/bundle-notices";
 
 export default defineConfig({
-  plugins: [bundleNotices("server.LICENSE.txt")],
+  plugins: [bundleNotices("headless.LICENSE.txt")],
   define: { "process.env": "{}" },
   build: {
     target: "es2023",
@@ -12,7 +12,7 @@ export default defineConfig({
     minify: true,
     rollupOptions: {
       external: ["node:fs"],
-      output: { entryFileNames: "server.mjs", codeSplitting: false },
+      output: { entryFileNames: "headless.mjs", codeSplitting: false },
     },
   },
   ssr: { noExternal: true },

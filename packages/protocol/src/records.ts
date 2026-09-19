@@ -1,4 +1,4 @@
-import type { Response } from "./server";
+import type { Response } from "./headless";
 import type {
   CheckReport,
   Inspection,

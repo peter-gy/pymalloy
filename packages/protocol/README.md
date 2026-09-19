@@ -1,7 +1,7 @@
 # Python wire contracts
 
 `@pymalloy/protocol` defines Python-facing compiler requests, widget state, and
-exact given values. Both the widget and Deno server import it. Compiler and
+exact given values. Both the widget and Deno host import it. Compiler and
 database packages expose native TypeScript values and remain independent of
 Python serialization.
 
