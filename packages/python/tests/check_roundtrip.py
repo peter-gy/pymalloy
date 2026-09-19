@@ -7,7 +7,6 @@ import runpy
 import sys
 import time
 from contextlib import ExitStack, closing
-from dataclasses import asdict
 from importlib.metadata import version
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -29,9 +28,11 @@ def normalize_sql(value):
 
 
 def result_summary(result, *, float_precision=None):
+    from pymalloy.analysis import to_dict
+
     rows = result.rows()
     summary = {
-        "columns": [asdict(column) for column in result.columns],
+        "columns": to_dict(result.columns),
         "rows": len(rows),
         "ordered": digest(rows),
         "multiset": digest(rows, unordered=True),

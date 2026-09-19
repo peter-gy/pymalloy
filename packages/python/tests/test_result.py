@@ -27,8 +27,8 @@ def test_materialized_result_survives_data_updates_and_model_close():
             updated = model.run()
 
     assert result.columns == (
-        Column("mood", "ENUM('happy', 'sad')"),
-        Column("items", 'STRUCT("value" BIGINT)[]'),
+        Column(name="mood", type="ENUM('happy', 'sad')"),
+        Column(name="items", type='STRUCT("value" BIGINT)[]'),
     )
     assert pa.types.is_dictionary(result.arrow().schema.field("mood").type)
     expected = [{"mood": "happy", "items": [{"value": 9007199254740993}]}]
@@ -49,7 +49,7 @@ def test_empty_select_and_copy_have_distinct_result_schemas(tmp_path: Path):
     with duckdb.connect() as connection:
         engine = Engine(connection=connection)
         copied = engine.run(f"COPY (SELECT 42 AS id) TO '{tmp_path / 'data.parquet'}'")
-    assert empty.columns == (Column("id", "BIGINT"),)
+    assert empty.columns == (Column(name="id", type="BIGINT"),)
     assert empty.arrow().schema == pa.schema([pa.field("id", pa.int64())])
     assert empty.rows() == []
     assert empty.polars().schema == {"id": pl.Int64}

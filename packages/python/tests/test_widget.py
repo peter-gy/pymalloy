@@ -2,10 +2,12 @@ import math
 import subprocess
 import sys
 
+import msgspec
 import pytest
 from traitlets import TraitError
 
 from pymalloy import MalloyWidget, ModelSource, browser
+from pymalloy._protocol.records import Input
 
 
 def browser_state(widget, rows=None, **changes):
@@ -83,7 +85,7 @@ def test_widget_publishes_source_query_files_and_exact_givens():
         }
         from pymalloy._protocol.givens import given_values
 
-        assert given_values(state["_input"]["givens"]) == givens
+        assert given_values(msgspec.convert(state["_input"], Input).givens) == givens
         assert widget.givens == {
             "amount": 9223372036854775807,
             "options": (True, {"lower": -9007199254740993}),
@@ -230,7 +232,8 @@ def test_widget_input_snapshots_require_validated_assignment():
         assert widget.get_state()["_definition"]["files"]["part"] == b"changed"
         from pymalloy._protocol.givens import given_values
 
-        assert given_values(widget.get_state()["_input"]["givens"])["choices"] == [3, 4]
+        inputs = msgspec.convert(widget.get_state()["_input"], Input)
+        assert given_values(inputs.givens)["choices"] == [3, 4]
     finally:
         widget.close()
 
@@ -336,6 +339,42 @@ def test_widget_validates_new_inputs_before_publishing():
             widget, status="error", rows=[], error="Unknown query"
         )
         assert widget.state["error"] == "Unknown query"
+    finally:
+        widget.close()
+
+
+@pytest.mark.parametrize("attribute", ["source", "files"])
+def test_widget_rejected_backend_changes_preserve_usable_inputs(attribute):
+    import pyarrow as pa
+
+    from pymalloy.result import Column, Result
+
+    native = Result(
+        "SELECT 42 AS value",
+        (Column(name="value", type="INTEGER"),),
+        pa.table({"value": [42]}),
+    )
+    files = {"data.csv": b"value\n42\n"}
+    widget = (
+        MalloyWidget("run: example", files=files, auto_run=False)
+        if attribute == "source"
+        else MalloyWidget(native, auto_run=False)
+    )
+    try:
+        source, retained_files = widget.source, widget.files
+        before = widget.get_state()
+        with pytest.raises(TraitError, match="files and runtime"):
+            setattr(widget, attribute, native if attribute == "source" else files)
+        assert widget.source is source
+        assert widget.files == retained_files
+        assert widget.get_state()["_input"] == before["_input"]
+        assert widget.get_state()["_definition"] == before["_definition"]
+
+        widget.givens = {"minimum": 1}
+        assert widget.get_state()["_input"]["revision"] > before["_input"]["revision"]
+        assert widget.get_state()["_definition"] == before["_definition"]
+        widget.set_state({"_state": browser_state(widget)})
+        assert widget.state["rows"] == ({"value": 42},)
     finally:
         widget.close()
 

@@ -179,7 +179,9 @@ def test_roundtrip_result_comparison_requires_explicit_order_and_precision_polic
 
     original, reversed_summary, modified_summary = [
         result_summary(
-            Result("", (Column("value", "DOUBLE"),), pa.table({"value": values})),
+            Result(
+                "", (Column(name="value", type="DOUBLE"),), pa.table({"value": values})
+            ),
             float_precision=9,
         )
         for values in [

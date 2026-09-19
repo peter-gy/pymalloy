@@ -8,7 +8,7 @@ import pytest
 import pymalloy as pm
 from pymalloy._headless import tooling
 from pymalloy._model.errors import CompilerError, PyMalloyError
-from pymalloy._protocol.records import SourceReady
+from pymalloy._protocol.records import SourceReady, SourceRequest
 
 
 def test_tooling_reuses_one_process_across_concurrent_calls_and_replaces_failures(
@@ -37,7 +37,7 @@ def test_tooling_reuses_one_process_across_concurrent_calls_and_replaces_failure
             tooling.compiler_lease(monotonic() + 30) as compiler,
         ):
             compiler.request(
-                {"op": "source"},
+                SourceRequest(),
                 SourceReady,
                 describe=lambda sql: [],
                 deadline=monotonic() + 30,
