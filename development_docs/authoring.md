@@ -54,7 +54,7 @@ leaves with a tagged union. Containers carry syntax parts. Scalar leaves carry
 an operation tree and their original source spelling. Python protocol decoding
 rejects mixed shapes. Identifier rendering sits below both syntax and scalar APIs.
 Safe names remain unquoted. Reserved words come from the pinned Malloy lexer,
-projected by `packages/core/scripts/lexicon.mjs` into Python `_authoring/lexicon.py` during
+projected by `scripts/lexicon.ts` into Python `_authoring/lexicon.py` during
 `pnpm records`. This build-time projection keeps pure Python construction
 independent of the compiler process.
 

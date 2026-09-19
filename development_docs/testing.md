@@ -145,10 +145,10 @@ restricts the run to paths containing the supplied text.
 ## Measure authoring and dataframe costs
 
 ```sh
-uv run python tools/benchmark_authoring.py --samples 7 --output nogit/authoring-timings.json
-uv run python tools/benchmark_data_inputs.py --rows 1000000 --samples 7 --output nogit/dataframe-timings.json
+uv run python scripts/benchmark_authoring.py --samples 7 --output nogit/authoring-timings.json
+uv run python scripts/benchmark_data_inputs.py --rows 1000000 --samples 7 --output nogit/dataframe-timings.json
 pnpm bench:compiler --samples 7 --output nogit/compiler-timings.json
-uv run python tools/benchmark_notebook.py --samples 7 --output nogit/notebook-timings.json
+uv run python scripts/benchmark_notebook.py --samples 7 --output nogit/notebook-timings.json
 ```
 
 The dataframe benchmark measures contiguous and fragmented Arrow snapshots,

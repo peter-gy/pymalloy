@@ -43,7 +43,7 @@ packages under both NodeNext and Bundler resolution without skipping declaration
 checks, then executes Node and builds a browser consumer.
 
 Explicit extensions remain on real assets, external package subpaths, and the
-anti-slop tooling executed directly by Node/Oxlint. Those paths resolve actual
+scripts workspace and anti-slop tooling executed directly by Node/Oxlint. Those paths resolve actual
 files. Python schema generation uses source paths relative to its own config to
 keep protocol records independent of declaration bundling.
 
@@ -55,23 +55,29 @@ pnpm check
 pnpm test
 pnpm canary
 uv run --frozen pytest
-uv run --frozen ruff format --check packages/python examples apps/e2e
-uv run --frozen ruff check packages/python examples apps/e2e
+uv run --frozen ruff format --check packages/python examples apps/e2e scripts
+uv run --frozen ruff check packages/python examples apps/e2e scripts
 uv run --frozen ty check
 git diff --check
 ```
 
 `pnpm check` runs formatting, type-aware Oxlint with anti-slop rules, typechecks,
-and Knip. Use `pnpm check:knip` for unused-code and dependency checks alone.
+generated-contract freshness, and Knip. Use `pnpm check:knip` for unused-code and dependency checks alone.
 Build first to provide workspace package declarations.
+
+`scripts/` is a private pnpm workspace. It owns build utilities, generators, consumer
+checks, benchmarks, and their dependencies. TypeScript scripts run directly on
+Node and are checked with the packages by `pnpm check`. Python benchmarks stay
+Python in the same directory.
 
 Keep the anti-slop rules and license together in `tools/oxlint/anti-slop`.
 `vite.config.ts` documents exceptions for runtime decoding. Fix findings at their
 owning boundary before adding exceptions.
 
 Run `pnpm records` after changing compiler or widget records, or upgrading Malloy.
-Commit the generated schema, `_protocol/records.py` and `_authoring/lexicon.py` keyword metadata
-together. Review their diff after generation.
+Commit `packages/protocol/schema/protocol.json`, `_protocol/records.py`, and
+`_authoring/lexicon.py` together. Review their diff after generation. The
+[protocol guide](protocol.md#contract-generation) describes ownership and validation.
 
 Rebuild after changes to generated-asset inputs. Browser, widget, lifecycle, and
 cross-language changes also require the [browser suite](testing.md#browser-tests).

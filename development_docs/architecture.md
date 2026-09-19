@@ -62,7 +62,7 @@ Private packages own related implementation files:
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `_authoring` | `draft.py` coordinates edits, `syntax.py` owns fragments, `operations.py` renders scalar operations, and `python.py` reconstructs Python. Annotations, identifiers, generated lexer keywords, and table-reference syntax live beside them. |
 | `_model`     | `source.py` owns source identity and snapshots, `inputs.py` captures data, `persistence.py` publishes source, and `selection.py` validates query selection. Shared errors and the default connection name belong here.                     |
-| `_protocol`  | `records.py` is generated against `base.py`. `givens.py`, `codec.py`, and `snapshot.py` encode values, decode results, and freeze boundary data.                                                                                           |
+| `_protocol`  | `records.py` contains generated frozen, strict msgspec types. `givens.py`, `codec.py`, and `snapshot.py` encode values, decode results, and freeze boundary data.                                                                          |
 | `_notebook`  | `subject.py` projects authored metadata and deferred native operations. Display hooks and `lifetime.py` own implicit views.                                                                                                                |
 | `_headless`  | Compiler processes, tooling leases, native engine execution, deadlines, and retained runtime models.                                                                                                                                       |
 | `export`     | Public notebook/bundle APIs and their private document, planning, file-access, and serialization modules.                                                                                                                                  |
@@ -158,8 +158,9 @@ caller ownership. Closing a view never closes a borrowed native model.
 
 ## Records and rendering
 
-TypeScript records use camel case. `tools/generate-records.py` emits JSON Schema
-and Python msgspec records with Python field names and wire aliases. Authored
+TypeScript records use camel case. `packages/protocol` owns the wire contracts and
+their generated JSON Schema. `scripts/generate-records.ts` emits Python msgspec
+records with Python field names and wire aliases. Authored
 dictionary keys retain their spelling. Incoming messages are validated at the
 boundary. [Protocols and lifecycle](protocol.md) owns transport shapes, exact
 values, and widget revision rules.
@@ -171,9 +172,20 @@ results retain DuckDB-produced Arrow tables. Row conversion materializes Python
 objects on demand, while `.arrow()` returns the retained table. SQL rows never pass through
 the Deno compiler process.
 
-The widget renderer consumes native Malloy annotations. A rendered view owns its
-visualization, style propagation, accessibility observer, and DOM listeners.
+The widget uses `@anywidget/react` and stable external-store subscriptions.
+React owns each view's controls, tabs, schema glyphs and diagnostic presentation. Each
+view has a shadow root, with StyleX tokens and compiled component rules isolated
+from notebook form styles. The host stylesheet contains only the shadow-host
+layout reset. Malloy's renderer owns result DOM and authored rendering tags inside
+one effect-managed adapter, including its style and accessibility observers.
 Initialization owns the shared session and input listeners.
+
+`anywidget-bundle` owns the bootstrap, manifest and module transport. Its Python
+`BundledWidget` base serves packaged JavaScript chunks over the existing comm.
+The browser compiler, native Arrow adapter and result visualization load on
+request. Notebook inspection starts with the React app and its stylesheet.
+StyleX exposes the renderer's CSS fallback theme variables so authored Malloy
+theme annotations keep their precedence.
 
 Malloy adaptation lives in `core/src/upstream.ts`, including translator creation,
 parser access, experimental formatting and internal metadata conversions. Parser
