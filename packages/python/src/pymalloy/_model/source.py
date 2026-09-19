@@ -5,6 +5,8 @@ from types import MappingProxyType
 from typing import Literal
 from urllib.parse import urlsplit
 
+from pymalloy._notebook import NotebookDisplay
+
 DEFAULT_SOURCE_FILENAME = "model.malloy"
 type DocumentKind = Literal["model", "notebook"]
 
@@ -36,7 +38,7 @@ def freeze_imports(imports: Mapping[str, str]) -> Mapping[str, str]:
 
 
 @dataclass(frozen=True, init=False)
-class ModelSource:
+class ModelSource(NotebookDisplay):
     r"""An immutable snapshot of model text and its imported source files.
 
     Parameters

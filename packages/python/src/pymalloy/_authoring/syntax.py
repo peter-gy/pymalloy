@@ -12,6 +12,7 @@ from pymalloy._authoring.identifiers import identifier
 from pymalloy._authoring.operations import normalize
 from pymalloy._authoring.tables import TableReference
 from pymalloy._model.inputs import DataInput
+from pymalloy._notebook import NotebookDisplay
 from pymalloy._protocol.records import (
     ScalarSyntax,
     SyntaxNode,
@@ -27,7 +28,7 @@ Kind = Literal[
 
 
 @dataclass(frozen=True, eq=False)
-class Fragment:
+class Fragment(NotebookDisplay):
     """Immutable source/query syntax with named editing scopes.
 
     Construct fragments through table, sql, ref, query and clause functions.

@@ -24,6 +24,7 @@ from pymalloy._model.source import (
     resolve_document_kind,
     resolve_source,
 )
+from pymalloy._notebook import NotebookDisplay
 from pymalloy._protocol.givens import encode_givens, given_values
 from pymalloy._protocol.records import (
     CheckReady,
@@ -261,7 +262,7 @@ class _Runtime:
                 self._cleanup()
 
 
-class Model:
+class Model(NotebookDisplay):
     """A compiled model with retained source, schemas and query inventory.
 
     Create with model or Draft.compile. Reuse queries to execute against current
@@ -305,6 +306,20 @@ class Model:
         self._owner = runtime
         self.queries = queries
         self._imports = imports
+
+    def _notebook_subject(self):
+        from pymalloy._notebook.subject import native
+
+        return native(
+            self._source,
+            kind="Compiled model",
+            queries=self.queries,
+            inspect=self.inspect,
+            preview=lambda selection, values: self.query(selection).preview(
+                givens=values, timeout=30
+            ),
+            connection_name=self._owner._connection["name"],
+        )
 
     def _request[T](
         self,
@@ -604,7 +619,7 @@ class Model:
         self._owner.close()
 
 
-class Query:
+class Query(NotebookDisplay):
     """A selection that retains its model and binds parameters separately per call.
 
     Obtain one from Model.query. Selecting does not execute SQL. The same Query
@@ -647,6 +662,24 @@ class Query:
         self._selection = selection
         self.name, self.kind, self.location = info.name, info.kind, info.location
         self._info = info
+
+    def _notebook_subject(self):
+        from msgspec.structs import replace
+
+        from pymalloy._notebook.subject import native
+
+        model = self._model
+        subject = native(
+            model._source,
+            kind=f"Query · {self.name}",
+            queries=(self._info,),
+            inspect=model.inspect,
+            preview=lambda _selection, values: self.preview(givens=values, timeout=30),
+            connection_name=model._owner._connection["name"],
+        )
+        if isinstance(self._selection, dict):
+            subject.info = replace(subject.info, source=self._selection["malloy"])
+        return subject
 
     def _sql(self, givens: Mapping[str, Any] | None, deadline: float) -> str:
         return self._model._owner.request(

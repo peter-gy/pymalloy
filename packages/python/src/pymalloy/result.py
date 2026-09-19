@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
+from pymalloy._notebook import NotebookDisplay
+
 if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
@@ -25,7 +27,7 @@ class Column:
 
 
 @dataclass(frozen=True)
-class Result:
+class Result(NotebookDisplay):
     """Materialized query data with SQL and native column descriptions.
 
     Returned by run, Query.run and Query.preview. It retains a DuckDB-produced

@@ -26,6 +26,7 @@ from pymalloy._model.source import (
     resolve_source,
     validate_url,
 )
+from pymalloy._notebook import NotebookDisplay
 from pymalloy.validation import DocumentationPolicy
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, eq=False)
-class Draft:
+class Draft(NotebookDisplay):
     """An immutable, editable model revision with optional captured inputs.
 
     Use draft to construct one or read_model to parse existing Malloy. Editing

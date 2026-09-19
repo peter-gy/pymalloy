@@ -14,6 +14,7 @@ from typing import NoReturn
 from pymalloy._authoring.annotations import with_annotation
 from pymalloy._authoring.identifiers import identifier
 from pymalloy._authoring.operations import render
+from pymalloy._notebook import NotebookDisplay
 from pymalloy._protocol.records import (
     Branch,
     Scalar,
@@ -58,7 +59,7 @@ type IntoExpr = Expr | Literal
 
 
 @dataclass(frozen=True, eq=False, init=False)
-class Expr:
+class Expr(NotebookDisplay):
     """Build an immutable scalar expression for Malloy to resolve.
 
     Create expressions with col, lit, given, or raw_expr. Arithmetic, comparisons,
@@ -627,7 +628,7 @@ class Expr:
 
 
 @dataclass(frozen=True, eq=False)
-class Sort:
+class Sort(NotebookDisplay):
     """An expression and direction for an order_by clause.
 
     Parameters
