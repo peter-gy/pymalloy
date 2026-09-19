@@ -203,8 +203,10 @@ source compile per request. Query rows are always fetched from the engine.
 SQL-only calls leave rendering metadata unevaluated, and each result publication
 gets fresh stable metadata.
 
-Inspection traverses Malloy's given objects once and reuses source schemas from
-its stable `ModelInfo`. Queries needing runtime givens still expose source-only
+Inspection retains one serialized projection per compiled model. Each call returns
+a fresh object, so caller edits cannot alter later inspections. Projection traverses
+Malloy's given objects once and reuses source schemas from its stable `ModelInfo`.
+Queries needing runtime givens still expose source-only
 metadata through Malloy's source converter. Native table discovery can skip the
 coordinate-repair walk when Malloy reports no table references.
 
@@ -217,6 +219,10 @@ Python retains the engine's Arrow buffers and schema directly. Public row reads
 return detached values. Non-finite values copy only changed result
 branches before browser rendering. Widget result messages disable anywidget echo
 because the browser already owns the publication.
+The widget's `_should_send_property` hook also skips ipywidgets' buffer walks and
+JSON comparison for an accepted frontend `_state` frame. Validation records that
+acceptance under the property lock. Rejected frames and Python-originated updates
+retain the ordinary synchronization path.
 
 Native notebook previews send a memory view of the Arrow IPC buffer. Python
 readback validates one detached wire tree shared by its decoder and state

@@ -15,10 +15,12 @@ export interface Diagnostic {
 export type Locations = ReadonlyMap<string, string>;
 
 export function plain<T>(value: T, locations: Locations = new Map()): T {
-  return JSON.parse(
-    JSON.stringify(value, (_key, item) =>
-      typeof item === "string" ? (locations.get(item) ?? item) : item,
-    ),
+  return JSON.parse(serialize(value, locations));
+}
+
+export function serialize<T>(value: T, locations: Locations): string {
+  return JSON.stringify(value, (_key, item) =>
+    typeof item === "string" ? (locations.get(item) ?? item) : item,
   );
 }
 

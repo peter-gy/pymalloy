@@ -1,6 +1,6 @@
 import type { QueryDescriptor } from "./types";
 import type { Model, MalloyTranslator, ModelDef } from "@malloydata/malloy";
-import { diagnostics, plain, type Locations, type Diagnostic } from "./diagnostics";
+import { diagnostics, plain, serialize, type Locations, type Diagnostic } from "./diagnostics";
 import { validatePosition } from "./tools";
 import type {
   AnnotationInfo,
@@ -54,14 +54,14 @@ function annotations(value: Model["annotations"]): AnnotationInfo[] {
   }));
 }
 
-export function inspectModel(
+export function serializeInspection(
   model: Model,
   queries: readonly QueryDescriptor[],
   locations: Locations,
   url: URL,
   definition: ModelDef,
-): Inspection {
-  return plain(
+): string {
+  return serialize(
     {
       model: nativeMetadata(model, definition),
       queries: [...queries],
@@ -78,7 +78,7 @@ export function inspectModel(
       ].filter((source) => source !== url.href),
       imports: modelImports(definition),
       diagnostics: diagnostics(model.problems, locations),
-    },
+    } satisfies Inspection,
     locations,
   );
 }

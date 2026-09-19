@@ -6,7 +6,7 @@ import { Job, type Task } from "./job";
 import type { QueryDescriptor, QuerySelection, QueryOptions, DocumentOptions } from "./types";
 import { loadSource, type LoadOptions, type LoadedSource, type PreparedSQL } from "./compile";
 import { ToolingError, toolingError, plain } from "./diagnostics";
-import { inspectModel, referenceAt, type Inspection, type ReferenceInfo } from "./inspect";
+import { serializeInspection, referenceAt, type Inspection, type ReferenceInfo } from "./inspect";
 import { exportedViews, type NativeMetadata } from "./upstream";
 import { compilerVersion, parseSource, type ParseReport, type SourcePosition } from "./tools";
 
@@ -36,6 +36,7 @@ type QueryEntry =
 
 export class CompiledModel {
   private readonly entries = new Map<string, QueryEntry>();
+  private inspectionJSON?: string;
   readonly queries: readonly Readonly<QueryDescriptor>[];
 
   private constructor(private readonly details: LoadedSource) {
@@ -87,13 +88,14 @@ export class CompiledModel {
   }
 
   inspect(): Inspection {
-    return inspectModel(
+    this.inspectionJSON ??= serializeInspection(
       this.details.model,
       this.queries,
       this.details.locations,
       this.details.url,
       this.details.definition,
     );
+    return JSON.parse(this.inspectionJSON);
   }
 
   reference(position: SourcePosition & { url?: URL }): ReferenceInfo {

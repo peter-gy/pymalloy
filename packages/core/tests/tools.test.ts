@@ -312,9 +312,8 @@ test("import literal spans address authored Unicode and CRLF notebook text", () 
 });
 
 test("inspection keeps source schemas distinct from named query outputs and caller edits", async () => {
-  const model = await compile(
-    options(source + "\nquery: projected is values -> {select: renamed is value}"),
-  );
+  const text = source + "\nquery: projected is values -> {select: renamed is value}";
+  const model = await compile(options(text));
   const inspection = model.inspect();
   expect(inspection.model.sources.map((item) => item.name)).toEqual(["values"]);
   const projected = inspection.model.model?.entries.find((entry) => entry.name === "projected");
@@ -327,6 +326,15 @@ test("inspection keeps source schemas distinct from named query outputs and call
   expect(model.inspect().model.sources[0].schema.fields.map((field) => field.name)).toEqual([
     "value",
   ]);
+  const retained = model.inspect();
+  const adhoc = { malloy: "run: values -> {aggregate: total is sum(value)}" };
+  await drive(model.prepare(adhoc));
+  expect(model.inspect()).toEqual(retained);
+  const uninspected = await compile(options(text));
+  await drive(uninspected.prepare(adhoc));
+  const firstAfterQuery = uninspected.inspect();
+  expect(firstAfterQuery.model.sources).toEqual(retained.model.sources);
+  expect(firstAfterQuery.queries).toEqual(retained.queries);
 });
 
 test("query name collisions remain explainable in check reports", async () => {
