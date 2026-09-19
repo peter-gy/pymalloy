@@ -15,9 +15,14 @@ export type Value =
 export interface Row {
   [column: string]: Value;
 }
-/** @title Column */
+/**
+ * An output field name and its native database type text.
+ * @title Column
+ */
 export interface Column {
+  /** Output column name. */
   name: string;
+  /** Native type description, distinct from an Arrow schema. */
   type: string;
 }
 /** @title Result */
@@ -46,7 +51,10 @@ export interface QueryDescriptor {
   kind: "run" | "named" | "view" | "sql";
   location: SourceLocation | null;
 }
-export type QuerySelection = string | { malloy: string };
+export interface MalloyQuery {
+  malloy: string;
+}
+export type QuerySelection = string | MalloyQuery;
 /** @title QueryOptions */
 export interface QueryOptions extends OperationOptions {
   givens?: Record<string, GivenValue>;

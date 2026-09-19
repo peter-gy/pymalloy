@@ -6,5 +6,5 @@
       "@malloy-runtime/compiler/tooling": ["../../core/src/tooling.ts"]
     }
   },
-  "include": ["../../protocol/src/records.ts"]
+  "include": ["../src/records.ts"]
 }

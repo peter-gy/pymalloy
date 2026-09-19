@@ -1,5 +1,4 @@
 import type {
-  Fulfilled,
   SourcePosition,
   QuerySelection,
   CheckReport,
@@ -17,36 +16,91 @@ import type {
 import type { Given } from "./givens";
 import type { SyntaxNode } from "@malloy-runtime/compiler/tooling";
 
-type SchemaAnswer = { value: Column[] } | { error: string };
+export interface URLValue {
+  kind: "value";
+  value: string;
+}
+export interface SchemaValue {
+  kind: "value";
+  value: Column[];
+}
+export interface HostError {
+  kind: "error";
+  error: string;
+}
+export type URLAnswer = URLValue | HostError;
+export type SchemaAnswer = SchemaValue | HostError;
 export interface HostAnswers {
-  urls: Fulfilled["urls"];
+  urls: Record<string, URLAnswer>;
   schemas: Record<string, SchemaAnswer>;
 }
+export interface BeginRequest {
+  op: "begin";
+  url: string;
+  source?: string;
+  documentKind: DocumentKind;
+  connection: LoadOptions["connection"];
+}
+export interface StepRequest {
+  op: "step";
+  fulfilled: HostAnswers;
+}
+export interface QueryRequest {
+  op: "query";
+  selection?: QuerySelection;
+  givens: Record<string, Given>;
+}
+export interface DocumentRequest {
+  op: "document";
+  queries?: string[];
+  all?: boolean;
+  givens: Record<string, Given>;
+}
+export interface InspectionPosition extends SourcePosition {
+  url?: string;
+}
+export interface InspectRequest {
+  op: "inspect";
+  position?: InspectionPosition;
+}
+export interface SourceRequest {
+  op: "source";
+}
+export interface CheckRequest {
+  op: "check";
+  url: string;
+  source: string;
+  documentKind: DocumentKind;
+  connection: LoadOptions["connection"];
+  syntaxOnly?: boolean;
+  position?: SourcePosition;
+}
+export interface FormatRequest {
+  op: "format";
+  source: string;
+}
+export interface ParseRequest {
+  op: "parse";
+  source: string;
+  url: string;
+  documentKind: DocumentKind;
+}
+export interface SyntaxRequest {
+  op: "syntax";
+  source: string;
+  url: string;
+}
 export type Request =
-  | {
-      op: "begin";
-      url: string;
-      source?: string;
-      documentKind: DocumentKind;
-      connection: LoadOptions["connection"];
-    }
-  | { op: "step"; fulfilled: HostAnswers }
-  | { op: "query"; selection?: QuerySelection; givens: Record<string, Given> }
-  | { op: "document"; queries?: string[]; all?: boolean; givens: Record<string, Given> }
-  | { op: "inspect"; position?: SourcePosition & { url?: string } }
-  | { op: "source" }
-  | {
-      op: "check";
-      url: string;
-      source: string;
-      documentKind: DocumentKind;
-      connection: LoadOptions["connection"];
-      syntaxOnly?: boolean;
-      position?: SourcePosition;
-    }
-  | { op: "format"; source: string }
-  | { op: "parse"; source: string; url: string; documentKind: DocumentKind }
-  | { op: "syntax"; source: string; url: string };
+  | BeginRequest
+  | StepRequest
+  | QueryRequest
+  | DocumentRequest
+  | InspectRequest
+  | SourceRequest
+  | CheckRequest
+  | FormatRequest
+  | ParseRequest
+  | SyntaxRequest;
 
 export interface CompilerReady {
   kind: "ready";

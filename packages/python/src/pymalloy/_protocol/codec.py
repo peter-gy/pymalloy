@@ -21,7 +21,7 @@ def to_dict(value: Any) -> Any:
             if (item := getattr(value, field.name)) is not msgspec.UNSET
         }
         config = value.__struct_config__
-        if config.tag is not None:
+        if config.tag is not None and config.tag_field is not None:
             result[config.tag_field] = config.tag
         return result
     if isinstance(value, Mapping):

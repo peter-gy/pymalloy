@@ -1,12 +1,46 @@
 import type { GivenValue } from "@malloy-runtime/compiler";
+/** @public */
+export interface NullGiven {
+  type: "null";
+}
+/** @public */
+export interface IntegerGiven {
+  type: "integer";
+  value: string;
+}
+/** @public */
+export interface StringGiven {
+  type: "string";
+  value: string;
+}
+/** @public */
+export interface NumberGiven {
+  type: "number";
+  value: number;
+}
+/** @public */
+export interface BooleanGiven {
+  type: "boolean";
+  value: boolean;
+}
+/** @public */
+export interface ArrayGiven {
+  type: "array";
+  value: Given[];
+}
+/** @public */
+export interface RecordGiven {
+  type: "record";
+  value: Record<string, Given>;
+}
 export type Given =
-  | { type: "null" }
-  | { type: "integer"; value: string }
-  | { type: "string"; value: string }
-  | { type: "number"; value: number }
-  | { type: "boolean"; value: boolean }
-  | { type: "array"; value: Given[] }
-  | { type: "record"; value: Record<string, Given> };
+  | NullGiven
+  | IntegerGiven
+  | StringGiven
+  | NumberGiven
+  | BooleanGiven
+  | ArrayGiven
+  | RecordGiven;
 function decodeGiven(value: Given): GivenValue {
   switch (value.type) {
     case "null":

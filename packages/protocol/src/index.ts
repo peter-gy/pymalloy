@@ -1,12 +1,4 @@
 export { decodeGivens, type Given } from "./givens";
-export type {
-  Input,
-  Definition,
-  State,
-  NotebookBinding,
-  NotebookInput,
-  NotebookInfo,
-  NotebookResponse,
-} from "./widget";
+export type * from "./widget";
 // Exported names are also the identities of generated Python protocol records.
 export type * from "./headless";

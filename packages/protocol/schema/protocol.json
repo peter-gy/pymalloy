@@ -1,0 +1,4294 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/Records",
+  "definitions": {
+    "Records": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "$ref": "#/definitions/Request"
+        },
+        "response": {
+          "$ref": "#/definitions/Response"
+        },
+        "input": {
+          "$ref": "#/definitions/Input"
+        },
+        "notebookReply": {
+          "$ref": "#/definitions/NotebookReply"
+        },
+        "widgetMessage": {
+          "$ref": "#/definitions/WidgetMessage"
+        },
+        "actionRequest": {
+          "$ref": "#/definitions/ActionRequest"
+        },
+        "definition": {
+          "$ref": "#/definitions/DefinitionMetadata"
+        },
+        "check": {
+          "$ref": "#/definitions/CheckReport"
+        },
+        "inspection": {
+          "$ref": "#/definitions/Inspection"
+        },
+        "diagnostic": {
+          "$ref": "#/definitions/Diagnostic"
+        },
+        "query": {
+          "$ref": "#/definitions/QueryDescriptor"
+        },
+        "state": {
+          "$ref": "#/definitions/State"
+        },
+        "notebook": {
+          "$ref": "#/definitions/NotebookInfo"
+        }
+      },
+      "required": [
+        "request",
+        "response",
+        "input",
+        "notebookReply",
+        "widgetMessage",
+        "actionRequest",
+        "definition",
+        "check",
+        "inspection",
+        "diagnostic",
+        "query",
+        "state",
+        "notebook"
+      ],
+      "additionalProperties": false
+    },
+    "Request": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/BeginRequest"
+        },
+        {
+          "$ref": "#/definitions/StepRequest"
+        },
+        {
+          "$ref": "#/definitions/QueryRequest"
+        },
+        {
+          "$ref": "#/definitions/DocumentRequest"
+        },
+        {
+          "$ref": "#/definitions/InspectRequest"
+        },
+        {
+          "$ref": "#/definitions/SourceRequest"
+        },
+        {
+          "$ref": "#/definitions/CheckRequest"
+        },
+        {
+          "$ref": "#/definitions/FormatRequest"
+        },
+        {
+          "$ref": "#/definitions/ParseRequest"
+        },
+        {
+          "$ref": "#/definitions/SyntaxRequest"
+        }
+      ]
+    },
+    "BeginRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "begin"
+        },
+        "url": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "documentKind": {
+          "$ref": "#/definitions/DocumentKind"
+        },
+        "connection": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "dialect": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "dialect"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["op", "url", "documentKind", "connection"],
+      "additionalProperties": false
+    },
+    "DocumentKind": {
+      "type": "string",
+      "enum": ["model", "notebook"]
+    },
+    "StepRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "step"
+        },
+        "fulfilled": {
+          "$ref": "#/definitions/HostAnswers"
+        }
+      },
+      "required": ["op", "fulfilled"],
+      "additionalProperties": false
+    },
+    "HostAnswers": {
+      "type": "object",
+      "properties": {
+        "urls": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/URLAnswer"
+          }
+        },
+        "schemas": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/SchemaAnswer"
+          }
+        }
+      },
+      "required": ["urls", "schemas"],
+      "additionalProperties": false
+    },
+    "URLAnswer": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/URLValue"
+        },
+        {
+          "$ref": "#/definitions/HostError"
+        }
+      ]
+    },
+    "URLValue": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "value"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "value"],
+      "additionalProperties": false
+    },
+    "HostError": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "error"],
+      "additionalProperties": false
+    },
+    "SchemaAnswer": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SchemaValue"
+        },
+        {
+          "$ref": "#/definitions/HostError"
+        }
+      ]
+    },
+    "SchemaValue": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "value"
+        },
+        "value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Column"
+          }
+        }
+      },
+      "required": ["kind", "value"],
+      "additionalProperties": false
+    },
+    "Column": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Output column name."
+        },
+        "type": {
+          "type": "string",
+          "description": "Native type description, distinct from an Arrow schema."
+        }
+      },
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "description": "An output field name and its native database type text.",
+      "title": "Column"
+    },
+    "QueryRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "query"
+        },
+        "selection": {
+          "$ref": "#/definitions/QuerySelection"
+        },
+        "givens": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Given"
+          }
+        }
+      },
+      "required": ["op", "givens"],
+      "additionalProperties": false
+    },
+    "QuerySelection": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/MalloyQuery"
+        }
+      ]
+    },
+    "MalloyQuery": {
+      "type": "object",
+      "properties": {
+        "malloy": {
+          "type": "string"
+        }
+      },
+      "required": ["malloy"],
+      "additionalProperties": false
+    },
+    "Given": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/NullGiven"
+        },
+        {
+          "$ref": "#/definitions/IntegerGiven"
+        },
+        {
+          "$ref": "#/definitions/StringGiven"
+        },
+        {
+          "$ref": "#/definitions/NumberGiven"
+        },
+        {
+          "$ref": "#/definitions/BooleanGiven"
+        },
+        {
+          "$ref": "#/definitions/ArrayGiven"
+        },
+        {
+          "$ref": "#/definitions/RecordGiven"
+        }
+      ]
+    },
+    "NullGiven": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "null"
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "IntegerGiven": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "integer"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "value"],
+      "additionalProperties": false
+    },
+    "StringGiven": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "value"],
+      "additionalProperties": false
+    },
+    "NumberGiven": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "number"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": ["type", "value"],
+      "additionalProperties": false
+    },
+    "BooleanGiven": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "boolean"
+        },
+        "value": {
+          "type": "boolean"
+        }
+      },
+      "required": ["type", "value"],
+      "additionalProperties": false
+    },
+    "ArrayGiven": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "array"
+        },
+        "value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Given"
+          }
+        }
+      },
+      "required": ["type", "value"],
+      "additionalProperties": false
+    },
+    "RecordGiven": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "record"
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Given"
+          }
+        }
+      },
+      "required": ["type", "value"],
+      "additionalProperties": false
+    },
+    "DocumentRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "document"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "all": {
+          "type": "boolean"
+        },
+        "givens": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Given"
+          }
+        }
+      },
+      "required": ["op", "givens"],
+      "additionalProperties": false
+    },
+    "InspectRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "inspect"
+        },
+        "position": {
+          "$ref": "#/definitions/InspectionPosition"
+        }
+      },
+      "required": ["op"],
+      "additionalProperties": false
+    },
+    "InspectionPosition": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "character": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": ["character", "line"]
+    },
+    "SourceRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "source"
+        }
+      },
+      "required": ["op"],
+      "additionalProperties": false
+    },
+    "CheckRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "check"
+        },
+        "url": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "documentKind": {
+          "$ref": "#/definitions/DocumentKind"
+        },
+        "connection": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "dialect": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "dialect"],
+          "additionalProperties": false
+        },
+        "syntaxOnly": {
+          "type": "boolean"
+        },
+        "position": {
+          "$ref": "#/definitions/SourcePosition"
+        }
+      },
+      "required": ["op", "url", "source", "documentKind", "connection"],
+      "additionalProperties": false
+    },
+    "SourcePosition": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "character": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["line", "character"],
+      "additionalProperties": false,
+      "title": "SourcePosition"
+    },
+    "FormatRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "format"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": ["op", "source"],
+      "additionalProperties": false
+    },
+    "ParseRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "parse"
+        },
+        "source": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "documentKind": {
+          "$ref": "#/definitions/DocumentKind"
+        }
+      },
+      "required": ["op", "source", "url", "documentKind"],
+      "additionalProperties": false
+    },
+    "SyntaxRequest": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "syntax"
+        },
+        "source": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": ["op", "source", "url"],
+      "additionalProperties": false
+    },
+    "Response": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CompilerReady"
+        },
+        {
+          "$ref": "#/definitions/CompileNeeds"
+        },
+        {
+          "$ref": "#/definitions/CompileError"
+        },
+        {
+          "$ref": "#/definitions/CompilerFailure"
+        },
+        {
+          "$ref": "#/definitions/ModelReady"
+        },
+        {
+          "$ref": "#/definitions/QueryReady"
+        },
+        {
+          "$ref": "#/definitions/DocumentReady"
+        },
+        {
+          "$ref": "#/definitions/InspectionReady"
+        },
+        {
+          "$ref": "#/definitions/SourceReady"
+        },
+        {
+          "$ref": "#/definitions/CheckReady"
+        },
+        {
+          "$ref": "#/definitions/ParseReady"
+        },
+        {
+          "$ref": "#/definitions/FormatReady"
+        },
+        {
+          "$ref": "#/definitions/SyntaxReady"
+        }
+      ]
+    },
+    "CompilerReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "ready"
+        }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "CompileNeeds": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "needs"
+        },
+        "needs": {
+          "$ref": "#/definitions/Needs"
+        }
+      },
+      "required": ["kind", "needs"],
+      "additionalProperties": false
+    },
+    "Needs": {
+      "type": "object",
+      "properties": {
+        "urls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "schemas": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SchemaNeed"
+          }
+        }
+      },
+      "required": ["urls", "schemas"],
+      "additionalProperties": false,
+      "title": "Needs"
+    },
+    "SchemaNeed": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TableSchemaNeed"
+        },
+        {
+          "$ref": "#/definitions/SQLSchemaNeed"
+        }
+      ],
+      "title": "SchemaNeed"
+    },
+    "TableSchemaNeed": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "table"
+        },
+        "key": {
+          "type": "string"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "tablePath": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "key", "connection", "tablePath"],
+      "additionalProperties": false,
+      "title": "TableSchemaNeed"
+    },
+    "SQLSchemaNeed": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "sql"
+        },
+        "key": {
+          "type": "string"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "key", "connection", "sql"],
+      "additionalProperties": false,
+      "title": "SQLSchemaNeed"
+    },
+    "CompileError": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "message": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        }
+      },
+      "required": ["kind", "message", "diagnostics"],
+      "additionalProperties": false
+    },
+    "Diagnostic": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["error", "warning", "debug"]
+        },
+        "message": {
+          "type": "string"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SourceLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replacement": {
+          "type": ["string", "null"]
+        },
+        "errorTag": {
+          "type": ["string", "null"]
+        },
+        "data": {}
+      },
+      "required": ["code", "severity", "message", "location", "replacement", "errorTag", "data"],
+      "additionalProperties": false,
+      "title": "Diagnostic"
+    },
+    "SourceLocation": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "range": {
+          "$ref": "#/definitions/SourceRange"
+        }
+      },
+      "required": ["url", "range"],
+      "additionalProperties": false,
+      "title": "SourceLocation"
+    },
+    "SourceRange": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "$ref": "#/definitions/SourcePosition"
+        },
+        "end": {
+          "$ref": "#/definitions/SourcePosition"
+        }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "title": "SourceRange"
+    },
+    "CompilerFailure": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "failure"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "message"],
+      "additionalProperties": false
+    },
+    "ModelReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "model"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QueryDescriptor"
+          }
+        },
+        "compilerVersion": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/definitions/ModelSource"
+        }
+      },
+      "required": ["kind", "queries", "compilerVersion", "source"],
+      "additionalProperties": false
+    },
+    "QueryDescriptor": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["run", "named", "view", "sql"]
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SourceLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["name", "kind", "location"],
+      "additionalProperties": false,
+      "description": "A query available on a compiled model.\n\nname identifies the selection accepted by Model.query, including zero-based run:N and sql:N names for unnamed document queries.\n\nkind distinguishes an authored run, named query, source view or SQL document cell using the values \"run\", \"named\", \"view\" and \"sql\".\n\nlocation supplies an authored URL and range when available, otherwise null. Python positions use zero-based lines and Unicode code-point character offsets.",
+      "title": "QueryDescriptor"
+    },
+    "ModelSource": {
+      "type": "object",
+      "properties": {
+        "documentKind": {
+          "$ref": "#/definitions/DocumentKind"
+        },
+        "url": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "imports": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["documentKind", "url", "text", "imports"],
+      "additionalProperties": false,
+      "title": "ModelSource"
+    },
+    "QueryReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "query"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        },
+        "line": {
+          "type": "number"
+        }
+      },
+      "required": ["kind", "name", "sql"],
+      "additionalProperties": false
+    },
+    "DocumentReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "document"
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DocumentCell"
+          }
+        }
+      },
+      "required": ["kind", "cells"],
+      "additionalProperties": false
+    },
+    "DocumentCell": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/MarkdownCell"
+        },
+        {
+          "$ref": "#/definitions/QueryCell"
+        }
+      ]
+    },
+    "MarkdownCell": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "markdown"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "text"],
+      "additionalProperties": false
+    },
+    "QueryCell": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "query"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "name", "sql"],
+      "additionalProperties": false
+    },
+    "InspectionReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "inspection"
+        },
+        "inspection": {
+          "$ref": "#/definitions/Inspection"
+        }
+      },
+      "required": ["kind", "inspection"],
+      "additionalProperties": false
+    },
+    "Inspection": {
+      "type": "object",
+      "properties": {
+        "reference": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "location": {
+                  "$ref": "#/definitions/SourceLocation"
+                },
+                "definitionLocation": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/SourceLocation"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "definitionType": {
+                  "type": "string"
+                },
+                "defaultText": {
+                  "type": ["string", "null"]
+                },
+                "annotations": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/AnnotationInfo"
+                  }
+                }
+              },
+              "required": [
+                "text",
+                "kind",
+                "location",
+                "definitionLocation",
+                "definitionType",
+                "defaultText",
+                "annotations"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "import": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ImportInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "$ref": "#/definitions/NativeMetadata"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QueryDescriptor"
+          }
+        },
+        "givens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GivenInfo"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationInfo"
+          }
+        },
+        "modelAnnotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationInfo"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "imports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ImportInfo"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        }
+      },
+      "required": [
+        "model",
+        "queries",
+        "givens",
+        "annotations",
+        "modelAnnotations",
+        "dependencies",
+        "imports",
+        "diagnostics"
+      ],
+      "additionalProperties": false,
+      "title": "Inspection"
+    },
+    "AnnotationInfo": {
+      "type": "object",
+      "properties": {
+        "route": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/definitions/SourceLocation"
+        }
+      },
+      "required": ["route", "text", "content", "location"],
+      "additionalProperties": false,
+      "title": "AnnotationInfo"
+    },
+    "ImportInfo": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/definitions/SourceLocation"
+        }
+      },
+      "required": ["url", "location"],
+      "additionalProperties": false,
+      "title": "ImportInfo"
+    },
+    "NativeMetadata": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceInfo"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotatedObject"
+          }
+        }
+      },
+      "required": ["model", "sources", "annotations"],
+      "additionalProperties": false,
+      "title": "NativeMetadata"
+    },
+    "ModelInfo": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ModelEntryValue"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "anonymous_queries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnonymousQueryInfo"
+          }
+        }
+      },
+      "required": ["entries", "anonymous_queries"],
+      "additionalProperties": false
+    },
+    "ModelEntryValue": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ModelEntryValueWithSource"
+        },
+        {
+          "$ref": "#/definitions/ModelEntryValueWithQuery"
+        }
+      ]
+    },
+    "ModelEntryValueWithSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/definitions/Schema"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterInfo"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "source"
+        }
+      },
+      "required": ["kind", "name", "schema"]
+    },
+    "Schema": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FieldInfo"
+          }
+        }
+      },
+      "required": ["fields"],
+      "additionalProperties": false
+    },
+    "FieldInfo": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/FieldInfoWithDimension"
+        },
+        {
+          "$ref": "#/definitions/FieldInfoWithMeasure"
+        },
+        {
+          "$ref": "#/definitions/FieldInfoWithJoin"
+        },
+        {
+          "$ref": "#/definitions/FieldInfoWithView"
+        },
+        {
+          "$ref": "#/definitions/FieldInfoWithCalculate"
+        }
+      ]
+    },
+    "FieldInfoWithDimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/AtomicType"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "dimension"
+        }
+      },
+      "required": ["kind", "name", "type"]
+    },
+    "AtomicType": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AtomicTypeWithStringType"
+        },
+        {
+          "$ref": "#/definitions/AtomicTypeWithBooleanType"
+        },
+        {
+          "$ref": "#/definitions/AtomicTypeWithNumberType"
+        },
+        {
+          "$ref": "#/definitions/AtomicTypeWithJSONType"
+        },
+        {
+          "$ref": "#/definitions/AtomicTypeWithSQLNativeType"
+        },
+        {
+          "$ref": "#/definitions/AtomicTypeWithDateType"
+        },
+        {
+          "$ref": "#/definitions/AtomicTypeWithTimestampType"
+        },
+        {
+          "$ref": "#/definitions/AtomicTypeWithArrayType"
+        },
+        {
+          "$ref": "#/definitions/AtomicTypeWithRecordType"
+        },
+        {
+          "$ref": "#/definitions/AtomicTypeWithTimestamptzType"
+        }
+      ]
+    },
+    "AtomicTypeWithStringType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "string_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "AtomicTypeWithBooleanType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "boolean_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "AtomicTypeWithNumberType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subtype": {
+          "$ref": "#/definitions/NumberSubtype"
+        },
+        "kind": {
+          "type": "string",
+          "const": "number_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "NumberSubtype": {
+      "type": "string",
+      "enum": ["integer", "decimal", "bigint"]
+    },
+    "AtomicTypeWithJSONType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "json_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "AtomicTypeWithSQLNativeType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sql_type": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "sql_native_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "AtomicTypeWithDateType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeframe": {
+          "$ref": "#/definitions/DateTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "date_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "DateTimeframe": {
+      "type": "string",
+      "enum": ["year", "quarter", "month", "week", "day"]
+    },
+    "AtomicTypeWithTimestampType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeframe": {
+          "$ref": "#/definitions/TimestampTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "timestamp_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "TimestampTimeframe": {
+      "type": "string",
+      "enum": ["year", "quarter", "month", "week", "day", "hour", "minute", "second"]
+    },
+    "AtomicTypeWithArrayType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "element_type": {
+          "$ref": "#/definitions/AtomicType"
+        },
+        "kind": {
+          "type": "string",
+          "const": "array_type"
+        }
+      },
+      "required": ["element_type", "kind"]
+    },
+    "AtomicTypeWithRecordType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DimensionInfo"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "record_type"
+        }
+      },
+      "required": ["fields", "kind"]
+    },
+    "DimensionInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/AtomicType"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        }
+      },
+      "required": ["name", "type"],
+      "additionalProperties": false
+    },
+    "Annotation": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["value"],
+      "additionalProperties": false
+    },
+    "AtomicTypeWithTimestamptzType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeframe": {
+          "$ref": "#/definitions/TimestampTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "timestamptz_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "FieldInfoWithMeasure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/AtomicType"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "measure"
+        }
+      },
+      "required": ["kind", "name", "type"]
+    },
+    "FieldInfoWithJoin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/definitions/Schema"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "relationship": {
+          "$ref": "#/definitions/Relationship"
+        },
+        "kind": {
+          "type": "string",
+          "const": "join"
+        }
+      },
+      "required": ["kind", "name", "relationship", "schema"]
+    },
+    "Relationship": {
+      "type": "string",
+      "enum": ["one", "many", "cross"]
+    },
+    "FieldInfoWithView": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/definitions/Schema"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "definition": {
+          "$ref": "#/definitions/View"
+        },
+        "kind": {
+          "type": "string",
+          "const": "view"
+        }
+      },
+      "required": ["kind", "name", "schema"]
+    },
+    "View": {
+      "type": "object",
+      "properties": {
+        "definition": {
+          "$ref": "#/definitions/ViewDefinition"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        }
+      },
+      "required": ["definition"],
+      "additionalProperties": false
+    },
+    "ViewDefinition": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ViewDefinitionWithArrow"
+        },
+        {
+          "$ref": "#/definitions/ViewDefinitionWithViewReference"
+        },
+        {
+          "$ref": "#/definitions/ViewDefinitionWithRefinement"
+        },
+        {
+          "$ref": "#/definitions/ViewDefinitionWithSegment"
+        }
+      ]
+    },
+    "ViewDefinitionWithArrow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "$ref": "#/definitions/ViewDefinition"
+        },
+        "view": {
+          "$ref": "#/definitions/ViewDefinition"
+        },
+        "kind": {
+          "type": "string",
+          "const": "arrow"
+        }
+      },
+      "required": ["kind", "source", "view"]
+    },
+    "ViewDefinitionWithViewReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterValue"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "view_reference"
+        }
+      },
+      "required": ["kind", "name"]
+    },
+    "ParameterValue": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/definitions/LiteralValue"
+        }
+      },
+      "required": ["name", "value"],
+      "additionalProperties": false
+    },
+    "LiteralValue": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/LiteralValueWithStringLiteral"
+        },
+        {
+          "$ref": "#/definitions/LiteralValueWithNumberLiteral"
+        },
+        {
+          "$ref": "#/definitions/LiteralValueWithDateLiteral"
+        },
+        {
+          "$ref": "#/definitions/LiteralValueWithTimestampLiteral"
+        },
+        {
+          "$ref": "#/definitions/LiteralValueWithBooleanLiteral"
+        },
+        {
+          "$ref": "#/definitions/LiteralValueWithNullLiteral"
+        },
+        {
+          "$ref": "#/definitions/LiteralValueWithFilterExpressionLiteral"
+        }
+      ]
+    },
+    "LiteralValueWithStringLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "string_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "string_literal"
+        }
+      },
+      "required": ["kind", "string_value"]
+    },
+    "LiteralValueWithNumberLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "number_value": {
+          "type": "number"
+        },
+        "string_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "number_literal"
+        }
+      },
+      "required": ["kind", "number_value"]
+    },
+    "LiteralValueWithDateLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "date_value": {
+          "type": "string"
+        },
+        "granularity": {
+          "$ref": "#/definitions/DateTimeframe"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "date_literal"
+        }
+      },
+      "required": ["date_value", "kind"]
+    },
+    "LiteralValueWithTimestampLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timestamp_value": {
+          "type": "string"
+        },
+        "granularity": {
+          "$ref": "#/definitions/TimestampTimeframe"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "timestamp_literal"
+        }
+      },
+      "required": ["kind", "timestamp_value"]
+    },
+    "LiteralValueWithBooleanLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "boolean_value": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": "string",
+          "const": "boolean_literal"
+        }
+      },
+      "required": ["boolean_value", "kind"]
+    },
+    "LiteralValueWithNullLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "null_literal"
+        }
+      },
+      "required": ["kind"]
+    },
+    "LiteralValueWithFilterExpressionLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filter_expression_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "filter_expression_literal"
+        }
+      },
+      "required": ["filter_expression_value", "kind"]
+    },
+    "ViewDefinitionWithRefinement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "$ref": "#/definitions/ViewDefinition"
+        },
+        "refinement": {
+          "$ref": "#/definitions/ViewDefinition"
+        },
+        "kind": {
+          "type": "string",
+          "const": "refinement"
+        }
+      },
+      "required": ["base", "kind", "refinement"]
+    },
+    "ViewDefinitionWithSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ViewOperation"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "segment"
+        }
+      },
+      "required": ["kind", "operations"]
+    },
+    "ViewOperation": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ViewOperationWithGroupBy"
+        },
+        {
+          "$ref": "#/definitions/ViewOperationWithAggregate"
+        },
+        {
+          "$ref": "#/definitions/ViewOperationWithOrderBy"
+        },
+        {
+          "$ref": "#/definitions/ViewOperationWithLimit"
+        },
+        {
+          "$ref": "#/definitions/ViewOperationWithWhere"
+        },
+        {
+          "$ref": "#/definitions/ViewOperationWithNest"
+        },
+        {
+          "$ref": "#/definitions/ViewOperationWithHaving"
+        },
+        {
+          "$ref": "#/definitions/ViewOperationWithDrill"
+        },
+        {
+          "$ref": "#/definitions/ViewOperationWithCalculate"
+        }
+      ]
+    },
+    "ViewOperationWithGroupBy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "field": {
+          "$ref": "#/definitions/Field"
+        },
+        "kind": {
+          "type": "string",
+          "const": "group_by"
+        }
+      },
+      "required": ["field", "kind"]
+    },
+    "Field": {
+      "type": "object",
+      "properties": {
+        "expression": {
+          "$ref": "#/definitions/Expression"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        }
+      },
+      "required": ["expression"],
+      "additionalProperties": false
+    },
+    "Expression": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ExpressionWithFieldReference"
+        },
+        {
+          "$ref": "#/definitions/ExpressionWithTimeTruncation"
+        },
+        {
+          "$ref": "#/definitions/ExpressionWithFilteredField"
+        },
+        {
+          "$ref": "#/definitions/ExpressionWithLiteralValue"
+        },
+        {
+          "$ref": "#/definitions/ExpressionWithMovingAverage"
+        }
+      ]
+    },
+    "ExpressionWithFieldReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterValue"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "field_reference"
+        }
+      },
+      "required": ["kind", "name"]
+    },
+    "ExpressionWithTimeTruncation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field_reference": {
+          "$ref": "#/definitions/Reference"
+        },
+        "truncation": {
+          "$ref": "#/definitions/TimestampTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "time_truncation"
+        }
+      },
+      "required": ["field_reference", "kind", "truncation"]
+    },
+    "Reference": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterValue"
+          }
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    },
+    "ExpressionWithFilteredField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field_reference": {
+          "$ref": "#/definitions/Reference"
+        },
+        "where": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FilterOperation"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "filtered_field"
+        }
+      },
+      "required": ["field_reference", "kind", "where"]
+    },
+    "FilterOperation": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "$ref": "#/definitions/Filter"
+        }
+      },
+      "required": ["filter"],
+      "additionalProperties": false
+    },
+    "Filter": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/FilterWithFilterString"
+        },
+        {
+          "$ref": "#/definitions/FilterWithLiteralEquality"
+        }
+      ]
+    },
+    "FilterWithFilterString": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expression": {
+          "$ref": "#/definitions/Expression"
+        },
+        "filter": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "filter_string"
+        }
+      },
+      "required": ["expression", "filter", "kind"]
+    },
+    "FilterWithLiteralEquality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expression": {
+          "$ref": "#/definitions/Expression"
+        },
+        "value": {
+          "$ref": "#/definitions/LiteralValue"
+        },
+        "kind": {
+          "type": "string",
+          "const": "literal_equality"
+        }
+      },
+      "required": ["expression", "kind", "value"]
+    },
+    "ExpressionWithLiteralValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "literal_value": {
+          "$ref": "#/definitions/LiteralValue"
+        },
+        "kind": {
+          "type": "string",
+          "const": "literal_value"
+        }
+      },
+      "required": ["kind", "literal_value"]
+    },
+    "ExpressionWithMovingAverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field_reference": {
+          "$ref": "#/definitions/Reference"
+        },
+        "rows_preceding": {
+          "type": "number"
+        },
+        "rows_following": {
+          "type": "number"
+        },
+        "partition_fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Reference"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "moving_average"
+        }
+      },
+      "required": ["field_reference", "kind"]
+    },
+    "ViewOperationWithAggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "field": {
+          "$ref": "#/definitions/Field"
+        },
+        "kind": {
+          "type": "string",
+          "const": "aggregate"
+        }
+      },
+      "required": ["field", "kind"]
+    },
+    "ViewOperationWithOrderBy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field_reference": {
+          "$ref": "#/definitions/Reference"
+        },
+        "direction": {
+          "$ref": "#/definitions/OrderByDirection"
+        },
+        "kind": {
+          "type": "string",
+          "const": "order_by"
+        }
+      },
+      "required": ["field_reference", "kind"]
+    },
+    "OrderByDirection": {
+      "type": "string",
+      "enum": ["asc", "desc"]
+    },
+    "ViewOperationWithLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "type": "number"
+        },
+        "kind": {
+          "type": "string",
+          "const": "limit"
+        }
+      },
+      "required": ["kind", "limit"]
+    },
+    "ViewOperationWithWhere": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "$ref": "#/definitions/Filter"
+        },
+        "kind": {
+          "type": "string",
+          "const": "where"
+        }
+      },
+      "required": ["filter", "kind"]
+    },
+    "ViewOperationWithNest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "view": {
+          "$ref": "#/definitions/View"
+        },
+        "kind": {
+          "type": "string",
+          "const": "nest"
+        }
+      },
+      "required": ["kind", "view"]
+    },
+    "ViewOperationWithHaving": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "$ref": "#/definitions/Filter"
+        },
+        "kind": {
+          "type": "string",
+          "const": "having"
+        }
+      },
+      "required": ["filter", "kind"]
+    },
+    "ViewOperationWithDrill": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "$ref": "#/definitions/Filter"
+        },
+        "kind": {
+          "type": "string",
+          "const": "drill"
+        }
+      },
+      "required": ["filter", "kind"]
+    },
+    "ViewOperationWithCalculate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "field": {
+          "$ref": "#/definitions/Field"
+        },
+        "kind": {
+          "type": "string",
+          "const": "calculate"
+        }
+      },
+      "required": ["field", "kind", "name"]
+    },
+    "FieldInfoWithCalculate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/AtomicType"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "calculate"
+        }
+      },
+      "required": ["kind", "name", "type"]
+    },
+    "ParameterInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/ParameterType"
+        },
+        "default_value": {
+          "$ref": "#/definitions/LiteralValue"
+        }
+      },
+      "required": ["name", "type"],
+      "additionalProperties": false
+    },
+    "ParameterType": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ParameterTypeWithStringType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithBooleanType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithNumberType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithJSONType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithSQLNativeType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithDateType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithTimestampType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithArrayType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithRecordType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithFilterExpressionType"
+        },
+        {
+          "$ref": "#/definitions/ParameterTypeWithTimestamptzType"
+        }
+      ]
+    },
+    "ParameterTypeWithStringType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "string_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "ParameterTypeWithBooleanType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "boolean_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "ParameterTypeWithNumberType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subtype": {
+          "$ref": "#/definitions/NumberSubtype"
+        },
+        "kind": {
+          "type": "string",
+          "const": "number_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "ParameterTypeWithJSONType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "json_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "ParameterTypeWithSQLNativeType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sql_type": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "sql_native_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "ParameterTypeWithDateType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeframe": {
+          "$ref": "#/definitions/DateTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "date_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "ParameterTypeWithTimestampType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeframe": {
+          "$ref": "#/definitions/TimestampTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "timestamp_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "ParameterTypeWithArrayType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "element_type": {
+          "$ref": "#/definitions/AtomicType"
+        },
+        "kind": {
+          "type": "string",
+          "const": "array_type"
+        }
+      },
+      "required": ["element_type", "kind"]
+    },
+    "ParameterTypeWithRecordType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DimensionInfo"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "record_type"
+        }
+      },
+      "required": ["fields", "kind"]
+    },
+    "ParameterTypeWithFilterExpressionType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filter_type": {
+          "$ref": "#/definitions/FilterableType"
+        },
+        "kind": {
+          "type": "string",
+          "const": "filter_expression_type"
+        }
+      },
+      "required": ["filter_type", "kind"]
+    },
+    "FilterableType": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/FilterableTypeWithStringType"
+        },
+        {
+          "$ref": "#/definitions/FilterableTypeWithBooleanType"
+        },
+        {
+          "$ref": "#/definitions/FilterableTypeWithNumberType"
+        },
+        {
+          "$ref": "#/definitions/FilterableTypeWithDateType"
+        },
+        {
+          "$ref": "#/definitions/FilterableTypeWithTimestampType"
+        },
+        {
+          "$ref": "#/definitions/FilterableTypeWithTimestamptzType"
+        }
+      ]
+    },
+    "FilterableTypeWithStringType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "string_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "FilterableTypeWithBooleanType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "boolean_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "FilterableTypeWithNumberType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subtype": {
+          "$ref": "#/definitions/NumberSubtype"
+        },
+        "kind": {
+          "type": "string",
+          "const": "number_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "FilterableTypeWithDateType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeframe": {
+          "$ref": "#/definitions/DateTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "date_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "FilterableTypeWithTimestampType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeframe": {
+          "$ref": "#/definitions/TimestampTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "timestamp_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "FilterableTypeWithTimestamptzType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeframe": {
+          "$ref": "#/definitions/TimestampTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "timestamptz_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "ParameterTypeWithTimestamptzType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeframe": {
+          "$ref": "#/definitions/TimestampTimeframe"
+        },
+        "kind": {
+          "type": "string",
+          "const": "timestamptz_type"
+        }
+      },
+      "required": ["kind"]
+    },
+    "ModelEntryValueWithQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/definitions/Schema"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "definition": {
+          "$ref": "#/definitions/Query"
+        },
+        "code": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/definitions/Location"
+        },
+        "kind": {
+          "type": "string",
+          "const": "query"
+        }
+      },
+      "required": ["kind", "name", "schema"]
+    },
+    "Query": {
+      "type": "object",
+      "properties": {
+        "definition": {
+          "$ref": "#/definitions/QueryDefinition"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        }
+      },
+      "required": ["definition"],
+      "additionalProperties": false
+    },
+    "QueryDefinition": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/QueryDefinitionWithArrow"
+        },
+        {
+          "$ref": "#/definitions/QueryDefinitionWithQueryReference"
+        },
+        {
+          "$ref": "#/definitions/QueryDefinitionWithRefinement"
+        }
+      ]
+    },
+    "QueryDefinitionWithArrow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "$ref": "#/definitions/QueryArrowSource"
+        },
+        "view": {
+          "$ref": "#/definitions/ViewDefinition"
+        },
+        "kind": {
+          "type": "string",
+          "const": "arrow"
+        }
+      },
+      "required": ["kind", "source", "view"]
+    },
+    "QueryArrowSource": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/QueryArrowSourceWithRefinement"
+        },
+        {
+          "$ref": "#/definitions/QueryArrowSourceWithSourceReference"
+        }
+      ]
+    },
+    "QueryArrowSourceWithRefinement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "$ref": "#/definitions/QueryDefinition"
+        },
+        "refinement": {
+          "$ref": "#/definitions/ViewDefinition"
+        },
+        "kind": {
+          "type": "string",
+          "const": "refinement"
+        }
+      },
+      "required": ["base", "kind", "refinement"]
+    },
+    "QueryArrowSourceWithSourceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterValue"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "source_reference"
+        }
+      },
+      "required": ["kind", "name"]
+    },
+    "QueryDefinitionWithQueryReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterValue"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "query_reference"
+        }
+      },
+      "required": ["kind", "name"]
+    },
+    "QueryDefinitionWithRefinement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "$ref": "#/definitions/QueryDefinition"
+        },
+        "refinement": {
+          "$ref": "#/definitions/ViewDefinition"
+        },
+        "kind": {
+          "type": "string",
+          "const": "refinement"
+        }
+      },
+      "required": ["base", "kind", "refinement"]
+    },
+    "Location": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "range": {
+          "$ref": "#/definitions/Range"
+        }
+      },
+      "required": ["url", "range"],
+      "additionalProperties": false
+    },
+    "Range": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "$ref": "#/definitions/Position"
+        },
+        "end": {
+          "$ref": "#/definitions/Position"
+        }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false
+    },
+    "Position": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": "number"
+        },
+        "character": {
+          "type": "number"
+        }
+      },
+      "required": ["line", "character"],
+      "additionalProperties": false
+    },
+    "AnonymousQueryInfo": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "$ref": "#/definitions/Schema"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "definition": {
+          "$ref": "#/definitions/Query"
+        },
+        "code": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/definitions/Location"
+        }
+      },
+      "required": ["schema"],
+      "additionalProperties": false
+    },
+    "SourceInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/definitions/Schema"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterInfo"
+          }
+        }
+      },
+      "required": ["name", "schema"],
+      "additionalProperties": false
+    },
+    "AnnotatedObject": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "kind": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutedAnnotation"
+          }
+        }
+      },
+      "required": ["path", "kind", "annotations"],
+      "additionalProperties": false
+    },
+    "RoutedAnnotation": {
+      "type": "object",
+      "properties": {
+        "route": {
+          "type": ["string", "null"]
+        },
+        "content": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["route", "content", "text"],
+      "additionalProperties": false,
+      "description": "Native annotation routes and payloads alongside the untouched stable annotation."
+    },
+    "GivenInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "defaultText": {
+          "type": ["string", "null"]
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SourceLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationInfo"
+          }
+        }
+      },
+      "required": ["name", "type", "required", "defaultText", "location", "annotations"],
+      "additionalProperties": false,
+      "title": "GivenInfo"
+    },
+    "SourceReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "source"
+        },
+        "source": {
+          "$ref": "#/definitions/ModelSource"
+        }
+      },
+      "required": ["kind", "source"],
+      "additionalProperties": false
+    },
+    "CheckReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "check"
+        },
+        "report": {
+          "$ref": "#/definitions/CheckReport"
+        }
+      },
+      "required": ["kind", "report"],
+      "additionalProperties": false
+    },
+    "CheckReport": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "compilerVersion": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SymbolInfo"
+          }
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "connection": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "range": {
+                "$ref": "#/definitions/SourceRange"
+              }
+            },
+            "required": ["connection", "path", "range"],
+            "additionalProperties": false
+          }
+        },
+        "imports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParsedImport"
+          }
+        },
+        "completions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "text"],
+            "additionalProperties": false
+          }
+        },
+        "help": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "token": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["type", "token"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "model": {
+          "$ref": "#/definitions/NativeMetadata"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QueryDescriptor"
+          }
+        }
+      },
+      "required": [
+        "compilerVersion",
+        "completions",
+        "diagnostics",
+        "help",
+        "imports",
+        "model",
+        "ok",
+        "queries",
+        "symbols",
+        "tables",
+        "url"
+      ],
+      "additionalProperties": false,
+      "title": "CheckReport"
+    },
+    "SymbolInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "range": {
+          "$ref": "#/definitions/SourceRange"
+        },
+        "lensRange": {
+          "$ref": "#/definitions/SourceRange"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SymbolInfo"
+          }
+        }
+      },
+      "required": ["name", "type", "range", "lensRange", "children"],
+      "additionalProperties": false,
+      "title": "SymbolInfo"
+    },
+    "ParsedImport": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "reference": {
+          "$ref": "#/definitions/SourceSpan"
+        }
+      },
+      "required": ["location", "reference", "url"],
+      "additionalProperties": false,
+      "description": "The compiler-selected string literal, including delimiters, in Unicode codepoints."
+    },
+    "SourceSpan": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false
+    },
+    "ParseReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "parse"
+        },
+        "report": {
+          "$ref": "#/definitions/ParseReport"
+        }
+      },
+      "required": ["kind", "report"],
+      "additionalProperties": false
+    },
+    "ParseReport": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "compilerVersion": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SymbolInfo"
+          }
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "connection": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "range": {
+                "$ref": "#/definitions/SourceRange"
+              }
+            },
+            "required": ["connection", "path", "range"],
+            "additionalProperties": false
+          }
+        },
+        "imports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParsedImport"
+          }
+        },
+        "completions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "text"],
+            "additionalProperties": false
+          }
+        },
+        "help": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "token": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["type", "token"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "url",
+        "compilerVersion",
+        "diagnostics",
+        "symbols",
+        "tables",
+        "imports",
+        "completions",
+        "help"
+      ],
+      "additionalProperties": false,
+      "title": "ParseReport"
+    },
+    "FormatReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "format"
+        },
+        "source": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        }
+      },
+      "required": ["kind", "source", "diagnostics"],
+      "additionalProperties": false
+    },
+    "SyntaxReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "syntax"
+        },
+        "syntax": {
+          "$ref": "#/definitions/SyntaxNode"
+        }
+      },
+      "required": ["kind", "syntax"],
+      "additionalProperties": false
+    },
+    "SyntaxNode": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ConcreteSyntax"
+        },
+        {
+          "$ref": "#/definitions/ScalarSyntax"
+        },
+        {
+          "$ref": "#/definitions/TableSyntax"
+        }
+      ],
+      "description": "Lossless authored syntax. Strings retain all syntax outside editable bindings."
+    },
+    "ConcreteSyntax": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "syntax"
+        },
+        "kind": {
+          "$ref": "#/definitions/SyntaxKind"
+        },
+        "name": {
+          "type": ["string", "null"]
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/definitions/SyntaxNode"
+              }
+            ]
+          }
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SyntaxOperation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["type", "kind", "name", "parts", "operation"],
+      "additionalProperties": false
+    },
+    "SyntaxKind": {
+      "type": "string",
+      "enum": ["document", "source", "query", "field", "expression", "annotation", "clause"]
+    },
+    "SyntaxOperation": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/SyntaxOperationKind"
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["kind", "arguments"],
+      "additionalProperties": false
+    },
+    "SyntaxOperationKind": {
+      "type": "string",
+      "enum": [
+        "source",
+        "query",
+        "block",
+        "extend",
+        "pipe",
+        "ref",
+        "sql",
+        "dimension",
+        "measure",
+        "view",
+        "nest",
+        "group_by",
+        "select",
+        "aggregate",
+        "where",
+        "having",
+        "limit",
+        "primary_key",
+        "order_by",
+        "asc",
+        "desc"
+      ],
+      "description": "Constructor structure identified by Malloy's parser, independently of spelling."
+    },
+    "ScalarSyntax": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "scalar"
+        },
+        "source": {
+          "type": "string"
+        },
+        "scalar": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["type", "source", "scalar"],
+      "additionalProperties": false,
+      "description": "A scalar operation tree paired with its original authored spelling."
+    },
+    "Scalar": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ScalarField"
+        },
+        {
+          "$ref": "#/definitions/ScalarGiven"
+        },
+        {
+          "$ref": "#/definitions/ScalarLiteral"
+        },
+        {
+          "$ref": "#/definitions/ScalarUnary"
+        },
+        {
+          "$ref": "#/definitions/ScalarBinary"
+        },
+        {
+          "$ref": "#/definitions/ScalarCall"
+        },
+        {
+          "$ref": "#/definitions/ScalarCast"
+        },
+        {
+          "$ref": "#/definitions/ScalarNullTest"
+        },
+        {
+          "$ref": "#/definitions/ScalarTruncate"
+        },
+        {
+          "$ref": "#/definitions/ScalarFilter"
+        },
+        {
+          "$ref": "#/definitions/ScalarCase"
+        },
+        {
+          "$ref": "#/definitions/ScalarRaw"
+        }
+      ],
+      "description": "Symbolic scalar syntax; Malloy remains responsible for typing and semantics."
+    },
+    "ScalarField": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "field"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["kind", "path"],
+      "additionalProperties": false
+    },
+    "ScalarGiven": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "given"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "name"],
+      "additionalProperties": false
+    },
+    "ScalarLiteral": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "literal"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "null", "date", "timestamp"]
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "type", "value"],
+      "additionalProperties": false
+    },
+    "ScalarUnary": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unary"
+        },
+        "operator": {
+          "type": "string",
+          "enum": ["-", "not"]
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "operator", "value"],
+      "additionalProperties": false
+    },
+    "ScalarBinary": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "binary"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/definitions/Scalar"
+        },
+        "right": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "operator", "left", "right"],
+      "additionalProperties": false
+    },
+    "ScalarCall": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "call"
+        },
+        "name": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Scalar"
+          }
+        },
+        "receiver": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["kind", "name", "args", "receiver"],
+      "additionalProperties": false
+    },
+    "ScalarCast": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "cast"
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        },
+        "type": {
+          "type": "string"
+        },
+        "safe": {
+          "type": "boolean"
+        }
+      },
+      "required": ["kind", "value", "type", "safe"],
+      "additionalProperties": false
+    },
+    "ScalarNullTest": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "null_test"
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        },
+        "negated": {
+          "type": "boolean"
+        }
+      },
+      "required": ["kind", "value", "negated"],
+      "additionalProperties": false
+    },
+    "ScalarTruncate": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "truncate"
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "value", "unit"],
+      "additionalProperties": false
+    },
+    "ScalarFilter": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "filter"
+        },
+        "value": {
+          "$ref": "#/definitions/Scalar"
+        },
+        "predicate": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "value", "predicate"],
+      "additionalProperties": false
+    },
+    "ScalarCase": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "case"
+        },
+        "branches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "when": {
+                "$ref": "#/definitions/Scalar"
+              },
+              "then": {
+                "$ref": "#/definitions/Scalar"
+              }
+            },
+            "required": ["when", "then"],
+            "additionalProperties": false
+          }
+        },
+        "otherwise": {
+          "$ref": "#/definitions/Scalar"
+        }
+      },
+      "required": ["kind", "branches", "otherwise"],
+      "additionalProperties": false
+    },
+    "ScalarRaw": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "raw"
+        },
+        "code": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "code"],
+      "additionalProperties": false
+    },
+    "TableSyntax": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "table"
+        },
+        "source": {
+          "type": "string"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "source", "connection", "path"],
+      "additionalProperties": false
+    },
+    "Input": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "definitionRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "query": {
+          "type": ["string", "null"]
+        },
+        "givens": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Given"
+          }
+        },
+        "action": {
+          "$ref": "#/definitions/WidgetAction"
+        }
+      },
+      "required": ["revision", "definitionRevision", "query", "givens", "action"],
+      "additionalProperties": false,
+      "title": "Input"
+    },
+    "WidgetAction": {
+      "type": "string",
+      "enum": ["inspect", "check", "run"]
+    },
+    "NotebookReply": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "pymalloy-response"
+        },
+        "id": {
+          "type": "string"
+        },
+        "response": {
+          "$ref": "#/definitions/NotebookResponse"
+        }
+      },
+      "required": ["kind", "id", "response"],
+      "additionalProperties": false
+    },
+    "NotebookResponse": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/NotebookInspection"
+        },
+        {
+          "$ref": "#/definitions/NotebookResult"
+        },
+        {
+          "$ref": "#/definitions/NotebookError"
+        }
+      ]
+    },
+    "NotebookInspection": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "inspection"
+        },
+        "inspection": {
+          "$ref": "#/definitions/Inspection"
+        }
+      },
+      "required": ["kind", "inspection"],
+      "additionalProperties": false
+    },
+    "NotebookResult": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "result"
+        },
+        "sql": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Column"
+          }
+        },
+        "connectionName": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "sql", "columns", "connectionName"],
+      "additionalProperties": false
+    },
+    "NotebookError": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "message": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        }
+      },
+      "required": ["kind", "message", "diagnostics"],
+      "additionalProperties": false
+    },
+    "WidgetMessage": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/NotebookRequest"
+        },
+        {
+          "$ref": "#/definitions/ViewMessage"
+        }
+      ]
+    },
+    "NotebookRequest": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "pymalloy-request"
+        },
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "$ref": "#/definitions/Input"
+        }
+      },
+      "required": ["kind", "id", "input"],
+      "additionalProperties": false
+    },
+    "ViewMessage": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "pymalloy-view"
+        },
+        "id": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["mount", "unmount"]
+        }
+      },
+      "required": ["kind", "id", "action"],
+      "additionalProperties": false
+    },
+    "ActionRequest": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action": {
+          "type": "string",
+          "enum": ["check", "run"]
+        }
+      },
+      "required": ["revision", "action"],
+      "additionalProperties": false
+    },
+    "DefinitionMetadata": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "string"
+        },
+        "documentKind": {
+          "$ref": "#/definitions/DocumentKind"
+        },
+        "connectionName": {
+          "type": "string"
+        },
+        "notebook": {
+          "$ref": "#/definitions/NotebookInfo"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QueryDescriptor"
+          }
+        },
+        "url": {
+          "type": ["string", "null"]
+        },
+        "imports": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["revision", "source", "documentKind", "connectionName", "notebook", "queries"],
+      "additionalProperties": false
+    },
+    "NotebookInfo": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "execution": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ExecutionKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": ["string", "null"]
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NotebookBinding"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NotebookInput"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "source",
+        "execution",
+        "message",
+        "bindings",
+        "references",
+        "annotations",
+        "inputs"
+      ],
+      "additionalProperties": false,
+      "title": "NotebookInfo"
+    },
+    "ExecutionKind": {
+      "type": "string",
+      "enum": ["browser", "python", "result"]
+    },
+    "NotebookBinding": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "kind", "source"],
+      "additionalProperties": false,
+      "title": "NotebookBinding"
+    },
+    "NotebookInput": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["name", "rows"],
+      "additionalProperties": false,
+      "title": "NotebookInput"
+    },
+    "State": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": ["idle", "loading", "ready", "error", "closed"]
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QueryDescriptor"
+          }
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Result"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "type": ["string", "null"]
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        },
+        "inspection": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Inspection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["revision", "status", "queries", "result", "error", "diagnostics", "inspection"],
+      "additionalProperties": false,
+      "title": "State"
+    },
+    "Result": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "$ref": "#/definitions/Data"
+        },
+        "schema": {
+          "$ref": "#/definitions/Schema"
+        },
+        "sql": {
+          "type": "string"
+        },
+        "connection_name": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "model_annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "query_timezone": {
+          "type": "string"
+        },
+        "source_annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        }
+      },
+      "required": ["schema", "connection_name"],
+      "additionalProperties": false
+    },
+    "Data": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/DataWithRecordCell"
+        },
+        {
+          "$ref": "#/definitions/DataWithArrayCell"
+        }
+      ]
+    },
+    "DataWithRecordCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Cell"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "record_cell"
+        }
+      },
+      "required": ["kind", "record_value"]
+    },
+    "Cell": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CellWithStringCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithBooleanCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithDateCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithTimestampCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithNumberCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithJSONCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithRecordCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithArrayCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithNullCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithSQLNativeCell"
+        }
+      ]
+    },
+    "CellWithStringCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "string_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "string_cell"
+        }
+      },
+      "required": ["kind", "string_value"]
+    },
+    "CellWithBooleanCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "boolean_value": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": "string",
+          "const": "boolean_cell"
+        }
+      },
+      "required": ["boolean_value", "kind"]
+    },
+    "CellWithDateCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "date_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "date_cell"
+        }
+      },
+      "required": ["date_value", "kind"]
+    },
+    "CellWithTimestampCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timestamp_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "timestamp_cell"
+        }
+      },
+      "required": ["kind", "timestamp_value"]
+    },
+    "CellWithNumberCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "number_value": {
+          "type": "number"
+        },
+        "subtype": {
+          "$ref": "#/definitions/NumberSubtype"
+        },
+        "string_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "number_cell"
+        }
+      },
+      "required": ["kind", "number_value"]
+    },
+    "CellWithJSONCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "json_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "json_cell"
+        }
+      },
+      "required": ["json_value", "kind"]
+    },
+    "CellWithRecordCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Cell"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "record_cell"
+        }
+      },
+      "required": ["kind", "record_value"]
+    },
+    "CellWithArrayCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "array_value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Cell"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "array_cell"
+        }
+      },
+      "required": ["array_value", "kind"]
+    },
+    "CellWithNullCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "null_cell"
+        }
+      },
+      "required": ["kind"]
+    },
+    "CellWithSQLNativeCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sql_native_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "sql_native_cell"
+        }
+      },
+      "required": ["kind", "sql_native_value"]
+    },
+    "DataWithArrayCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "array_value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Cell"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "array_cell"
+        }
+      },
+      "required": ["array_value", "kind"]
+    }
+  }
+}

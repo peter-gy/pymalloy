@@ -6,258 +6,644 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Annotated, Any, Literal
 
-from msgspec import UNSET, Meta, UnsetType, field
-
-from pymalloy._protocol.base import Record
+from msgspec import UNSET, Meta, Struct, UnsetType, field
 
 
-class Annotation(Record):
-    value: str
-
-
-class AtomicTypeWithBooleanType(Record, tag_field="kind", tag="boolean_type"):
-    pass
-
-
-class AtomicTypeWithJSONType(Record, tag_field="kind", tag="json_type"):
-    pass
-
-
-class AtomicTypeWithSQLNativeType(Record, tag_field="kind", tag="sql_native_type"):
-    sql_type: str | UnsetType = UNSET
-
-
-class AtomicTypeWithStringType(Record, tag_field="kind", tag="string_type"):
-    pass
-
-
-class CellWithBooleanCell(Record, tag_field="kind", tag="boolean_cell"):
-    boolean_value: bool
-
-
-class CellWithDateCell(Record, tag_field="kind", tag="date_cell"):
-    date_value: str
-
-
-class CellWithJSONCell(Record, tag_field="kind", tag="json_cell"):
-    json_value: str
-
-
-class CellWithNullCell(Record, tag_field="kind", tag="null_cell"):
-    pass
-
-
-class CellWithSQLNativeCell(Record, tag_field="kind", tag="sql_native_cell"):
-    sql_native_value: str
-
-
-class CellWithStringCell(Record, tag_field="kind", tag="string_cell"):
-    string_value: str
-
-
-class CellWithTimestampCell(Record, tag_field="kind", tag="timestamp_cell"):
-    timestamp_value: str
-
-
-class Completion(Record):
-    text: str
-    type: str
-
-
-class Help(Record):
-    token: str | None
-    type: str
-
-
-class CompilerFailure(Record, tag_field="kind", tag="failure"):
-    message: str
-
-
-class CompilerReady(Record, tag_field="kind", tag="ready"):
-    pass
-
-
-type DateTimeframe = Literal["year", "quarter", "month", "week", "day"]
+class Connection(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
+    dialect: str
 
 
 type DocumentKind = Literal["model", "notebook"]
 
 
-class FilterableTypeWithBooleanType(Record, tag_field="kind", tag="boolean_type"):
-    pass
-
-
-class FilterableTypeWithDateType(Record, tag_field="kind", tag="date_type"):
-    timeframe: DateTimeframe | UnsetType = UNSET
-
-
-class FilterableTypeWithStringType(Record, tag_field="kind", tag="string_type"):
-    pass
-
-
-class LiteralValueWithBooleanLiteral(Record, tag_field="kind", tag="boolean_literal"):
-    boolean_value: bool
-
-
-class LiteralValueWithDateLiteral(Record, tag_field="kind", tag="date_literal"):
-    date_value: str
-    granularity: DateTimeframe | UnsetType = UNSET
-    timezone: str | UnsetType = UNSET
-
-
-class LiteralValueWithFilterExpressionLiteral(
-    Record, tag_field="kind", tag="filter_expression_literal"
+class URLValue(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="value",
 ):
-    filter_expression_value: str
+    value: str
 
 
-class LiteralValueWithNullLiteral(Record, tag_field="kind", tag="null_literal"):
+class HostError(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="error",
+):
+    error: str
+
+
+class Column(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    """
+    An output field name and its native database type text.
+    """
+
+    name: Annotated[str, Meta(description="Output column name.")]
+    type: Annotated[
+        str, Meta(description="Native type description, distinct from an Arrow schema.")
+    ]
+
+
+class MalloyQuery(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    malloy: str
+
+
+class NullGiven(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="null",
+):
     pass
 
 
-class LiteralValueWithNumberLiteral(Record, tag_field="kind", tag="number_literal"):
-    number_value: float
-    string_value: str | UnsetType = UNSET
+class IntegerGiven(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="integer",
+):
+    value: str
 
 
-class LiteralValueWithStringLiteral(Record, tag_field="kind", tag="string_literal"):
-    string_value: str
+class StringGiven(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="string",
+):
+    value: str
 
 
-class MarkdownCell(Record, tag_field="kind", tag="markdown"):
-    text: str
+class NumberGiven(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="number",
+):
+    value: float
 
 
-class ModelSource(Record):
-    document_kind: DocumentKind = field(name="documentKind")
-    imports: Mapping[str, str]
-    text: str
-    url: str
+class BooleanGiven(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="boolean",
+):
+    value: bool
 
 
-class NotebookBinding(Record):
-    kind: str
-    name: str
+class InspectionPosition(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    line: Annotated[int, Meta(ge=0)]
+    character: Annotated[int, Meta(ge=0)]
+    url: str | UnsetType = UNSET
+
+
+class SourceRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="source",
+):
+    pass
+
+
+class SourcePosition(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    line: Annotated[int, Meta(ge=0)]
+    character: Annotated[int, Meta(ge=0)]
+
+
+class FormatRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="format",
+):
     source: str
 
 
-class NotebookInput(Record):
-    name: str
-    rows: Annotated[int, Meta(ge=0)]
+class ParseRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="parse",
+):
+    source: str
+    url: str
+    document_kind: DocumentKind = field(name="documentKind")
 
 
-type NumberSubtype = Literal["integer", "decimal", "bigint"]
+class SyntaxRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="syntax",
+):
+    source: str
+    url: str
 
 
-type OrderByDirection = Literal["asc", "desc"]
-
-
-class ParameterTypeWithBooleanType(Record, tag_field="kind", tag="boolean_type"):
+class CompilerReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="ready",
+):
     pass
 
 
-class ParameterTypeWithDateType(Record, tag_field="kind", tag="date_type"):
-    timeframe: DateTimeframe | UnsetType = UNSET
+class TableSchemaNeed(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="table",
+):
+    key: str
+    connection: str
+    table_path: str = field(name="tablePath")
 
 
-class ParameterTypeWithJSONType(Record, tag_field="kind", tag="json_type"):
-    pass
-
-
-class ParameterTypeWithNumberType(Record, tag_field="kind", tag="number_type"):
-    subtype: NumberSubtype | UnsetType = UNSET
-
-
-class ParameterTypeWithSQLNativeType(Record, tag_field="kind", tag="sql_native_type"):
-    sql_type: str | UnsetType = UNSET
-
-
-class ParameterTypeWithStringType(Record, tag_field="kind", tag="string_type"):
-    pass
-
-
-class Position(Record):
-    character: float
-    line: float
-
-
-class QueryCell(Record, tag_field="kind", tag="query"):
-    name: str
+class SQLSchemaNeed(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="sql",
+):
+    key: str
+    connection: str
     sql: str
 
 
-class QueryReady(Record, tag_field="kind", tag="query"):
+class SourceRange(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    start: SourcePosition
+    end: SourcePosition
+
+
+class CompilerFailure(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="failure",
+):
+    message: str
+
+
+class ModelSource(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    document_kind: DocumentKind = field(name="documentKind")
+    url: str
+    text: str
+    imports: Mapping[str, str]
+
+
+class QueryReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="query",
+):
     name: str
     sql: str
     line: float | UnsetType = UNSET
 
 
-class Range(Record):
-    end: Position
-    start: Position
+class MarkdownCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="markdown",
+):
+    text: str
+
+
+class QueryCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="query",
+):
+    name: str
+    sql: str
+
+
+class AtomicTypeWithStringType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="string_type",
+):
+    pass
+
+
+class AtomicTypeWithBooleanType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="boolean_type",
+):
+    pass
+
+
+type NumberSubtype = Literal["integer", "decimal", "bigint"]
+
+
+class AtomicTypeWithJSONType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="json_type",
+):
+    pass
+
+
+class AtomicTypeWithSQLNativeType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="sql_native_type",
+):
+    sql_type: str | UnsetType = UNSET
+
+
+type DateTimeframe = Literal["year", "quarter", "month", "week", "day"]
+
+
+type TimestampTimeframe = Literal[
+    "year", "quarter", "month", "week", "day", "hour", "minute", "second"
+]
+
+
+class Annotation(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    value: str
+
+
+class AtomicTypeWithTimestamptzType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="timestamptz_type",
+):
+    timeframe: TimestampTimeframe | UnsetType = UNSET
 
 
 type Relationship = Literal["one", "many", "cross"]
 
 
-class RoutedAnnotation(Record):
+class LiteralValueWithStringLiteral(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="string_literal",
+):
+    string_value: str
+
+
+class LiteralValueWithNumberLiteral(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="number_literal",
+):
+    number_value: float
+    string_value: str | UnsetType = UNSET
+
+
+class LiteralValueWithDateLiteral(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="date_literal",
+):
+    date_value: str
+    granularity: DateTimeframe | UnsetType = UNSET
+    timezone: str | UnsetType = UNSET
+
+
+class LiteralValueWithTimestampLiteral(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="timestamp_literal",
+):
+    timestamp_value: str
+    granularity: TimestampTimeframe | UnsetType = UNSET
+    timezone: str | UnsetType = UNSET
+
+
+class LiteralValueWithBooleanLiteral(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="boolean_literal",
+):
+    boolean_value: bool
+
+
+class LiteralValueWithNullLiteral(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="null_literal",
+):
+    pass
+
+
+class LiteralValueWithFilterExpressionLiteral(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="filter_expression_literal",
+):
+    filter_expression_value: str
+
+
+type OrderByDirection = Literal["asc", "desc"]
+
+
+class ViewOperationWithLimit(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="limit",
+):
+    limit: float
+
+
+class ParameterTypeWithStringType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="string_type",
+):
+    pass
+
+
+class ParameterTypeWithBooleanType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="boolean_type",
+):
+    pass
+
+
+class ParameterTypeWithNumberType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="number_type",
+):
+    subtype: NumberSubtype | UnsetType = UNSET
+
+
+class ParameterTypeWithJSONType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="json_type",
+):
+    pass
+
+
+class ParameterTypeWithSQLNativeType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="sql_native_type",
+):
+    sql_type: str | UnsetType = UNSET
+
+
+class ParameterTypeWithDateType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="date_type",
+):
+    timeframe: DateTimeframe | UnsetType = UNSET
+
+
+class ParameterTypeWithTimestampType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="timestamp_type",
+):
+    timeframe: TimestampTimeframe | UnsetType = UNSET
+
+
+class FilterableTypeWithStringType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="string_type",
+):
+    pass
+
+
+class FilterableTypeWithBooleanType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="boolean_type",
+):
+    pass
+
+
+class FilterableTypeWithNumberType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="number_type",
+):
+    subtype: NumberSubtype | UnsetType = UNSET
+
+
+class FilterableTypeWithDateType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="date_type",
+):
+    timeframe: DateTimeframe | UnsetType = UNSET
+
+
+class FilterableTypeWithTimestampType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="timestamp_type",
+):
+    timeframe: TimestampTimeframe | UnsetType = UNSET
+
+
+class FilterableTypeWithTimestamptzType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="timestamptz_type",
+):
+    timeframe: TimestampTimeframe | UnsetType = UNSET
+
+
+class ParameterTypeWithTimestamptzType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="timestamptz_type",
+):
+    timeframe: TimestampTimeframe | UnsetType = UNSET
+
+
+class Position(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    line: float
+    character: float
+
+
+class RoutedAnnotation(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     """
     Native annotation routes and payloads alongside the untouched stable annotation.
     """
 
-    content: str
     route: str | None
+    content: str
     text: str
 
 
-class SQLSchemaNeed(Record, tag_field="kind", tag="sql"):
-    connection: str
-    key: str
-    sql: str
-
-
-class ScalarField(Record, tag_field="kind", tag="field"):
-    path: Sequence[str]
-
-
-class ScalarGiven(Record, tag_field="kind", tag="given"):
-    name: str
-
-
-class ScalarLiteral(Record, tag_field="kind", tag="literal"):
-    type: Literal["string", "number", "boolean", "null", "date", "timestamp"]
-    value: str
-
-
-class ScalarRaw(Record, tag_field="kind", tag="raw"):
-    code: str
-
-
-class SourcePosition(Record):
-    character: Annotated[int, Meta(ge=0)]
-    line: Annotated[int, Meta(ge=0)]
-
-
-class SourceRange(Record):
-    end: SourcePosition
-    start: SourcePosition
-
-
-class SourceReady(Record, tag_field="kind", tag="source"):
+class SourceReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="source",
+):
     source: ModelSource
 
 
-class SourceSpan(Record):
-    end: Annotated[int, Meta(ge=0)]
-    start: Annotated[int, Meta(ge=0)]
-
-
-class SymbolInfo(Record):
-    children: Sequence[SymbolInfo]
-    lens_range: SourceRange = field(name="lensRange")
-    name: str
+class Table(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    connection: str
+    path: str
     range: SourceRange
+
+
+class Completion(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     type: str
+    text: str
+
+
+class Help(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    type: str
+    token: str | None
+
+
+class SymbolInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
+    type: str
+    range: SourceRange
+    lens_range: SourceRange = field(name="lensRange")
+    children: Sequence[SymbolInfo]
+
+
+class SourceSpan(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    start: Annotated[int, Meta(ge=0)]
+    end: Annotated[int, Meta(ge=0)]
+
+
+type SyntaxKind = Literal[
+    "document", "source", "query", "field", "expression", "annotation", "clause"
+]
 
 
 type SyntaxOperationKind = Annotated[
@@ -290,187 +676,329 @@ type SyntaxOperationKind = Annotated[
 ]
 
 
-class TableSchemaNeed(Record, tag_field="kind", tag="table"):
-    connection: str
-    key: str
-    table_path: str = field(name="tablePath")
-
-
-class TableSyntax(Record, tag_field="type", tag="table"):
-    """
-    A native table source, retaining its exact spelling and resolved reference.
-    """
-
-    connection: str
-    path: str
-    source: str
-
-
-type TimestampTimeframe = Literal[
-    "year", "quarter", "month", "week", "day", "hour", "minute", "second"
-]
-
-
-class ViewOperationWithLimit(Record, tag_field="kind", tag="limit"):
-    limit: float
-
-
-class AnnotatedObject(Record):
-    annotations: Sequence[RoutedAnnotation]
-    kind: str
+class ScalarField(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="field",
+):
     path: Sequence[str]
 
 
-class AtomicTypeWithDateType(Record, tag_field="kind", tag="date_type"):
-    timeframe: DateTimeframe | UnsetType = UNSET
+class ScalarGiven(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="given",
+):
+    name: str
 
 
-class AtomicTypeWithNumberType(Record, tag_field="kind", tag="number_type"):
-    subtype: NumberSubtype | UnsetType = UNSET
+class ScalarLiteral(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="literal",
+):
+    type: Literal["string", "number", "boolean", "null", "date", "timestamp"]
+    value: str
 
 
-class AtomicTypeWithTimestampType(Record, tag_field="kind", tag="timestamp_type"):
-    timeframe: TimestampTimeframe | UnsetType = UNSET
+class ScalarRaw(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="raw",
+):
+    code: str
 
 
-class AtomicTypeWithTimestamptzType(Record, tag_field="kind", tag="timestamptz_type"):
-    timeframe: TimestampTimeframe | UnsetType = UNSET
-
-
-class CellWithNumberCell(Record, tag_field="kind", tag="number_cell"):
-    number_value: float
-    string_value: str | UnsetType = UNSET
-    subtype: NumberSubtype | UnsetType = UNSET
-
-
-class Table(Record):
+class TableSyntax(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="table",
+):
+    source: str
     connection: str
     path: str
-    range: SourceRange
 
 
-type DocumentCell = MarkdownCell | QueryCell
+type WidgetAction = Literal["inspect", "check", "run"]
 
 
-class DocumentReady(Record, tag_field="kind", tag="document"):
-    cells: Sequence[DocumentCell]
-
-
-class FilterableTypeWithNumberType(Record, tag_field="kind", tag="number_type"):
-    subtype: NumberSubtype | UnsetType = UNSET
-
-
-class FilterableTypeWithTimestampType(Record, tag_field="kind", tag="timestamp_type"):
-    timeframe: TimestampTimeframe | UnsetType = UNSET
-
-
-class FilterableTypeWithTimestamptzType(
-    Record, tag_field="kind", tag="timestamptz_type"
+class NotebookResult(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="result",
 ):
-    timeframe: TimestampTimeframe | UnsetType = UNSET
+    sql: str
+    columns: Sequence[Column]
+    connection_name: str = field(name="connectionName")
 
 
-class LiteralValueWithTimestampLiteral(
-    Record, tag_field="kind", tag="timestamp_literal"
+class ViewMessage(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="pymalloy-view",
 ):
-    timestamp_value: str
-    granularity: TimestampTimeframe | UnsetType = UNSET
-    timezone: str | UnsetType = UNSET
+    id: str
+    action: Literal["mount", "unmount"]
 
 
-class Location(Record):
-    range: Range
-    url: str
+class ActionRequest(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    revision: Annotated[int, Meta(ge=0)]
+    action: Literal["check", "run"]
 
 
-class NotebookInfo(Record):
-    annotations: Sequence[str]
-    bindings: Sequence[NotebookBinding]
-    execution: Literal["browser", "python", "result"] | None
-    inputs: Sequence[NotebookInput]
+type ExecutionKind = Literal["browser", "python", "result"]
+
+
+class NotebookBinding(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
     kind: str
-    message: str | None
-    references: Sequence[str]
     source: str
 
 
-class ParameterTypeWithTimestampType(Record, tag_field="kind", tag="timestamp_type"):
-    timeframe: TimestampTimeframe | UnsetType = UNSET
+class NotebookInput(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
+    rows: Annotated[int, Meta(ge=0)]
 
 
-class ParameterTypeWithTimestamptzType(
-    Record, tag_field="kind", tag="timestamptz_type"
+class CellWithStringCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="string_cell",
 ):
-    timeframe: TimestampTimeframe | UnsetType = UNSET
+    string_value: str
+
+
+class CellWithBooleanCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="boolean_cell",
+):
+    boolean_value: bool
+
+
+class CellWithDateCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="date_cell",
+):
+    date_value: str
+
+
+class CellWithTimestampCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="timestamp_cell",
+):
+    timestamp_value: str
+
+
+class CellWithNumberCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="number_cell",
+):
+    number_value: float
+    subtype: NumberSubtype | UnsetType = UNSET
+    string_value: str | UnsetType = UNSET
+
+
+class CellWithJSONCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="json_cell",
+):
+    json_value: str
+
+
+class CellWithNullCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="null_cell",
+):
+    pass
+
+
+class CellWithSQLNativeCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="sql_native_cell",
+):
+    sql_native_value: str
+
+
+class BeginRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="begin",
+):
+    url: str
+    document_kind: DocumentKind = field(name="documentKind")
+    connection: Connection
+    source: str | UnsetType = UNSET
+
+
+type URLAnswer = URLValue | HostError
+
+
+class SchemaValue(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="value",
+):
+    value: Sequence[Column]
+
+
+type QuerySelection = str | MalloyQuery
+
+
+class InspectRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="inspect",
+):
+    position: InspectionPosition | UnsetType = UNSET
+
+
+class CheckRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="check",
+):
+    url: str
+    source: str
+    document_kind: DocumentKind = field(name="documentKind")
+    connection: Connection
+    syntax_only: bool | UnsetType = field(name="syntaxOnly", default=UNSET)
+    position: SourcePosition | UnsetType = UNSET
 
 
 type SchemaNeed = Annotated[TableSchemaNeed | SQLSchemaNeed, Meta(title="SchemaNeed")]
 
 
-class SourceLocation(Record):
-    range: SourceRange
+class SourceLocation(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     url: str
+    range: SourceRange
 
 
-class SyntaxOperation(Record):
-    arguments: Sequence[str]
-    kind: SyntaxOperationKind
+class QueryDescriptor(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    """
+    A query available on a compiled model.
+
+    name identifies the selection accepted by Model.query, including zero-based run:N and sql:N names for unnamed document queries.
+
+    kind distinguishes an authored run, named query, source view or SQL document cell using the values "run", "named", "view" and "sql".
+
+    location supplies an authored URL and range when available, otherwise null. Python positions use zero-based lines and Unicode code-point character offsets.
+    """
+
+    name: str
+    kind: Literal["run", "named", "view", "sql"]
+    location: SourceLocation | None
 
 
-class AnnotationInfo(Record):
-    content: str
-    location: SourceLocation
+type DocumentCell = MarkdownCell | QueryCell
+
+
+class AnnotationInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     route: str
     text: str
-
-
-class Diagnostic(Record):
-    code: str
-    data: Any
-    error_tag: str | None = field(name="errorTag")
-    location: SourceLocation | None
-    message: str
-    replacement: str | None
-    severity: Literal["error", "warning", "debug"]
-
-
-type FilterableType = (
-    FilterableTypeWithStringType
-    | FilterableTypeWithBooleanType
-    | FilterableTypeWithNumberType
-    | FilterableTypeWithDateType
-    | FilterableTypeWithTimestampType
-    | FilterableTypeWithTimestamptzType
-)
-
-
-class FormatReady(Record, tag_field="kind", tag="format"):
-    diagnostics: Sequence[Diagnostic]
-    source: str
-
-
-class GivenInfo(Record):
-    annotations: Sequence[AnnotationInfo]
-    default_text: str | None = field(name="defaultText")
-    location: SourceLocation | None
-    name: str
-    required: bool
-    type: str
-
-
-class ImportInfo(Record):
+    content: str
     location: SourceLocation
+
+
+class ImportInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     url: str
-
-
-class Reference1(Record):
-    annotations: Sequence[AnnotationInfo]
-    default_text: str | None = field(name="defaultText")
-    definition_location: SourceLocation | None = field(name="definitionLocation")
-    definition_type: str = field(name="definitionType")
-    kind: str
     location: SourceLocation
-    text: str
+
+
+class AtomicTypeWithNumberType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="number_type",
+):
+    subtype: NumberSubtype | UnsetType = UNSET
+
+
+class AtomicTypeWithDateType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="date_type",
+):
+    timeframe: DateTimeframe | UnsetType = UNSET
+
+
+class AtomicTypeWithTimestampType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="timestamp_type",
+):
+    timeframe: TimestampTimeframe | UnsetType = UNSET
 
 
 type LiteralValue = (
@@ -484,142 +1012,523 @@ type LiteralValue = (
 )
 
 
-class Needs(Record):
-    schemas: Sequence[SchemaNeed]
-    urls: Sequence[str]
-
-
-class ParameterTypeWithFilterExpressionType(
-    Record, tag_field="kind", tag="filter_expression_type"
+class ExpressionWithLiteralValue(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="literal_value",
 ):
-    filter_type: FilterableType
+    literal_value: LiteralValue
 
 
-class ParameterValue(Record):
+type FilterableType = (
+    FilterableTypeWithStringType
+    | FilterableTypeWithBooleanType
+    | FilterableTypeWithNumberType
+    | FilterableTypeWithDateType
+    | FilterableTypeWithTimestampType
+    | FilterableTypeWithTimestamptzType
+)
+
+
+class Range(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    start: Position
+    end: Position
+
+
+class AnnotatedObject(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    path: Sequence[str]
+    kind: str
+    annotations: Sequence[RoutedAnnotation]
+
+
+class GivenInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     name: str
-    value: LiteralValue
+    type: str
+    required: bool
+    default_text: str | None = field(name="defaultText")
+    location: SourceLocation | None
+    annotations: Sequence[AnnotationInfo]
 
 
-class ParsedImport(Record):
+class ParsedImport(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     """
     The compiler-selected string literal, including delimiters, in Unicode codepoints.
     """
 
+    url: str
     location: SourceLocation
     reference: SourceSpan
-    url: str
 
 
-class QueryArrowSourceWithSourceReference(
-    Record, tag_field="kind", tag="source_reference"
-):
-    name: str
-    parameters: Sequence[ParameterValue] | UnsetType = UNSET
-    path: Sequence[str] | UnsetType = UNSET
+class SyntaxOperation(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    kind: SyntaxOperationKind
+    arguments: Sequence[str]
 
 
-class QueryDefinitionWithQueryReference(
-    Record, tag_field="kind", tag="query_reference"
-):
-    name: str
-    parameters: Sequence[ParameterValue] | UnsetType = UNSET
-    path: Sequence[str] | UnsetType = UNSET
+class NotebookInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    kind: str
+    source: str
+    execution: ExecutionKind | None
+    message: str | None
+    bindings: Sequence[NotebookBinding]
+    references: Sequence[str]
+    annotations: Sequence[str]
+    inputs: Sequence[NotebookInput]
 
 
-class QueryDescriptor(Record):
-    """
-    A query available on a compiled model.
-
-    name identifies the selection accepted by Model.query, including zero-based run:N and sql:N names for unnamed document queries.
-
-    kind distinguishes an authored run, named query, source view or SQL document cell using the values "run", "named", "view" and "sql".
-
-    location supplies an authored URL and range when available, otherwise null. Python positions use zero-based lines and Unicode code-point character offsets.
-    """
-
-    kind: Literal["run", "named", "view", "sql"]
-    location: SourceLocation | None
-    name: str
+type SchemaAnswer = SchemaValue | HostError
 
 
-class Reference(Record):
-    name: str
-    parameters: Sequence[ParameterValue] | UnsetType = UNSET
-    path: Sequence[str] | UnsetType = UNSET
+class Needs(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    urls: Sequence[str]
+    schemas: Sequence[SchemaNeed]
 
 
-class ViewDefinitionWithViewReference(Record, tag_field="kind", tag="view_reference"):
-    name: str
-    parameters: Sequence[ParameterValue] | UnsetType = UNSET
-    path: Sequence[str] | UnsetType = UNSET
-
-
-class ViewOperationWithOrderBy(Record, tag_field="kind", tag="order_by"):
-    field_reference: Reference
-    direction: OrderByDirection | UnsetType = UNSET
-
-
-class CompileError(Record, tag_field="kind", tag="error"):
-    diagnostics: Sequence[Diagnostic]
+class Diagnostic(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    code: str
+    severity: Literal["error", "warning", "debug"]
     message: str
+    location: SourceLocation | None
+    replacement: str | None
+    error_tag: str | None = field(name="errorTag")
+    data: Any
 
 
-class CompileNeeds(Record, tag_field="kind", tag="needs"):
-    needs: Needs
-
-
-class ExpressionWithFieldReference(Record, tag_field="kind", tag="field_reference"):
-    name: str
-    parameters: Sequence[ParameterValue] | UnsetType = UNSET
-    path: Sequence[str] | UnsetType = UNSET
-
-
-class ExpressionWithLiteralValue(Record, tag_field="kind", tag="literal_value"):
-    literal_value: LiteralValue
-
-
-class ExpressionWithMovingAverage(Record, tag_field="kind", tag="moving_average"):
-    field_reference: Reference
-    partition_fields: Sequence[Reference] | UnsetType = UNSET
-    rows_following: float | UnsetType = UNSET
-    rows_preceding: float | UnsetType = UNSET
-
-
-class ExpressionWithTimeTruncation(Record, tag_field="kind", tag="time_truncation"):
-    field_reference: Reference
-    truncation: TimestampTimeframe
-
-
-class ModelReady(Record, tag_field="kind", tag="model"):
-    compiler_version: str = field(name="compilerVersion")
+class ModelReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="model",
+):
     queries: Sequence[QueryDescriptor]
+    compiler_version: str = field(name="compilerVersion")
     source: ModelSource
 
 
-class ParseReport(Record):
+class DocumentReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="document",
+):
+    cells: Sequence[DocumentCell]
+
+
+class Reference(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    text: str
+    kind: str
+    location: SourceLocation
+    definition_location: SourceLocation | None = field(name="definitionLocation")
+    definition_type: str = field(name="definitionType")
+    default_text: str | None = field(name="defaultText")
+    annotations: Sequence[AnnotationInfo]
+
+
+class ParameterValue(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
+    value: LiteralValue
+
+
+class ExpressionWithFieldReference(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="field_reference",
+):
+    name: str
+    path: Sequence[str] | UnsetType = UNSET
+    parameters: Sequence[ParameterValue] | UnsetType = UNSET
+
+
+class ReferenceModel(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
+    path: Sequence[str] | UnsetType = UNSET
+    parameters: Sequence[ParameterValue] | UnsetType = UNSET
+
+
+class ExpressionWithMovingAverage(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="moving_average",
+):
+    field_reference: ReferenceModel
+    rows_preceding: float | UnsetType = UNSET
+    rows_following: float | UnsetType = UNSET
+    partition_fields: Sequence[ReferenceModel] | UnsetType = UNSET
+
+
+class ViewOperationWithOrderBy(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="order_by",
+):
+    field_reference: ReferenceModel
+    direction: OrderByDirection | UnsetType = UNSET
+
+
+class ParameterTypeWithFilterExpressionType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="filter_expression_type",
+):
+    filter_type: FilterableType
+
+
+class QueryArrowSourceWithSourceReference(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="source_reference",
+):
+    name: str
+    path: Sequence[str] | UnsetType = UNSET
+    parameters: Sequence[ParameterValue] | UnsetType = UNSET
+
+
+class QueryDefinitionWithQueryReference(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="query_reference",
+):
+    name: str
+    path: Sequence[str] | UnsetType = UNSET
+    parameters: Sequence[ParameterValue] | UnsetType = UNSET
+
+
+class Location(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    url: str
+    range: Range
+
+
+class ParseReport(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    url: str
     compiler_version: str = field(name="compilerVersion")
-    completions: Sequence[Completion]
     diagnostics: Sequence[Diagnostic]
-    help: Help | None
-    imports: Sequence[ParsedImport]
     symbols: Sequence[SymbolInfo]
     tables: Sequence[Table]
-    url: str
+    imports: Sequence[ParsedImport]
+    completions: Sequence[Completion]
+    help: Help | None
 
 
-class ParseReady(Record, tag_field="kind", tag="parse"):
+class FormatReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="format",
+):
+    source: str
+    diagnostics: Sequence[Diagnostic]
+
+
+class NotebookError(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="error",
+):
+    message: str
+    diagnostics: Sequence[Diagnostic]
+
+
+class DefinitionMetadata(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    revision: Annotated[int, Meta(ge=0)]
+    source: str
+    document_kind: DocumentKind = field(name="documentKind")
+    connection_name: str = field(name="connectionName")
+    notebook: NotebookInfo
+    queries: Sequence[QueryDescriptor]
+    url: str | None | UnsetType = UNSET
+    imports: Mapping[str, str] | None | UnsetType = UNSET
+
+
+class HostAnswers(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    urls: Mapping[str, URLAnswer]
+    schemas: Mapping[str, SchemaAnswer]
+
+
+class CompileNeeds(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="needs",
+):
+    needs: Needs
+
+
+class CompileError(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="error",
+):
+    message: str
+    diagnostics: Sequence[Diagnostic]
+
+
+class ViewDefinitionWithViewReference(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="view_reference",
+):
+    name: str
+    path: Sequence[str] | UnsetType = UNSET
+    parameters: Sequence[ParameterValue] | UnsetType = UNSET
+
+
+class ExpressionWithTimeTruncation(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="time_truncation",
+):
+    field_reference: ReferenceModel
+    truncation: TimestampTimeframe
+
+
+class ParseReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="parse",
+):
     report: ParseReport
+
+
+class StepRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="step",
+):
+    fulfilled: HostAnswers
 
 
 type Model = Records
 
 
-class AnonymousQueryInfo(Record):
+class Records(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    request: Request
+    response: Response
+    input: Input
+    notebook_reply: NotebookReply = field(name="notebookReply")
+    widget_message: WidgetMessage = field(name="widgetMessage")
+    action_request: ActionRequest = field(name="actionRequest")
+    definition: DefinitionMetadata
+    check: CheckReport
+    inspection: Inspection
+    diagnostic: Diagnostic
+    query: QueryDescriptor
+    state: State
+    notebook: NotebookInfo
+
+
+type Request = (
+    BeginRequest
+    | StepRequest
+    | QueryRequest
+    | DocumentRequest
+    | InspectRequest
+    | SourceRequest
+    | CheckRequest
+    | FormatRequest
+    | ParseRequest
+    | SyntaxRequest
+)
+
+
+class QueryRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="query",
+):
+    givens: Mapping[str, Given]
+    selection: QuerySelection | UnsetType = UNSET
+
+
+type Given = (
+    NullGiven
+    | IntegerGiven
+    | StringGiven
+    | NumberGiven
+    | BooleanGiven
+    | ArrayGiven
+    | RecordGiven
+)
+
+
+class ArrayGiven(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="array",
+):
+    value: Sequence[Given]
+
+
+class RecordGiven(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="record",
+):
+    value: Mapping[str, Given]
+
+
+class DocumentRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="op",
+    tag="document",
+):
+    givens: Mapping[str, Given]
+    queries: Sequence[str] | UnsetType = UNSET
+    all: bool | UnsetType = UNSET
+
+
+type Response = (
+    CompilerReady
+    | CompileNeeds
+    | CompileError
+    | CompilerFailure
+    | ModelReady
+    | QueryReady
+    | DocumentReady
+    | InspectionReady
+    | SourceReady
+    | CheckReady
+    | ParseReady
+    | FormatReady
+    | SyntaxReady
+)
+
+
+class InspectionReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="inspection",
+):
+    inspection: Inspection
+
+
+class Inspection(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    model: NativeMetadata
+    queries: Sequence[QueryDescriptor]
+    givens: Sequence[GivenInfo]
+    annotations: Sequence[AnnotationInfo]
+    model_annotations: Sequence[AnnotationInfo] = field(name="modelAnnotations")
+    dependencies: Sequence[str]
+    imports: Sequence[ImportInfo]
+    diagnostics: Sequence[Diagnostic]
+    reference: Reference | None | UnsetType = UNSET
+    import_: ImportInfo | None | UnsetType = field(name="import", default=UNSET)
+
+
+class NativeMetadata(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    model: ModelInfo | None
+    sources: Sequence[SourceInfo]
+    annotations: Sequence[AnnotatedObject]
+
+
+class ModelInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    entries: Sequence[ModelEntryValue]
+    anonymous_queries: Sequence[AnonymousQueryInfo]
+    annotations: Sequence[Annotation] | UnsetType = UNSET
+
+
+type ModelEntryValue = ModelEntryValueWithSource | ModelEntryValueWithQuery
+
+
+class ModelEntryValueWithSource(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="source",
+):
+    name: str
     schema: Schema
     annotations: Sequence[Annotation] | UnsetType = UNSET
-    code: str | UnsetType = UNSET
-    definition: Query | UnsetType = UNSET
-    location: Location | UnsetType = UNSET
+    parameters: Sequence[ParameterInfo] | UnsetType = UNSET
+
+
+class Schema(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    fields: Sequence[FieldInfo]
+
+
+type FieldInfo = (
+    FieldInfoWithDimension
+    | FieldInfoWithMeasure
+    | FieldInfoWithJoin
+    | FieldInfoWithView
+    | FieldInfoWithCalculate
+)
+
+
+class FieldInfoWithDimension(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="dimension",
+):
+    name: str
+    type: AtomicType
+    annotations: Sequence[Annotation] | UnsetType = UNSET
 
 
 type AtomicType = (
@@ -636,77 +1545,150 @@ type AtomicType = (
 )
 
 
-class AtomicTypeWithArrayType(Record, tag_field="kind", tag="array_type"):
+class AtomicTypeWithArrayType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="array_type",
+):
     element_type: AtomicType
 
 
-class AtomicTypeWithRecordType(Record, tag_field="kind", tag="record_type"):
+class AtomicTypeWithRecordType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="record_type",
+):
     fields: Sequence[DimensionInfo]
 
 
-type Cell = (
-    CellWithStringCell
-    | CellWithBooleanCell
-    | CellWithDateCell
-    | CellWithTimestampCell
-    | CellWithNumberCell
-    | CellWithJSONCell
-    | CellWithRecordCell
-    | CellWithArrayCell
-    | CellWithNullCell
-    | CellWithSQLNativeCell
+class DimensionInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
+    type: AtomicType
+    annotations: Sequence[Annotation] | UnsetType = UNSET
+
+
+class FieldInfoWithMeasure(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="measure",
+):
+    name: str
+    type: AtomicType
+    annotations: Sequence[Annotation] | UnsetType = UNSET
+
+
+class FieldInfoWithJoin(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="join",
+):
+    name: str
+    schema: Schema
+    relationship: Relationship
+    annotations: Sequence[Annotation] | UnsetType = UNSET
+
+
+class FieldInfoWithView(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="view",
+):
+    name: str
+    schema: Schema
+    annotations: Sequence[Annotation] | UnsetType = UNSET
+    definition: View | UnsetType = UNSET
+
+
+class View(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    definition: ViewDefinition
+    annotations: Sequence[Annotation] | UnsetType = UNSET
+
+
+type ViewDefinition = (
+    ViewDefinitionWithArrow
+    | ViewDefinitionWithViewReference
+    | ViewDefinitionWithRefinement
+    | ViewDefinitionWithSegment
 )
 
 
-class CellWithArrayCell(Record, tag_field="kind", tag="array_cell"):
-    array_value: Sequence[Cell]
+class ViewDefinitionWithArrow(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="arrow",
+):
+    source: ViewDefinition
+    view: ViewDefinition
 
 
-class CellWithRecordCell(Record, tag_field="kind", tag="record_cell"):
-    record_value: Sequence[Cell]
+class ViewDefinitionWithRefinement(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="refinement",
+):
+    base: ViewDefinition
+    refinement: ViewDefinition
 
 
-class CheckReady(Record, tag_field="kind", tag="check"):
-    report: CheckReport
+class ViewDefinitionWithSegment(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="segment",
+):
+    operations: Sequence[ViewOperation]
 
 
-class CheckReport(Record):
-    compiler_version: str = field(name="compilerVersion")
-    completions: Sequence[Completion]
-    diagnostics: Sequence[Diagnostic]
-    help: Help | None
-    imports: Sequence[ParsedImport]
-    model: NativeMetadata
-    ok: bool
-    queries: Sequence[QueryDescriptor]
-    symbols: Sequence[SymbolInfo]
-    tables: Sequence[Table]
-    url: str
+type ViewOperation = (
+    ViewOperationWithGroupBy
+    | ViewOperationWithAggregate
+    | ViewOperationWithOrderBy
+    | ViewOperationWithLimit
+    | ViewOperationWithWhere
+    | ViewOperationWithNest
+    | ViewOperationWithHaving
+    | ViewOperationWithDrill
+    | ViewOperationWithCalculate
+)
 
 
-class ConcreteSyntax(Record, tag_field="type", tag="syntax"):
-    kind: Literal[
-        "document", "source", "query", "field", "expression", "annotation", "clause"
-    ]
-    name: str | None
-    operation: SyntaxOperation | None
-    parts: Sequence[str | SyntaxNode]
+class ViewOperationWithGroupBy(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="group_by",
+):
+    field_: Field = field(name="field")
+    name: str | UnsetType = UNSET
 
 
-type Data = DataWithRecordCell | DataWithArrayCell
-
-
-class DataWithArrayCell(Record, tag_field="kind", tag="array_cell"):
-    array_value: Sequence[Cell]
-
-
-class DataWithRecordCell(Record, tag_field="kind", tag="record_cell"):
-    record_value: Sequence[Cell]
-
-
-class DimensionInfo(Record):
-    name: str
-    type: AtomicType
+class Field(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    expression: Expression
     annotations: Sequence[Annotation] | UnsetType = UNSET
 
 
@@ -719,123 +1701,132 @@ type Expression = (
 )
 
 
-class ExpressionWithFilteredField(Record, tag_field="kind", tag="filtered_field"):
-    field_reference: Reference
+class ExpressionWithFilteredField(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="filtered_field",
+):
+    field_reference: ReferenceModel
     where: Sequence[FilterOperation]
 
 
-class Field(Record):
-    expression: Expression
-    annotations: Sequence[Annotation] | UnsetType = UNSET
-
-
-type FieldInfo = (
-    FieldInfoWithDimension
-    | FieldInfoWithMeasure
-    | FieldInfoWithJoin
-    | FieldInfoWithView
-    | FieldInfoWithCalculate
-)
-
-
-class FieldInfoWithCalculate(Record, tag_field="kind", tag="calculate"):
-    name: str
-    type: AtomicType
-    annotations: Sequence[Annotation] | UnsetType = UNSET
-
-
-class FieldInfoWithDimension(Record, tag_field="kind", tag="dimension"):
-    name: str
-    type: AtomicType
-    annotations: Sequence[Annotation] | UnsetType = UNSET
-
-
-class FieldInfoWithJoin(Record, tag_field="kind", tag="join"):
-    name: str
-    relationship: Relationship
-    schema: Schema
-    annotations: Sequence[Annotation] | UnsetType = UNSET
-
-
-class FieldInfoWithMeasure(Record, tag_field="kind", tag="measure"):
-    name: str
-    type: AtomicType
-    annotations: Sequence[Annotation] | UnsetType = UNSET
-
-
-class FieldInfoWithView(Record, tag_field="kind", tag="view"):
-    name: str
-    schema: Schema
-    annotations: Sequence[Annotation] | UnsetType = UNSET
-    definition: View | UnsetType = UNSET
+class FilterOperation(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    filter: Filter
 
 
 type Filter = FilterWithFilterString | FilterWithLiteralEquality
 
 
-class FilterOperation(Record):
-    filter: Filter
-
-
-class FilterWithFilterString(Record, tag_field="kind", tag="filter_string"):
+class FilterWithFilterString(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="filter_string",
+):
     expression: Expression
     filter: str
 
 
-class FilterWithLiteralEquality(Record, tag_field="kind", tag="literal_equality"):
+class FilterWithLiteralEquality(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="literal_equality",
+):
     expression: Expression
     value: LiteralValue
 
 
-class Inspection(Record):
-    annotations: Sequence[AnnotationInfo]
-    dependencies: Sequence[str]
-    diagnostics: Sequence[Diagnostic]
-    givens: Sequence[GivenInfo]
-    imports: Sequence[ImportInfo]
-    model: NativeMetadata
-    model_annotations: Sequence[AnnotationInfo] = field(name="modelAnnotations")
-    queries: Sequence[QueryDescriptor]
-    import_: ImportInfo | None | UnsetType = field(name="import", default=UNSET)
-    reference: Reference1 | None | UnsetType = UNSET
+class ViewOperationWithAggregate(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="aggregate",
+):
+    field_: Field = field(name="field")
+    name: str | UnsetType = UNSET
 
 
-class InspectionReady(Record, tag_field="kind", tag="inspection"):
-    inspection: Inspection
+class ViewOperationWithWhere(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="where",
+):
+    filter: Filter
 
 
-type ModelEntryValue = ModelEntryValueWithSource | ModelEntryValueWithQuery
+class ViewOperationWithNest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="nest",
+):
+    view: View
+    name: str | UnsetType = UNSET
 
 
-class ModelEntryValueWithQuery(Record, tag_field="kind", tag="query"):
+class ViewOperationWithHaving(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="having",
+):
+    filter: Filter
+
+
+class ViewOperationWithDrill(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="drill",
+):
+    filter: Filter
+
+
+class ViewOperationWithCalculate(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="calculate",
+):
     name: str
-    schema: Schema
-    annotations: Sequence[Annotation] | UnsetType = UNSET
-    code: str | UnsetType = UNSET
-    definition: Query | UnsetType = UNSET
-    location: Location | UnsetType = UNSET
+    field_: Field = field(name="field")
 
 
-class ModelEntryValueWithSource(Record, tag_field="kind", tag="source"):
+class FieldInfoWithCalculate(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="calculate",
+):
     name: str
-    schema: Schema
-    annotations: Sequence[Annotation] | UnsetType = UNSET
-    parameters: Sequence[ParameterInfo] | UnsetType = UNSET
-
-
-class ModelInfo(Record):
-    anonymous_queries: Sequence[AnonymousQueryInfo]
-    entries: Sequence[ModelEntryValue]
+    type: AtomicType
     annotations: Sequence[Annotation] | UnsetType = UNSET
 
 
-class NativeMetadata(Record):
-    annotations: Sequence[AnnotatedObject]
-    model: ModelInfo | None
-    sources: Sequence[SourceInfo]
-
-
-class ParameterInfo(Record):
+class ParameterInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     name: str
     type: ParameterType
     default_value: LiteralValue | UnsetType = UNSET
@@ -856,27 +1847,47 @@ type ParameterType = (
 )
 
 
-class ParameterTypeWithArrayType(Record, tag_field="kind", tag="array_type"):
+class ParameterTypeWithArrayType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="array_type",
+):
     element_type: AtomicType
 
 
-class ParameterTypeWithRecordType(Record, tag_field="kind", tag="record_type"):
+class ParameterTypeWithRecordType(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="record_type",
+):
     fields: Sequence[DimensionInfo]
 
 
-class Query(Record):
+class ModelEntryValueWithQuery(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="query",
+):
+    name: str
+    schema: Schema
+    annotations: Sequence[Annotation] | UnsetType = UNSET
+    definition: Query | UnsetType = UNSET
+    code: str | UnsetType = UNSET
+    location: Location | UnsetType = UNSET
+
+
+class Query(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     definition: QueryDefinition
     annotations: Sequence[Annotation] | UnsetType = UNSET
-
-
-type QueryArrowSource = (
-    QueryArrowSourceWithRefinement | QueryArrowSourceWithSourceReference
-)
-
-
-class QueryArrowSourceWithRefinement(Record, tag_field="kind", tag="refinement"):
-    base: QueryDefinition
-    refinement: ViewDefinition
 
 
 type QueryDefinition = (
@@ -886,52 +1897,134 @@ type QueryDefinition = (
 )
 
 
-class QueryDefinitionWithArrow(Record, tag_field="kind", tag="arrow"):
+class QueryDefinitionWithArrow(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="arrow",
+):
     source: QueryArrowSource
     view: ViewDefinition
 
 
-class QueryDefinitionWithRefinement(Record, tag_field="kind", tag="refinement"):
+type QueryArrowSource = (
+    QueryArrowSourceWithRefinement | QueryArrowSourceWithSourceReference
+)
+
+
+class QueryArrowSourceWithRefinement(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="refinement",
+):
     base: QueryDefinition
     refinement: ViewDefinition
 
 
-class Records(Record):
-    check: CheckReport
-    diagnostic: Diagnostic
-    inspection: Inspection
-    notebook: NotebookInfo
-    query: QueryDescriptor
-    response: Response
-    state: State
+class QueryDefinitionWithRefinement(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="refinement",
+):
+    base: QueryDefinition
+    refinement: ViewDefinition
 
 
-type Response = (
-    CompilerReady
-    | CompileNeeds
-    | CompileError
-    | CompilerFailure
-    | ModelReady
-    | QueryReady
-    | DocumentReady
-    | InspectionReady
-    | SourceReady
-    | CheckReady
-    | ParseReady
-    | FormatReady
-    | SyntaxReady
-)
-
-
-class Result(Record):
-    connection_name: str
+class AnonymousQueryInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     schema: Schema
     annotations: Sequence[Annotation] | UnsetType = UNSET
-    data: Data | UnsetType = UNSET
-    model_annotations: Sequence[Annotation] | UnsetType = UNSET
-    query_timezone: str | UnsetType = UNSET
-    source_annotations: Sequence[Annotation] | UnsetType = UNSET
-    sql: str | UnsetType = UNSET
+    definition: Query | UnsetType = UNSET
+    code: str | UnsetType = UNSET
+    location: Location | UnsetType = UNSET
+
+
+class SourceInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
+    schema: Schema
+    annotations: Sequence[Annotation] | UnsetType = UNSET
+    parameters: Sequence[ParameterInfo] | UnsetType = UNSET
+
+
+class CheckReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="check",
+):
+    report: CheckReport
+
+
+class CheckReport(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    url: str
+    compiler_version: str = field(name="compilerVersion")
+    diagnostics: Sequence[Diagnostic]
+    symbols: Sequence[SymbolInfo]
+    tables: Sequence[Table]
+    imports: Sequence[ParsedImport]
+    completions: Sequence[Completion]
+    help: Help | None
+    ok: bool
+    model: NativeMetadata
+    queries: Sequence[QueryDescriptor]
+
+
+class SyntaxReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="syntax",
+):
+    syntax: SyntaxNode
+
+
+type SyntaxNode = Annotated[
+    ConcreteSyntax | ScalarSyntax | TableSyntax,
+    Meta(
+        description="Lossless authored syntax. Strings retain all syntax outside editable bindings."
+    ),
+]
+
+
+class ConcreteSyntax(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="syntax",
+):
+    kind: SyntaxKind
+    name: str | None
+    parts: Sequence[str | SyntaxNode]
+    operation: SyntaxOperation | None
+
+
+class ScalarSyntax(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="type",
+    tag="scalar",
+):
+    """
+    A scalar operation tree paired with its original authored spelling.
+    """
+
+    source: str
+    scalar: Scalar
 
 
 type Scalar = Annotated[
@@ -953,163 +2046,230 @@ type Scalar = Annotated[
 ]
 
 
-class ScalarBinary(Record, tag_field="kind", tag="binary"):
-    left: Scalar
-    operator: str
-    right: Scalar
-
-
-class ScalarCall(Record, tag_field="kind", tag="call"):
-    args: Sequence[Scalar]
-    name: str
-    receiver: Sequence[str] | None
-
-
-class Branch(Record):
-    then: Scalar
-    when: Scalar
-
-
-class ScalarCase(Record, tag_field="kind", tag="case"):
-    branches: Sequence[Branch]
-    otherwise: Scalar
-
-
-class ScalarCast(Record, tag_field="kind", tag="cast"):
-    safe: bool
-    type: str
-    value: Scalar
-
-
-class ScalarFilter(Record, tag_field="kind", tag="filter"):
-    predicate: Scalar
-    value: Scalar
-
-
-class ScalarNullTest(Record, tag_field="kind", tag="null_test"):
-    negated: bool
-    value: Scalar
-
-
-class ScalarSyntax(Record, tag_field="type", tag="scalar"):
-    """
-    A scalar operation tree paired with its original authored spelling.
-    """
-
-    scalar: Scalar
-    source: str
-
-
-class ScalarTruncate(Record, tag_field="kind", tag="truncate"):
-    unit: str
-    value: Scalar
-
-
-class ScalarUnary(Record, tag_field="kind", tag="unary"):
+class ScalarUnary(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="unary",
+):
     operator: Literal["-", "not"]
     value: Scalar
 
 
-class Schema(Record):
-    fields: Sequence[FieldInfo]
+class ScalarBinary(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="binary",
+):
+    operator: str
+    left: Scalar
+    right: Scalar
 
 
-class SourceInfo(Record):
+class ScalarCall(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="call",
+):
     name: str
-    schema: Schema
-    annotations: Sequence[Annotation] | UnsetType = UNSET
-    parameters: Sequence[ParameterInfo] | UnsetType = UNSET
+    args: Sequence[Scalar]
+    receiver: Sequence[str] | None
 
 
-class State(Record):
-    diagnostics: Sequence[Diagnostic]
-    error: str | None
-    inspection: Inspection | None
-    queries: Sequence[QueryDescriptor]
-    result: Result | None
+class ScalarCast(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="cast",
+):
+    value: Scalar
+    type: str
+    safe: bool
+
+
+class ScalarNullTest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="null_test",
+):
+    value: Scalar
+    negated: bool
+
+
+class ScalarTruncate(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="truncate",
+):
+    value: Scalar
+    unit: str
+
+
+class ScalarFilter(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="filter",
+):
+    value: Scalar
+    predicate: Scalar
+
+
+class Branch(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    when: Scalar
+    then: Scalar
+
+
+class ScalarCase(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="case",
+):
+    branches: Sequence[Branch]
+    otherwise: Scalar
+
+
+class Input(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    revision: Annotated[int, Meta(ge=0)]
+    definition_revision: Annotated[int, Meta(ge=0)] = field(name="definitionRevision")
+    query: str | None
+    givens: Mapping[str, Given]
+    action: WidgetAction
+
+
+class NotebookReply(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    kind: Literal["pymalloy-response"]
+    id: str
+    response: NotebookResponse
+
+
+type NotebookResponse = NotebookInspection | NotebookResult | NotebookError
+
+
+class NotebookInspection(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="inspection",
+):
+    inspection: Inspection
+
+
+type WidgetMessage = NotebookRequest | ViewMessage
+
+
+class NotebookRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="pymalloy-request",
+):
+    id: str
+    input: Input
+
+
+class State(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     revision: Annotated[int, Meta(ge=0)]
     status: Literal["idle", "loading", "ready", "error", "closed"]
+    queries: Sequence[QueryDescriptor]
+    result: Result | None
+    error: str | None
+    diagnostics: Sequence[Diagnostic]
+    inspection: Inspection | None
 
 
-type SyntaxNode = Annotated[
-    ConcreteSyntax | ScalarSyntax | TableSyntax,
-    Meta(
-        description="Lossless authored syntax. Strings retain all syntax outside editable bindings."
-    ),
-]
-
-
-class SyntaxReady(Record, tag_field="kind", tag="syntax"):
-    syntax: SyntaxNode
-
-
-class View(Record):
-    definition: ViewDefinition
+class Result(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    schema: Schema
+    connection_name: str
+    data: Data | UnsetType = UNSET
+    sql: str | UnsetType = UNSET
     annotations: Sequence[Annotation] | UnsetType = UNSET
+    model_annotations: Sequence[Annotation] | UnsetType = UNSET
+    query_timezone: str | UnsetType = UNSET
+    source_annotations: Sequence[Annotation] | UnsetType = UNSET
 
 
-type ViewDefinition = (
-    ViewDefinitionWithArrow
-    | ViewDefinitionWithViewReference
-    | ViewDefinitionWithRefinement
-    | ViewDefinitionWithSegment
+type Data = DataWithRecordCell | DataWithArrayCell
+
+
+class DataWithRecordCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="record_cell",
+):
+    record_value: Sequence[Cell]
+
+
+type Cell = (
+    CellWithStringCell
+    | CellWithBooleanCell
+    | CellWithDateCell
+    | CellWithTimestampCell
+    | CellWithNumberCell
+    | CellWithJSONCell
+    | CellWithRecordCell
+    | CellWithArrayCell
+    | CellWithNullCell
+    | CellWithSQLNativeCell
 )
 
 
-class ViewDefinitionWithArrow(Record, tag_field="kind", tag="arrow"):
-    source: ViewDefinition
-    view: ViewDefinition
+class CellWithRecordCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="record_cell",
+):
+    record_value: Sequence[Cell]
 
 
-class ViewDefinitionWithRefinement(Record, tag_field="kind", tag="refinement"):
-    base: ViewDefinition
-    refinement: ViewDefinition
+class CellWithArrayCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="array_cell",
+):
+    array_value: Sequence[Cell]
 
 
-class ViewDefinitionWithSegment(Record, tag_field="kind", tag="segment"):
-    operations: Sequence[ViewOperation]
-
-
-type ViewOperation = (
-    ViewOperationWithGroupBy
-    | ViewOperationWithAggregate
-    | ViewOperationWithOrderBy
-    | ViewOperationWithLimit
-    | ViewOperationWithWhere
-    | ViewOperationWithNest
-    | ViewOperationWithHaving
-    | ViewOperationWithDrill
-    | ViewOperationWithCalculate
-)
-
-
-class ViewOperationWithAggregate(Record, tag_field="kind", tag="aggregate"):
-    field_: Field = field(name="field")
-    name: str | UnsetType = UNSET
-
-
-class ViewOperationWithCalculate(Record, tag_field="kind", tag="calculate"):
-    field_: Field = field(name="field")
-    name: str
-
-
-class ViewOperationWithDrill(Record, tag_field="kind", tag="drill"):
-    filter: Filter
-
-
-class ViewOperationWithGroupBy(Record, tag_field="kind", tag="group_by"):
-    field_: Field = field(name="field")
-    name: str | UnsetType = UNSET
-
-
-class ViewOperationWithHaving(Record, tag_field="kind", tag="having"):
-    filter: Filter
-
-
-class ViewOperationWithNest(Record, tag_field="kind", tag="nest"):
-    view: View
-    name: str | UnsetType = UNSET
-
-
-class ViewOperationWithWhere(Record, tag_field="kind", tag="where"):
-    filter: Filter
+class DataWithArrayCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="array_cell",
+):
+    array_value: Sequence[Cell]

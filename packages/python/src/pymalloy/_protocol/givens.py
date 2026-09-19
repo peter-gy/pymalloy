@@ -6,18 +6,29 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from .records import (
+    ArrayGiven,
+    BooleanGiven,
+    Given,
+    IntegerGiven,
+    NullGiven,
+    NumberGiven,
+    RecordGiven,
+    StringGiven,
+)
 
-def _given(value: Any) -> dict[str, Any]:
+
+def _given(value: Any) -> Given:
     if value is None:
-        return {"type": "null"}
+        return NullGiven()
     if isinstance(value, bool):
-        return {"type": "boolean", "value": value}
+        return BooleanGiven(value=value)
     if isinstance(value, int):
-        return {"type": "integer", "value": str(value)}
+        return IntegerGiven(value=str(value))
     if isinstance(value, float):
         if not math.isfinite(value):
             raise ValueError("Given numbers must be finite")
-        return {"type": "number", "value": value}
+        return NumberGiven(value=value)
     if isinstance(value, Decimal):
         if not value.is_finite():
             raise ValueError("Given numbers must be finite")
@@ -25,18 +36,15 @@ def _given(value: Any) -> dict[str, Any]:
     if isinstance(value, (date, datetime)):
         value = value.isoformat()
     if isinstance(value, str):
-        return {"type": "string", "value": value}
+        return StringGiven(value=value)
     if isinstance(value, (list, tuple)):
-        return {"type": "array", "value": [_given(item) for item in value]}
+        return ArrayGiven(value=tuple(_given(item) for item in value))
     if isinstance(value, Mapping) and all(isinstance(key, str) for key in value):
-        return {
-            "type": "record",
-            "value": {key: _given(item) for key, item in value.items()},
-        }
+        return RecordGiven(value={key: _given(item) for key, item in value.items()})
     raise TypeError(f"Unsupported given value: {type(value).__name__}")
 
 
-def encode_givens(values: Mapping[str, Any] | None) -> dict[str, Any]:
+def encode_givens(values: Mapping[str, Any] | None) -> dict[str, Given]:
     if values is None:
         return {}
     if not isinstance(values, Mapping) or not all(
@@ -46,20 +54,20 @@ def encode_givens(values: Mapping[str, Any] | None) -> dict[str, Any]:
     return {key: _given(value) for key, value in values.items()}
 
 
-def given_values(encoded: Mapping[str, Any]) -> dict[str, Any]:
+def given_values(encoded: Mapping[str, Given]) -> dict[str, Any]:
     """Return serializable Python values with the same compiler bindings."""
 
-    def value(item: dict[str, Any]) -> Any:
-        match item["type"]:
-            case "null":
+    def value(item: Given) -> Any:
+        match item:
+            case NullGiven():
                 return None
-            case "integer":
-                return int(item["value"])
-            case "array":
-                return [value(child) for child in item["value"]]
-            case "record":
-                return {key: value(child) for key, child in item["value"].items()}
+            case IntegerGiven():
+                return int(item.value)
+            case ArrayGiven():
+                return [value(child) for child in item.value]
+            case RecordGiven():
+                return {key: value(child) for key, child in item.value.items()}
             case _:
-                return item["value"]
+                return item.value
 
     return {key: value(item) for key, item in encoded.items()}
