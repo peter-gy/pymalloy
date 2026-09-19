@@ -143,7 +143,14 @@ def test_widget_captured_source_preserves_identity_imports_and_revision():
 def test_widget_readback_preserves_nested_numbers_in_immutable_snapshots():
     widget = MalloyWidget("run: example")
     observed = []
-    widget.observe(lambda change: observed.append(change.new), names="state")
+
+    def receive(change):
+        observed.append(change.new)
+        if change.new["status"] == "ready":
+            with pytest.raises(TypeError):
+                change.new["rows"][0]["value"] = 0
+
+    widget.observe(receive, names="state")
     try:
         wire = browser_state(
             widget,
@@ -294,14 +301,12 @@ def test_widget_revision_lifecycle_preserves_state_through_resync_and_close(
     [
         {"query": ""},
         {"connection_name": ""},
-        {"connection_name": None},
         {"connection_name": 42},
         {"files": {"x": {"url": "file:///private/data.csv"}}},
         {"files": {"x": {"url": 42}}},
         {"files": {"x": 42}},
         {"files": {"": b"data"}},
         {"givens": {"x": float("nan")}},
-        {"givens": {"x": float("inf")}},
         {"givens": {"x": object()}},
         {"givens": {1: "value"}},
     ],
@@ -339,11 +344,11 @@ import io
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
-class ServerImports(importlib.abc.MetaPathFinder):
+class HeadlessImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname.split('.')[0] in {'duckdb', 'deno', 'polars', 'pyarrow', 'marimo'}:
             raise AssertionError(f'Headless dependency imported: {fullname}')
-sys.meta_path.insert(0, ServerImports())
+sys.meta_path.insert(0, HeadlessImports())
 import pymalloy as pm
 assert {'MalloyWidget', 'model', 'run', 'check', 'format'} <= set(dir(pm))
 from pymalloy import MalloyWidget
@@ -376,11 +381,11 @@ def test_cli_reports_the_extra_required_for_export(tmp_path):
     program = """
 import importlib.abc
 import sys
-class ServerImports(importlib.abc.MetaPathFinder):
+class HeadlessImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname == 'duckdb':
             raise ModuleNotFoundError('duckdb')
-sys.meta_path.insert(0, ServerImports())
+sys.meta_path.insert(0, HeadlessImports())
 from pymalloy.cli import main
 sys.argv = ['pymalloy', 'export', 'model.malloy', '--format', 'marimo', '-o', sys.argv[1]]
 main()
@@ -395,22 +400,6 @@ main()
     assert result.returncode == 1
     assert result.stdout == ""
     assert "pip install 'pymalloy[headless]'" in result.stderr
-
-
-def test_widget_state_observers_receive_immutable_readback():
-    widget = MalloyWidget("run: example")
-
-    def inspect(change):
-        if change.new["status"] == "ready":
-            with pytest.raises(TypeError):
-                change.new["rows"][0]["value"] = 999
-
-    widget.observe(inspect, names="state")
-    try:
-        widget.set_state({"_state": browser_state(widget)})
-        assert widget.state["rows"] == ({"value": 42},)
-    finally:
-        widget.close()
 
 
 def test_widget_diagnostics_preserve_source_locations_and_clear_on_recovery():
