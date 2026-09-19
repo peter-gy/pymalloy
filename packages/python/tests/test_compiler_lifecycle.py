@@ -6,9 +6,9 @@ from time import monotonic
 import pytest
 
 import pymalloy as pm
+from pymalloy._headless import tooling
 from pymalloy._model.errors import CompilerError, PyMalloyError
 from pymalloy._protocol.records import SourceReady
-from pymalloy._server import tooling
 
 
 def test_tooling_reuses_one_process_across_concurrent_calls_and_replaces_failures(

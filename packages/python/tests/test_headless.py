@@ -11,7 +11,7 @@ from pymalloy import CompilationError, ModelError
 from pymalloy.analysis import MarkdownCell, ParseReport, QueryCell
 
 
-def test_server_uses_packaged_runtime_without_widget_imports_or_project_config(
+def test_headless_uses_packaged_runtime_without_widget_imports_or_project_config(
     tmp_path,
 ):
     (tmp_path / "deno.json").write_text("invalid configuration")

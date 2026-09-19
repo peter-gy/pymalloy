@@ -49,11 +49,11 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
 """
     root.write_text(original)
     inputs = {"minimum": 20}
-    document = prepare(root, profile="server", givens=inputs, data_root=data)
-    assert document.profile == "server"
+    document = prepare(root, profile="headless", givens=inputs, data_root=data)
+    assert document.profile == "headless"
     assert document.source.text == original
     assert set(document.source.imports) == {path.as_uri() for path in (base, schema)}
-    assert document == prepare(root, profile="server", givens=inputs, data_root=data)
+    assert document == prepare(root, profile="headless", givens=inputs, data_root=data)
     inputs["minimum"] = 0
     with pytest.raises(TypeError):
         document.givens["minimum"] = 1
@@ -89,7 +89,7 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
             values["model"].close()
     else:
         notebook = json.loads(content)
-        assert notebook["metadata"]["pymalloy"]["profile"] == "server"
+        assert notebook["metadata"]["pymalloy"]["profile"] == "headless"
         execute_notebook(
             output,
             f"\nassert model_source.text == {original!r}\nassert run_0.to_dicts() == [{{'value': 42}}]\nassert sql_0.item() == 42\nassert 'visible.entries' in [q.name for q in model.queries]\nassert model.inspect().model.sources\ngivens['minimum'] = 10\nassert model.query('run:0').run(givens=givens).polars()['value'].to_list() == [12, 42]\nassert model.query(malloy='run: numbers -> {{ aggregate: total is value.sum() }}').run(givens=givens).polars().item() == 56\nmodel.close()\n",
@@ -107,7 +107,7 @@ COPY (SELECT 42 AS answer) TO 'answer.parquet' (FORMAT PARQUET)
 SELECT * FROM 'answer.parquet'
 """
     )
-    document = prepare(source, profile="server")
+    document = prepare(source, profile="headless")
     output = tmp_path / ("copy" + suffix)
     output.write_text(renderer.render(document, output_path=output))
     if renderer is marimo:
@@ -165,7 +165,7 @@ def test_query_retains_model_resources_until_it_is_released(borrowed):
             connection.execute("SELECT 42")
 
 
-@pytest.mark.parametrize("profile", ["precompiled", "server"])
+@pytest.mark.parametrize("profile", ["precompiled", "headless"])
 def test_cli_profiles_preserve_selection_title_and_readonly_access(tmp_path, profile):
     database = tmp_path / "data.duckdb"
     with duckdb.connect(str(database)) as connection:
@@ -207,8 +207,9 @@ def test_cli_profiles_preserve_selection_title_and_readonly_access(tmp_path, pro
     assert notebook["metadata"]["title"] == "Answer report"
     requirements = notebook["metadata"]["pymalloy"]["dependencies"]
     assert notebook["metadata"]["pymalloy"]["profile"] == profile
-    if profile == "server":
-        assert requirements[0].startswith("pymalloy[server,dataframes]==")
+    if profile == "headless":
+        assert requirements[0].startswith("pymalloy[headless]==")
+        assert requirements[1:] == ["polars>=1.44"]
         execute_notebook(
             output,
             """import duckdb
@@ -242,7 +243,7 @@ with duckdb.connect(str(database)) as writable:
         )
 
 
-@pytest.mark.parametrize("profile", ["server", "widget"])
+@pytest.mark.parametrize("profile", ["headless", "widget"])
 def test_notebook_preserves_configured_connection_name(tmp_path, profile):
     path = tmp_path / "model.malloy"
     path.write_text("run: warehouse.sql('SELECT 42 AS value') -> { select: value }")
@@ -251,7 +252,7 @@ def test_notebook_preserves_configured_connection_name(tmp_path, profile):
     output = tmp_path / "report.py"
     output.write_text(marimo.render(document, output_path=output))
     values = run_notebook(output)
-    if profile == "server":
+    if profile == "headless":
         try:
             assert values["run_0"].to_dicts() == [{"value": 42}]
         finally:
@@ -264,7 +265,7 @@ def test_notebook_preserves_configured_connection_name(tmp_path, profile):
             widget.close()
 
 
-@pytest.mark.parametrize("profile", ["precompiled", "server", "widget"])
+@pytest.mark.parametrize("profile", ["precompiled", "headless", "widget"])
 @pytest.mark.parametrize("reader", [False, True], ids=["table", "sql-reader"])
 def test_http_inputs_survive_notebook_relocation(
     tmp_path, monkeypatch, profile, reader
@@ -333,7 +334,7 @@ def test_http_inputs_survive_notebook_relocation(
             try:
                 assert values["answer"].to_dicts() == [{"value": 42}]
             finally:
-                if profile == "server":
+                if profile == "headless":
                     values["model"].close()
     finally:
         server.shutdown()
@@ -341,7 +342,7 @@ def test_http_inputs_survive_notebook_relocation(
         worker.join()
 
 
-@pytest.mark.parametrize("profile", ["precompiled", "server"])
+@pytest.mark.parametrize("profile", ["precompiled", "headless"])
 def test_explicit_native_extensions_survive_notebook_export(tmp_path, profile):
     path = tmp_path / "extensions.malloy"
     path.write_text(
@@ -356,5 +357,5 @@ def test_explicit_native_extensions_survive_notebook_export(tmp_path, profile):
     try:
         assert values["run_0"].to_dicts() == [{"loaded": True}]
     finally:
-        if profile == "server":
+        if profile == "headless":
             values["model"].close()

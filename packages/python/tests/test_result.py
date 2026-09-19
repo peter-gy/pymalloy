@@ -5,7 +5,7 @@ import polars as pl
 import pyarrow as pa
 
 import pymalloy as pm
-from pymalloy._server.engine import Engine
+from pymalloy._headless.engine import Engine
 from pymalloy.result import Column
 
 

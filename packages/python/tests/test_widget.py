@@ -342,7 +342,7 @@ from pathlib import Path
 class ServerImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname.split('.')[0] in {'duckdb', 'deno', 'polars', 'pyarrow', 'marimo'}:
-            raise AssertionError(f'Server dependency imported: {fullname}')
+            raise AssertionError(f'Headless dependency imported: {fullname}')
 sys.meta_path.insert(0, ServerImports())
 import pymalloy as pm
 assert {'MalloyWidget', 'model', 'run', 'check', 'format'} <= set(dir(pm))
@@ -394,7 +394,7 @@ main()
     )
     assert result.returncode == 1
     assert result.stdout == ""
-    assert "pip install 'pymalloy[server]'" in result.stderr
+    assert "pip install 'pymalloy[headless]'" in result.stderr
 
 
 def test_widget_state_observers_receive_immutable_readback():

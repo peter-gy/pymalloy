@@ -24,7 +24,7 @@ def test_capability_loads_the_installed_skill_and_references():
         assert skill.file(name).read_text(encoding="utf-8")
 
 
-def test_authoring_and_agent_discovery_do_not_import_server_or_notebook_dependencies():
+def test_authoring_and_agent_discovery_do_not_import_headless_or_notebook_dependencies():
     program = """
 import importlib.abc, json, sys
 class BlockServer(importlib.abc.MetaPathFinder):
@@ -52,7 +52,7 @@ print(json.dumps({'plugin': agent.agent_plugin().manifest.name, 'text': candidat
     assert json.loads(result.stdout)["plugin"] == "pymalloy"
 
 
-def test_authoring_execution_identifies_the_missing_server_extra():
+def test_authoring_execution_identifies_the_missing_headless_extra():
     program = """
 import importlib.abc, sys
 class BaseInstall(importlib.abc.MetaPathFinder):
@@ -67,9 +67,9 @@ for operation in (candidate.compile, candidate.check, candidate.validate):
     try:
         operation()
     except ImportError as error:
-        assert 'pymalloy[server]' in str(error)
+        assert 'pymalloy[headless]' in str(error)
     else:
-        raise AssertionError('Execution should require the server extra')
+        raise AssertionError('Execution should require the headless extra')
 """
     result = subprocess.run(
         [sys.executable, "-c", program], text=True, capture_output=True, check=False

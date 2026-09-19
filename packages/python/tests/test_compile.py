@@ -454,7 +454,7 @@ def test_cli_reports_operational_failures_without_replacing_output(
     assert output.read_text() == "existing notebook"
 
 
-@pytest.mark.parametrize("profile", ["precompiled", "server"])
+@pytest.mark.parametrize("profile", ["precompiled", "headless"])
 def test_native_exports_require_declared_sql_reader_inputs(
     tmp_path, monkeypatch, profile
 ):
@@ -478,11 +478,11 @@ def test_native_exports_require_declared_sql_reader_inputs(
     try:
         assert values["run_0"].to_dicts() == [{"value": 42}]
     finally:
-        if profile == "server":
+        if profile == "headless":
             values["model"].close()
 
 
-@pytest.mark.parametrize("profile", ["precompiled", "server"])
+@pytest.mark.parametrize("profile", ["precompiled", "headless"])
 def test_raw_sql_notebook_cannot_read_undeclared_files(tmp_path, monkeypatch, profile):
     root = tmp_path / "data"
     root.mkdir()
@@ -494,7 +494,7 @@ def test_raw_sql_notebook_cannot_read_undeclared_files(tmp_path, monkeypatch, pr
     output = tmp_path / "report.py"
     output.write_text(marimo.render(document, output_path=output))
     monkeypatch.chdir(tmp_path)
-    expected = ExecutionError if profile == "server" else duckdb.PermissionException
+    expected = ExecutionError if profile == "headless" else duckdb.PermissionException
     with pytest.raises(expected, match="disabled"):
         run_notebook(output)
 

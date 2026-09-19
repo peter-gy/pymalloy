@@ -105,7 +105,7 @@ SELECT * FROM %{
     assert diagnostic.location.range.end == SourcePosition(line=6, character=16)
 
 
-def test_server_warning_contains_a_source_replacement():
+def test_headless_warning_contains_a_source_replacement():
     source = (
         "run: duckdb.sql('SELECT 1 AS value') -> { where: value = null select: value }"
     )
@@ -121,7 +121,7 @@ def test_server_warning_contains_a_source_replacement():
     assert pm.check(repaired).diagnostics == []
 
 
-def test_server_completions_and_help_have_source_context():
+def test_headless_completions_and_help_have_source_context():
     source = "source: numbers is duckdb.table('absent.csv')\nrun: numbers -> {\n  group_by: value\n  \n}"
     report = pm.check(
         source, syntax_only=True, position=SourcePosition(line=3, character=2)

@@ -402,7 +402,7 @@ def test_preview_uses_native_limits_comments_and_statement_classification(tmp_pa
 
 
 def test_validation_uses_one_budget_and_releases_its_model(monkeypatch):
-    from pymalloy._server import validation
+    from pymalloy._headless import validation
 
     candidate = pm.draft().define(orders=orders())
     elapsed = 0

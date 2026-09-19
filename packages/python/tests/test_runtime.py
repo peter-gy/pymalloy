@@ -530,7 +530,7 @@ def test_compiler_memory_budget_releases_a_borrowed_connection():
 def test_startup_and_compilation_share_one_deadline(monkeypatch, operation):
     from types import SimpleNamespace
 
-    from pymalloy._server import api, runtime, tooling
+    from pymalloy._headless import api, runtime, tooling
 
     tooling._tooling.close()
     origin = runtime.time.monotonic()
