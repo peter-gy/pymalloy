@@ -3,7 +3,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { connection, drive } from "../packages/duckdb/dist/index.mjs";
+import type * as CompilerAPI from "@malloy-runtime/compiler";
+import type * as ToolingAPI from "@malloy-runtime/compiler/tooling";
+import type { Job } from "@malloy-runtime/compiler";
+import { connection, drive } from "@malloy-runtime/duckdb";
+
+const root = resolve(import.meta.dirname, "..");
 
 const { values } = parseArgs({
   options: {
@@ -15,11 +20,13 @@ const { values } = parseArgs({
 if (!values.output) throw new Error("Pass --output timings.json");
 const samples = Number(values.samples);
 if (!Number.isSafeInteger(samples) || samples < 1) throw new Error("samples must be positive");
-const { CompiledModel } = await import(pathToFileURL(resolve(values.compiler, "index.mjs")).href);
-const { checkSource, compilerVersion } = await import(
-  pathToFileURL(resolve(values.compiler, "tooling.mjs")).href
+const { CompiledModel }: typeof CompilerAPI = await import(
+  pathToFileURL(resolve(root, values.compiler, "index.mjs")).href
 );
-const timings = {};
+const { checkSource, compilerVersion }: typeof ToolingAPI = await import(
+  pathToFileURL(resolve(root, values.compiler, "tooling.mjs")).href
+);
+const timings: Record<string, number[]> = {};
 const preparationsPerSample = 100;
 const url = new URL("memory://benchmark/model.malloy");
 const host = {
@@ -28,8 +35,8 @@ const host = {
     throw new Error("Fixture imports must be closed");
   },
 };
-const execute = (job) => drive(job, host);
-async function measure(name, operation) {
+const execute = <T>(job: Job<T>) => drive(job, host);
+async function measure<T>(name: string, operation: () => T | Promise<T>): Promise<T> {
   const begin = performance.now();
   const result = await operation();
   (timings[name] ??= []).push((performance.now() - begin) / 1000);
@@ -86,9 +93,10 @@ const seconds = Object.fromEntries(
     ];
   }),
 );
-await mkdir(dirname(resolve(values.output)), { recursive: true });
+const output = resolve(root, values.output);
+await mkdir(dirname(output), { recursive: true });
 await writeFile(
-  values.output,
+  output,
   JSON.stringify(
     {
       compiler: compilerVersion,

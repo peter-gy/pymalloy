@@ -1,8 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
   "ignoreBinaries": ["uv"],
-  "ignoreDependencies": ["ts-json-schema-generator"],
   "workspaces": {
+    "scripts": { "entry": ["*.ts"] },
     "packages/duckdb": { "entry": ["src/index.ts", "src/arrow.ts"] },
     "packages/core": { "entry": ["src/index.ts", "src/tooling.ts", "src/types.ts"] },
     "packages/widget": { "ignoreDependencies": ["process"] },
@@ -15,8 +15,8 @@
       "ignoreDependencies": ["process", "@types/emscripten"],
     },
     "packages/python": {
-      // These build dependencies produce the files copied by build.mjs.
-      "ignoreDependencies": ["@pymalloy/headless", "@pymalloy/widget"],
+      // The build command delegates to scripts; headless and widget supply its staged assets.
+      "ignoreDependencies": ["@pymalloy/scripts", "@pymalloy/headless", "@pymalloy/widget"],
     },
   },
 }

@@ -21,7 +21,10 @@ export default defineConfig({
     ignorePatterns: ignoredPaths,
     categories: { correctness: "error", perf: "error" },
     plugins: ["typescript", "unicorn", "import"],
-    jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }],
+    jsPlugins: [
+      { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+      { name: "stylex", specifier: "@stylexjs/eslint-plugin" },
+    ],
     options: {
       denyWarnings: true,
       reportUnusedDisableDirectives: "error",
@@ -29,18 +32,20 @@ export default defineConfig({
     },
     rules: {
       ...antiSlopRules,
+      "stylex/valid-styles": "error",
+      "stylex/no-unused": "error",
       "typescript/consistent-type-imports": "error",
       // Compilation, database calls, and authored document cells run in order.
       "no-await-in-loop": "off",
     },
     overrides: [
       {
-        files: ["packages/**/*.ts", "apps/**/*.ts", "apps/**/*.mts"],
+        files: ["packages/**/*.ts", "packages/**/*.tsx", "apps/**/*.ts", "apps/**/*.mts"],
         rules: {
           "import/extensions": [
             "error",
             "ignorePackages",
-            { js: "never", ts: "never", checkTypeImports: true },
+            { js: "never", ts: "never", tsx: "never", jsx: "never", checkTypeImports: true },
           ],
         },
       },

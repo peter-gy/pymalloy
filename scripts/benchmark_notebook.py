@@ -16,6 +16,7 @@ import pyarrow as pa
 import pymalloy as pm
 from pymalloy._notebook.subject import describe
 from pymalloy._protocol.codec import decode_state
+from pymalloy._protocol.records import Input
 from pymalloy.result import Column, Result
 
 
@@ -62,11 +63,13 @@ def benchmark(samples: int) -> dict:
     }
     result = Result(
         "SELECT payload",
-        (Column("payload", "VARCHAR"),),
+        (Column(name="payload", type="VARCHAR"),),
         pa.table({"payload": ["x" * (1024 * 1024)] * 20}),
     )
     subject = describe(result)
-    request = {"action": "inspect", "query": None, "givens": {}}
+    request = Input(
+        revision=1, definition_revision=1, action="inspect", query=None, givens={}
+    )
     widget = pm.MalloyWidget("run: example", auto_run=False)
 
     def display():

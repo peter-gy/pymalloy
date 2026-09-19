@@ -1,7 +1,17 @@
 packages:
   - packages/*
   - apps/*
+  - scripts
 catalog:
+  react: 19.3.0
+  react-dom: 19.3.0
+  "@types/react": 19.3.0
+  "@types/react-dom": 19.3.0
+  "@anywidget/react": 0.2.2
+  "@stylexjs/stylex": 0.19.1
+  "@stylexjs/unplugin": 0.19.1
+  "@stylexjs/eslint-plugin": 0.19.1
+  anywidget-bundle: 0.1.1
   "@malloydata/malloy-tag": 0.0.433
   antlr4ts: 0.5.0-alpha.4
   "@malloydata/malloy-interfaces": 0.0.433

@@ -1,13 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { build } from "vite";
 
 const root = resolve(import.meta.dirname, "..");
+const require = createRequire(import.meta.url);
 const directory = await mkdtemp(join(tmpdir(), "malloy-consumer-"));
 try {
-  const dependencies = {};
+  const dependencies: Record<string, string> = {};
   for (const name of ["core", "duckdb", "node", "browser"]) {
     const cwd = join(root, "packages", name);
     const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf8"));
@@ -15,6 +17,7 @@ try {
     const filename = (await readdir(directory)).find((file) =>
       file.startsWith(pkg.name.replace("@", "").replace("/", "-")),
     );
+    if (!filename) throw new Error(`Missing package archive for ${pkg.name}`);
     dependencies[pkg.name] = `file:${join(directory, filename)}`;
   }
   await writeFile(
@@ -27,8 +30,7 @@ try {
         await Promise.all(
           ["typescript", "@types/node"].map(async (name) => [
             name,
-            JSON.parse(await readFile(join(root, "node_modules", name, "package.json"), "utf8"))
-              .version,
+            JSON.parse(await readFile(require.resolve(`${name}/package.json`), "utf8")).version,
           ]),
         ),
       ),

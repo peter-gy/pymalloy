@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r --if-present build",
-    "check": "vp check && pnpm -r run typecheck && pnpm check:knip",
+    "check": "vp check && pnpm -r run typecheck && pnpm records:check && pnpm check:knip",
     "check:knip": "knip --treat-config-hints-as-errors",
     "test": "pnpm --filter @malloy-runtime/compiler --filter @malloy-runtime/node --filter @malloy-runtime/duckdb --filter @pymalloy/widget --filter @pymalloy/headless test",
     "docs:dev": "pnpm --filter @pymalloy/docs dev",
@@ -12,15 +12,16 @@
     "docs:preview": "pnpm --filter @pymalloy/docs preview",
     "format": "vp fmt",
     "e2e": "pnpm --filter @pymalloy/e2e test",
-    "canary": "node tools/consumer-canary.mjs",
-    "records": "uv run python tools/generate-records.py",
-    "bench:compiler": "node tools/benchmark_compiler.mjs"
+    "canary": "pnpm --filter @pymalloy/scripts canary",
+    "records": "pnpm --filter @pymalloy/scripts records",
+    "bench:compiler": "pnpm --filter @pymalloy/scripts bench:compiler",
+    "records:check": "pnpm --filter @pymalloy/scripts records --check"
   },
   "devDependencies": {
     "@oxlint/plugins": "catalog:",
+    "@stylexjs/eslint-plugin": "catalog:",
     "@types/node": "catalog:",
     "knip": "catalog:",
-    "ts-json-schema-generator": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

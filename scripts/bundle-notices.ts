@@ -1,8 +1,9 @@
 import type { Plugin } from "vite-plus";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 const upstreamNotices = new Map([
+  ["@stylexjs/stylex@0.19.1", new URL("./licenses/stylex-0.19.1.LICENSE", import.meta.url)],
   [
     "@duckdb/duckdb-wasm@1.33.1-dev57.0",
     new URL("./licenses/duckdb-wasm-1.33.1-dev57.0.LICENSE", import.meta.url),
@@ -15,6 +16,7 @@ const upstreamNotices = new Map([
 
 /** Collect notices only for packages whose modules occur in this artifact. */
 export function bundleNotices(filename: string): Plugin {
+  let text = "";
   return {
     name: "bundle-notices",
     async generateBundle(_options, bundle) {
@@ -67,7 +69,12 @@ export function bundleNotices(filename: string): Plugin {
           throw new Error(`Empty license text for ${identity}`);
         notices.push(`${identity} (${pkg.license ?? "see notice"})\n${texts.join("\n")}`);
       }
-      this.emitFile({ type: "asset", fileName: filename, source: notices.join("\n\n---\n\n") });
+      text = notices.join("\n\n---\n\n");
+    },
+    async writeBundle(options) {
+      const directory = options.dir ?? (options.file ? dirname(options.file) : undefined);
+      if (!directory) throw new Error("Dependency notices require an output directory");
+      await writeFile(join(directory, filename), text);
     },
   };
 }
