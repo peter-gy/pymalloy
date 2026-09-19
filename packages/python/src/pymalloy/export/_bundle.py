@@ -274,7 +274,7 @@ def bundle(
         staged = Path(staging) / "bundle"
         staged.mkdir()
         (staged / "data").mkdir()
-        (staged / "model.py").write_text(python_model)
+        (staged / "model.py").write_text(python_model, encoding="utf-8", newline="\n")
         model_records = []
         for url, original, destination, text in documents:
             output = staged / destination
@@ -354,17 +354,21 @@ def bundle(
             '"""Replay the selected query against frozen inputs."""\n'
             "import json\nfrom pathlib import Path\nimport pymalloy as pm\n\n"
             "root = Path(__file__).resolve().parent\n"
-            'manifest = json.loads((root / "bundle.json").read_text())\n'
+            'manifest = json.loads((root / "bundle.json").read_text(encoding="utf-8"))\n'
             'data_root = root / manifest["data_root"]\n'
             + file_guard('(entry["alias"] for entry in manifest["files"])')
             + "\ncheck_files()\n"
             'model = pm.model(root / manifest["model"], data_root=data_root, connection_name=manifest["connection_name"])\n'
             "try:\n"
             '    result = model.query(manifest["query"]).run(givens=manifest["givens"])\n'
-            "finally:\n    model.close()\n"
+            "finally:\n    model.close()\n",
+            encoding="utf-8",
+            newline="\n",
         )
         (staged / "bundle.json").write_text(
-            json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+            json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
         )
         if time.monotonic() >= deadline:
             raise TimeoutError("Source bundle deadline exceeded")
