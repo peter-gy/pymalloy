@@ -51,3 +51,7 @@ mappings. Assign complete mappings to publish an update.
 Every result belongs to an input revision. Changing inputs cancels superseded
 work, and late results cannot replace the current state. Call `widget.close()`
 when finished.
+
+If the frontend fails to load, inspect `widget.bundle_status`. The bootstrap and
+JavaScript chunks come from the installed Python package through anywidget's
+comm connection. `widget.state` reports compilation and query execution.

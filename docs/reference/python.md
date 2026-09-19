@@ -39,10 +39,10 @@ policy configured to allow them.
 headless extra. The base install includes widgets and agent guidance. Malloy compilation and DuckDB
 execution run in the browser, with no Deno dependency.
 
-Set `auto_run=False` to require an explicit **Check model** or **Run query**
+Set `auto_run=False` to require an explicit **Check** or **Run**
 action. PyMalloy values displayed directly as cell outputs use this setting.
 Check resolves the model and schemas, which can read data for schema discovery.
-A native `Model` or `Query` offers **Preview 20 rows** using its existing
+A native `Model` or `Query` offers **Preview** using its existing
 connection with a 30-second timeout. Materialized `Result` values show up to
 20 retained rows. See [notebook editing](../guide/notebook-editing.md) for the
 behavior of each value type.

@@ -26,7 +26,7 @@ query = MalloyWidget("""
 query
 ```
 
-The widget shows `answer: 42`. Expand **SQL** to inspect the compiled query.
+The widget shows `answer: 42`. Open the **SQL** tab to inspect the compiled query.
 Execution starts when the notebook's browser connection initializes the widget.
 First use downloads [DuckDB WebAssembly](https://duckdb.org/docs/current/clients/wasm/overview)
 from jsDelivr. The page must allow that download and browser workers.

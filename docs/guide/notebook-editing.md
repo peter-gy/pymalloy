@@ -10,8 +10,8 @@ revenue = pm.col("amount").sum().doc("Gross booked amount in USD.")
 revenue
 ```
 
-The inspector displays `amount.sum()` and its documentation. It waits for an
-explicit **Check model** or **Run query** action before compiling or executing.
+The **Source** tab displays `amount.sum()`. **Context** holds its documentation
+and references. The inspector waits for an explicit **Check** or **Run** action before compiling or executing.
 An isolated expression has no source scope, so execution controls appear when
 you compose it into a runnable source or model.
 
@@ -37,9 +37,8 @@ candidate = (
 candidate
 ```
 
-**Check model** resolves the model and displays field schemas, parameters and
-compiler diagnostics. Schema discovery can read input data. **Run query**
-executes the selected query and displays its result and SQL. This query produces
+**Check** resolves the model and opens **Schema**, where icons distinguish dimensions, measures, views and relationships. Parameters remain in **Context** and diagnostics appear in **Issues**. Schema discovery can read input data. **Run**
+executes the selected query and opens **Result**. Its generated query is available in **SQL**. This query produces
 `North`, `42`. Draft execution uses Malloy and DuckDB WebAssembly in the browser.
 Captured inputs become Parquet bytes on the first Check or Run action.
 
@@ -52,7 +51,7 @@ supplies its scope.
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | `Expr`, `Sort`, query clauses and incomplete fragments | Authored syntax, references and annotations                                                       |
 | Self-contained table, SQL or captured source           | Check and run a generated query selecting up to 20 rows                                           |
-| `Draft`, document fragment or `ModelSource`            | Check model and run a selected query in the browser                                               |
+| `Draft`, document fragment or `ModelSource`            | Check and run a selected query in the browser                                                     |
 | Native `Model` or `Query`                              | Inspect retained source, check schema and preview up to 20 rows on the existing Python connection |
 | `Result`                                               | Display up to 20 already materialized rows and SQL                                                |
 
@@ -74,7 +73,7 @@ query = model.query()
 query
 ```
 
-Choose **Preview 20 rows** to execute with a 30-second timeout. The preview uses
+Choose **Preview** to return up to 20 rows with a 30-second timeout. The preview uses
 `Query.preview`, which rejects write statements. Closing the inspector leaves
 `model` usable. Call `model.close()` when finished with its connection and compiler.
 A `Result` displayed after execution reads its retained Arrow data even after

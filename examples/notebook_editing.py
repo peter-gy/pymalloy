@@ -27,7 +27,7 @@ def _(mo):
 
     Return an expression, source, query fragment, or draft from a cell to
     inspect its Malloy source, references, annotations, and captured inputs.
-    Use **Check model** or **Run query** when ready. Editing a value creates
+    Use **Check** or **Run** when ready. Editing a value creates
     a new inspector revision without silently executing it.
     """)
     return

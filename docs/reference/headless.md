@@ -55,7 +55,7 @@ construction, compilation, and execution.
 
 ## Model and Query
 
-`model.queries` contains `QueryDescriptor(name, kind, location)` records.
+`model.queries` contains `QueryDescriptor(name=..., kind=..., location=...)` records.
 `model.query(selection=None, *, malloy=None)` accepts a named query or a composed
 source/query `Fragment`. Use `malloy=` for native Malloy query text.
 Omit both to select the final run or single available query.
@@ -108,7 +108,8 @@ timeout includes waiting for the compiler lease. Formatting and parsing have a
 
 ## Result and errors
 
-`result.sql` is the executed SQL. `columns` is a tuple of `Column(name, type)`.
+`result.sql` is the executed SQL. `columns` is a tuple of frozen
+`Column(name=..., type=...)` records shared with schema discovery.
 The engine materializes an Arrow table once. `arrow()` returns that table without
 copying its buffers. `rows()` materializes detached Python dictionaries.
 `polars()` requires a separately installed `polars` and preserves Arrow chunks where supported.
