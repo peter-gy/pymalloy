@@ -25,10 +25,17 @@ export class DuckDBBackend {
     private readonly connectionName: string,
   ) {}
   async describe(sql: string) {
-    const result = await this.connection.runAndReadAll(sql);
-    return result
-      .getRowObjectsJS()
-      .map((row) => ({ name: text(row.column_name), type: text(row.column_type) }));
+    const statements = await this.connection.extractStatements(sql);
+    if (statements.count !== 1) throw new Error("Schema discovery requires one statement");
+    const prepared = await statements.prepare(0);
+    try {
+      const result = await prepared.runAndReadAll();
+      return result
+        .getRowObjectsJS()
+        .map((row) => ({ name: text(row.column_name), type: text(row.column_type) }));
+    } finally {
+      prepared.destroySync();
+    }
   }
   async run(sql: string, template?: Result["malloy"], signal?: AbortSignal): Promise<Result> {
     signal?.throwIfAborted();

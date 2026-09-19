@@ -157,8 +157,10 @@ export class Session {
     }
   }
   check(source: string, options: CheckOptions = {}) {
+    const { signal, ...input } = options;
+    const captured = structuredClone(input);
     const url = pathToFileURL(
-      resolve(options.path ?? resolve(this.dataRoot, defaultSourceFilename)),
+      resolve(captured.path ?? resolve(this.dataRoot, defaultSourceFilename)),
     );
     return this.operations.run(
       () =>
@@ -167,13 +169,13 @@ export class Session {
             url,
             source,
             connection: this.compilerConnection,
-            position: options.position,
-            syntaxOnly: options.syntaxOnly,
-            documentKind: options.documentKind ?? documentKind(url),
+            position: captured.position,
+            syntaxOnly: captured.syntaxOnly,
+            documentKind: captured.documentKind ?? documentKind(url),
           }),
           this.host(),
         ),
-      options,
+      { signal },
     );
   }
   format(source: string) {

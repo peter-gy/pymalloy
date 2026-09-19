@@ -69,6 +69,28 @@ describe("Node Session", () => {
     expect(await runtime.run(source).then((result) => result.rows)).toEqual([{ value: 42 }]);
     expect(runtime.closed).toBe(false);
   });
+  test("captures queued check options", async () => {
+    const runtime = await session();
+    const options = { syntaxOnly: true, position: { line: 0, character: 0 } };
+    const submitted = runtime.check("source: missing is duckdb.table('absent.csv')", options);
+    options.syntaxOnly = false;
+    options.position.character = 100;
+    expect((await submitted).ok).toBe(true);
+  });
+  test("rejects side effects during schema discovery", async () => {
+    const runtime = await session();
+    const report = await runtime.check(
+      'source: numbers is duckdb.sql("SELECT 1 AS value; CREATE TABLE touched AS SELECT 2 AS value")',
+    );
+    expect(report.ok).toBe(false);
+    expect(
+      (
+        await runtime.connection.runAndReadAll(
+          "SELECT count(*)::INTEGER AS count FROM duckdb_tables() WHERE table_name = 'touched'",
+        )
+      ).getRowObjectsJS(),
+    ).toEqual([{ count: 0 }]);
+  });
   test("bounds active work and preserves ownership of an interrupted borrowed connection", async () => {
     const instance = await DuckDBInstance.create();
     const connection = await instance.connect();
