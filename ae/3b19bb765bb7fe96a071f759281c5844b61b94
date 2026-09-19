@@ -1,0 +1,28 @@
+packages/python/tests/test_compile.py
+  s_eb8331ad77ae5f::t_8d8eb0287f3923 8,423,435,453-454
+packages/node/tests/session.test.ts
+  s_eb8331ad77ae5f::t_f77a6cf1411b1c 119,123-125,130,133-134,136-139,144,590-592,599
+  s_eb8331ad77ae5f::t_02ab1acf6e1a33 3-4,21-44,131,135,600-605
+packages/widget/tests/lifecycle.test.ts
+  s_eb8331ad77ae5f::t_0d7894b452a9f6 56,63-65,119-124,131-135,137,139-144
+  s_eb8331ad77ae5f::t_8d8eb0287f3923 115-118,125-130,241,243-246,254,258-260,267-268,279,282-283,289,291-294,299,303,315,335,337-338,344,347,354,363,366-368,370-377,379-382,385,392,431,438,445,461,465-468,470,488,497,501
+packages/python/tests/test_compiler_lifecycle.py
+  s_eb8331ad77ae5f::t_bab5c69c99b7a8 20,25-26
+  s_eb8331ad77ae5f::t_8d8eb0287f3923 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ae3b19bb765bb7fe96a071f759281c5844b61b94",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
