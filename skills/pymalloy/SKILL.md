@@ -14,10 +14,11 @@ import pymalloy.agent as agent
 print(agent.agent_skill().file("references/modeling.md").read_text())
 ```
 
-Syntax construction uses the base package. Guidance access needs
-`pymalloy[agent]`. Reading existing models, checking, previews, validation, and
-Arrow-native results need `pymalloy[server]`. `pymalloy[dataframes]` adds Polars
-and standalone Arrow input capture. Browser widgets use `pymalloy[widget]`.
+The base `pymalloy` package includes syntax construction, browser widgets, and
+agent guidance. Reading existing models, checking, previews, validation, and
+Arrow-native execution need `pymalloy[headless]`. Install `polars` directly for
+Polars results. Python dataframe capture requires PyArrow, which is included
+in the headless extra or can be installed directly for browser-backed workflows.
 
 ## Ground the model
 

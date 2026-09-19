@@ -128,7 +128,7 @@ print(agent.agent_skill().body)
 ```
 
 Wheel, source, and editable installs carry the skill tree as package assets.
-Install `pymalloy[agent]` to read it through `agent-plugins`. Marimo discovers `pymalloy.agent` through its capability entry
+The base package includes `agent-plugins` to read it. Marimo discovers `pymalloy.agent` through its capability entry
 point. `help(pymalloy.agent)` introduces the installed API.
 
 Pass a composed source/query directly to a retained model:

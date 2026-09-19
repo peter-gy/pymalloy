@@ -11,7 +11,7 @@ Identify the stage before changing the model:
 | Engine execution    | `ExecutionError.context` retains the closed model, selected query or ad hoc text, parameters, SQL, compiler version and preview limit. `__cause__` is the original DuckDB exception. |
 | Semantic validation | A failed data assertion retains a counterexample. Inspect grain, keys, population, denominator, time reference and join relationships rather than changing syntax to silence it.     |
 
-This runnable example uses `pymalloy[server]`:
+This runnable example uses `pymalloy[headless]`:
 
 ```python
 import duckdb
