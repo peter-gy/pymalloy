@@ -279,10 +279,17 @@ def test_widget_revision_lifecycle_preserves_state_through_resync_and_close(
         assert widget.state["status"] == "idle"
 
         latest = browser_state(widget, rows=[{"value": 2}])
-        widget.set_state({"_state": latest})
+        messages.clear()
+        with widget.hold_sync():
+            widget.set_state({"_state": latest})
+        assert messages == []
         assert widget.state["rows"] == ({"value": 2},)
-        widget.set_state({"_state": earlier})
+        with widget.hold_sync():
+            widget.set_state({"_state": earlier})
         assert widget.state["rows"] == ({"value": 2},)
+        assert messages == [
+            {"method": "update", "state": {"_state": latest}, "buffer_paths": []}
+        ]
 
         messages.clear()
         widget._handle_msg({"content": {"data": {"method": "request_state"}}})

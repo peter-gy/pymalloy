@@ -57,11 +57,16 @@ def test_expression_and_fragment_outputs_expose_authored_structure():
         assert widget._input["action"] == "inspect"
     finally:
         widget.close()
-    block = pm.query(pm.group_by(pm.col("region")), pm.aggregate(revenue=expression))
+    block = pm.query(
+        pm.group_by(pm.col("region")),
+        pm.aggregate(revenue=expression),
+        pm.where(pm.call("coalesce", pm.col("kind"), pm.given("fallback")) == "chosen"),
+    )
     widget = block._display_()
     try:
         info = to_dict(widget._definition["notebook"])
         assert info["source"] == block.text
+        assert info["references"] == ["$fallback", "kind", "orders.amount", "region"]
         assert info["bindings"] == [
             {"name": "revenue", "kind": "field", "source": "orders.amount.sum()"}
         ]

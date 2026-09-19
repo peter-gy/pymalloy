@@ -164,9 +164,11 @@ def describe(value) -> Subject:
                     paths.add(tuple(scalar.path))
                 elif isinstance(scalar, ScalarGiven):
                     references.add("$" + scalar.name)
-                elif isinstance(scalar, ScalarCall) and scalar.receiver:
-                    paths.add(tuple(scalar.receiver))
-                if isinstance(scalar, msgspec.Struct):
+                elif isinstance(scalar, ScalarCall):
+                    if scalar.receiver:
+                        paths.add(tuple(scalar.receiver))
+                    scalars.extend(scalar.args)
+                elif isinstance(scalar, msgspec.Struct):
                     scalars.extend(msgspec.structs.astuple(scalar))
                 elif isinstance(scalar, (list, tuple)):
                     scalars.extend(scalar)

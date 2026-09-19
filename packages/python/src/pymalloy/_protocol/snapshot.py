@@ -7,7 +7,7 @@ def freeze(value: Any) -> Any:
     """Detach containers once and expose a recursively immutable snapshot."""
     if value is None or isinstance(value, (str, bytes, int, float)):
         return value
-    if isinstance(value, Mapping):
+    if isinstance(value, (dict, Mapping)):
         return MappingProxyType({key: freeze(item) for key, item in value.items()})
     if isinstance(value, (list, tuple)):
         return tuple(freeze(item) for item in value)

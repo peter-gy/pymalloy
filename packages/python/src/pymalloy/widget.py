@@ -206,6 +206,7 @@ class MalloyWidget(BundledWidget):
         self._revision = 0
         self._definition_revision = 0
         self._accepted_wire: dict[str, Any] | None = None
+        self._accepted_from_frontend = False
         if not isinstance(connection_name, str) or not connection_name:
             raise t.TraitError("connection_name must be a nonempty string")
         if not isinstance(source, (str, NotebookDisplay)):
@@ -254,17 +255,16 @@ class MalloyWidget(BundledWidget):
                 item.reference in files for item in source.inputs
             ):
                 raise t.TraitError("Files cannot replace captured dataframe inputs")
-            subject = (
-                describe(source)
-                if isinstance(source, str)
-                else source._notebook_subject()
-            )
-            if subject.info.execution in {"python", "result"} and (
-                files or self.runtime
-            ):
-                raise t.TraitError(
-                    "files and runtime apply to browser sources. Native values use their existing Python context"
+            if files or self.runtime:
+                subject = (
+                    describe(source)
+                    if isinstance(source, str)
+                    else source._notebook_subject()
                 )
+                if subject.info.execution in {"python", "result"}:
+                    raise t.TraitError(
+                        "files and runtime apply to browser sources. Native values use their existing Python context"
+                    )
         if name == "query" and value is not None and not value.strip():
             raise t.TraitError("Query must be a nonempty name or None")
         if name == "givens":
@@ -445,6 +445,7 @@ class MalloyWidget(BundledWidget):
 
     @t.validate("_state")
     def _validate_state(self, proposal: t.Bunch) -> dict[str, Any] | None:
+        self._accepted_from_frontend = False
         wire = proposal.value
         if not wire or self._closed or wire.get("revision") != self._revision:
             return self._accepted_wire
@@ -455,7 +456,22 @@ class MalloyWidget(BundledWidget):
         decoded = _decode_state(accepted)
         self._decoded_state = decoded
         self._accepted_wire = accepted
+        self._accepted_from_frontend = wire is self._property_lock.get("_state")
         return accepted
+
+    def _should_send_property(self, key, value):
+        # Accepted frontend state is already validated JSON. Avoid ipywidgets'
+        # buffer walks and JSON roundtrip used to compare it with the input frame.
+        if (
+            key == "_state"
+            and self._accepted_from_frontend
+            and value is self._accepted_wire
+            and key in self._property_lock
+        ):
+            if self._holding_sync:
+                self._states_to_send.discard(key)
+            return False
+        return super()._should_send_property(key, value)
 
     @t.observe("_state")
     def _state_changed(self, change: t.Bunch) -> None:
