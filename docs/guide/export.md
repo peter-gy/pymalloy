@@ -6,7 +6,7 @@ model and its inputs into a directory, use [source bundles](bundles.md).
 Prepare a Malloy file or document, then choose a notebook format:
 
 ```sh
-pip install 'pymalloy[server]'
+pip install 'pymalloy[headless]'
 pymalloy export examples/orders.malloy --format marimo -o report.py
 pymalloy export examples/sales.malloynb --format jupyter -o report.ipynb
 ```
@@ -20,13 +20,13 @@ text = marimo.render(book, output_path="report.py")
 
 Choose an execution profile with `profile=` or `--profile`:
 
-| Profile                 | Execution in the generated notebook                                               |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| `precompiled` (default) | Embedded SQL executed by native DuckDB, without PyMalloy                          |
-| `server`                | Captured `ModelSource` compiled and executed with `pymalloy[server]`              |
-| `widget`                | Captured source and virtual files sent to browser widgets with `pymalloy[widget]` |
+| Profile                 | Execution in the generated notebook                                       |
+| ----------------------- | ------------------------------------------------------------------------- |
+| `precompiled` (default) | Embedded SQL executed by native DuckDB, without PyMalloy                  |
+| `headless`              | Captured `ModelSource` compiled and executed with `pymalloy[headless]`    |
+| `widget`                | Captured source and virtual files sent to browser widgets with `pymalloy` |
 
-Preparing any profile requires the server compiler. Running an exported widget
+Preparing any profile requires the headless compiler. Running an exported widget
 notebook requires no Deno. Renderers retain relative references to local data
 files, which must accompany the notebook. They do not copy a source bundle.
 

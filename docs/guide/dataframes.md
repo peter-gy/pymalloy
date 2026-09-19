@@ -2,7 +2,7 @@
 
 Use `pm.data(frame)` to capture prepared Python data in a semantic model. The
 input travels with the draft, validation result, and exported bundle.
-Install `pymalloy[server,dataframes]` for this example:
+Install `pymalloy[headless]` and `polars` for this example:
 
 ```python
 import polars as pl
@@ -53,7 +53,7 @@ retained draft or validation result.
 
 Polars DataFrames, Arrow Tables and RecordBatches, pandas DataFrames, and
 materialized producers implementing Arrow's `__arrow_c_stream__` interface are
-accepted. PyArrow is supplied by the `server` and `dataframes` extras. Polars and
+accepted. PyArrow is supplied by the `headless` extra and can also be installed directly. Polars and
 pandas are optional producers, and a pandas index is excluded.
 Call `.collect()` on lazy data explicitly before passing it to `pm.data`.
 
@@ -78,8 +78,8 @@ It cannot infer the code that produced `prepared`.
 
 Native query results retain the Arrow table produced by DuckDB. `result.arrow()`
 returns that table, `result.rows()` materializes Python values, and
-`result.polars()` converts without consolidating Arrow chunks. Install `polars` or
-the `dataframes` extra for the latter. Results remain usable after the model closes.
+`result.polars()` converts without consolidating Arrow chunks. Install `polars`
+for the latter. Results remain usable after the model closes.
 
 Python rows follow Arrow scalar representations. With DuckDB's default Arrow
 settings, `HUGEINT` becomes `Decimal`, `UUID` becomes a string, and `INTERVAL`
@@ -110,7 +110,7 @@ widget = pm.MalloyWidget(candidate, query="by_region")
 widget
 ```
 
-Install `pymalloy[widget,dataframes]`, or `pymalloy[widget]` with PyArrow. The widget
+Install `pymalloy`, `pyarrow`, and your dataframe library. The widget
 materializes Parquet locally and sends it with the draft to DuckDB-WASM. Browser
-Malloy compilation requires neither the server extra nor Deno. Additional
+Malloy compilation requires neither the headless extra nor Deno. Additional
 `files=` may supply other virtual files but cannot replace managed inputs.

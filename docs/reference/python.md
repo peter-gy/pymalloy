@@ -33,11 +33,11 @@ The widget respects that kind when compiling the source.
 Use absolute HTTP(S) URLs with CORS and the notebook host's content-security
 policy configured to allow them.
 
-[Server queries, models, and results](server.md) are available with the
-server extra. Install `pymalloy[widget]` for widgets. Malloy compilation and DuckDB
+[Headless queries, models, and results](headless.md) are available with the
+headless extra. The base install includes widgets and agent guidance. Malloy compilation and DuckDB
 execution run in the browser, with no Deno dependency.
 
 A `Draft` can carry `pm.data(frame)` inputs. MalloyWidget sends their captured
-Parquet bytes as managed virtual files. This requires PyArrow, without the server
+Parquet bytes as managed virtual files. This requires PyArrow, without the headless
 extra or Deno. User `files` cannot shadow managed names. See the
 [dataframe guide](../guide/dataframes.md).

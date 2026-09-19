@@ -3,7 +3,7 @@
 A source bundle packages Malloy files, captured imports, and declared data files
 with a selected query and its givens. Use it to move an analysis between directories
 or hand its model and inputs to another person. Preparing and replaying a bundle
-requires `pymalloy[server]`.
+requires `pymalloy[headless]`.
 
 ## Validate and export
 

@@ -25,10 +25,10 @@ features:
 
 ## Choose where to start
 
-[Run queries from Python](/guide/server-python) with `pymalloy[server]`, or
+[Run queries from Python](/guide/headless-python) with `pymalloy[headless]`, or
 [display a browser widget](/guide/getting-started) with the base `pymalloy`
 package. Widgets run Malloy and DuckDB WebAssembly in the browser and require
-no Deno or server extra.
+no Deno or headless extra.
 
 [Choose a workflow](/guide/overview) for authoring, dataframe inputs, validation,
 source bundles, notebook export, and the Node and browser JavaScript APIs.

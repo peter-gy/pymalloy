@@ -130,7 +130,7 @@ imports live when compiled. A mapping supplies a closed import snapshot.
 
 Parse plain Malloy with the installed compiler and preserve its exact text.
 Strings mean Malloy text, `Path` means a local file, and `ModelSource` carries
-captured imports. Requires `pymalloy[server]`. Parsing establishes named editing
+captured imports. Requires `pymalloy[headless]`. Parsing establishes named editing
 slots but does not resolve schemas or validate business meaning.
 
 | Member                                                                  | Behavior                                                                                 |

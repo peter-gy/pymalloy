@@ -2,18 +2,18 @@
 
 Run a Malloy query in Jupyter or marimo with Python 3.12 or newer. The widget
 uses [DuckDB](https://duckdb.org/docs/stable/) in your browser. For scripts, use
-[server-side Python](/guide/server-python).
+[headless Python](/guide/headless-python).
 
 ## Install
 
 Install PyMalloy into your notebook's Python environment:
 
 ```sh
-pip install "pymalloy[widget]"
+pip install "pymalloy"
 ```
 
 Use a [Jupyter](https://docs.jupyter.org/) notebook or install the
-[marimo](https://docs.marimo.io/) notebook editor with `pip install "pymalloy[widget,marimo]"`.
+[marimo](https://docs.marimo.io/) notebook editor with `pip install pymalloy marimo`.
 
 ## Display a query
 

@@ -17,7 +17,7 @@ A SQL timeout interrupts the statement and leaves a healthy model or TypeScript
 session available for another query. A timeout while waiting for queued work
 leaves the active operation running. Compiler failure or worker death requires a
 new model or session. Completed results remain readable. See the
-[error reference](../reference/server.md#result-and-errors) for exception types.
+[error reference](../reference/headless.md#result-and-errors) for exception types.
 
 After a schema change, compile a new model. Widget input mappings are read-only.
 Assign a replacement, such as `widget.givens = {**widget.givens, "minimum": 20}`,

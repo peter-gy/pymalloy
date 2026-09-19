@@ -1,4 +1,4 @@
-# Server Python API
+# Headless Python API
 
 ```python
 import pymalloy as pm
@@ -7,7 +7,7 @@ result = pm.run("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
 print(result.rows())
 ```
 
-Install `pymalloy[server]` for server execution.
+Install `pymalloy[headless]` for headless execution.
 
 ## model
 
@@ -111,7 +111,7 @@ timeout includes waiting for the compiler lease. Formatting and parsing have a
 `result.sql` is the executed SQL. `columns` is a tuple of `Column(name, type)`.
 The engine materializes an Arrow table once. `arrow()` returns that table without
 copying its buffers. `rows()` materializes detached Python dictionaries.
-`polars()` uses the `dataframes` extra and preserves Arrow chunks where supported.
+`polars()` requires a separately installed `polars` and preserves Arrow chunks where supported.
 Results remain readable after model cleanup.
 
 `PyMalloyError` is the common base for PyMalloy failures:

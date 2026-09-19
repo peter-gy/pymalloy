@@ -22,7 +22,7 @@ supplies discoverable file references. Native profiles restrict external file
 access to discovered and declared paths, plus inferred COPY destinations. This
 restriction applies during preparation and generated execution. Native file aliases must resolve to their
 declared location relative to `data_root`, or use an absolute path. `Profile`
-defines `PRECOMPILED`, `SERVER`, and `WIDGET`.
+defines `PRECOMPILED`, `HEADLESS`, and `WIDGET`.
 
 `remote_files` declares absolute HTTP(S) URLs used inside SQL readers. Direct
 Malloy table URLs are discovered automatically. Remote-enabled native profiles
@@ -40,7 +40,7 @@ profile, captured source, givens, local files, remote URLs, extensions, and conn
 `kind` (`select` or `copy`). These `pymalloy.export.QueryCell` records describe notebook cells. Renderers preserve cell order and COPY dependencies.
 
 `marimo.render(document, *, output_path)` returns Python source. Running that
-notebook requires `pymalloy[marimo]`. `jupyter.render(document, *, output_path)` returns notebook JSON.
+notebook requires `marimo` plus the dependencies declared by its execution profile. `jupyter.render(document, *, output_path)` returns notebook JSON.
 The output path determines portable relative data paths. Rendering returns text
 and does not write the output file or execute queries.
 
@@ -52,7 +52,7 @@ givens=None, connection_name=None, format=True, timeout=120) -> SourceBundle`
 Write plain `.malloy` sources, captured imports, copied inputs, `model.py`,
 `replay.py`, and `bundle.json` into a new directory. The parent must exist.
 Existing destinations and notebook document sources are rejected. Native parsing
-and optional formatting require the server compiler. Publication occurs after
+and optional formatting require the headless compiler. Publication occurs after
 source and file preparation succeeds.
 
 See [bundle models and inputs](../guide/bundles.md) for a complete validation and

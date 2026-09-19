@@ -8,7 +8,7 @@ const sections = [
     items: [
       { text: "What is PyMalloy?", link: "/guide/overview" },
       { text: "Your first widget", link: "/guide/getting-started" },
-      { text: "Run queries from Python", link: "/guide/server-python" },
+      { text: "Run queries from Python", link: "/guide/headless-python" },
       { text: "Concepts and boundaries", link: "/guide/concepts" },
     ],
   },
@@ -31,7 +31,7 @@ const sections = [
     text: "Reference",
     items: [
       { text: "Python widget API", link: "/reference/python" },
-      { text: "Server Python API", link: "/reference/server" },
+      { text: "Headless Python API", link: "/reference/headless" },
       { text: "Analysis records", link: "/reference/analysis" },
       { text: "Python authoring API", link: "/reference/authoring" },
       { text: "Browser JavaScript API", link: "/reference/browser" },

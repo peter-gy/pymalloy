@@ -2,7 +2,7 @@
 
 Compose Malloy sources in Python, edit existing models by name, and test their
 assumptions before saving. Construction works with the base package. Install
-`pymalloy[server]` to read existing models, check them, and execute queries.
+`pymalloy[headless]` to read existing models, check them, and execute queries.
 
 ```python
 import pymalloy as pm
@@ -219,7 +219,7 @@ and relocation rules.
 
 ## Agent instructions
 
-Install `pymalloy[agent]` for versioned model-authoring guidance:
+The base package includes versioned model-authoring guidance:
 
 ```python
 import pymalloy.agent as agent

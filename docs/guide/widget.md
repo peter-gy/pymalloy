@@ -1,6 +1,6 @@
 # Update widget inputs and read results
 
-Install `pymalloy[widget]` in the notebook environment. Compilation and execution
+Install `pymalloy` in the notebook environment. Compilation and execution
 run in the browser, so this mode needs no Deno dependency.
 
 ```python

@@ -14,9 +14,9 @@ field names. Diagnostic text includes source locations.
 would change the file. It preserves the input file.
 
 `export MODEL --format {marimo,jupyter} -o OUTPUT` supports repeatable `--query`,
-`--all`, `--profile {precompiled,server,widget}`, `--data-root`, `--database`,
+`--all`, `--profile {precompiled,headless,widget}`, `--data-root`, `--database`,
 `--title`, `--givens JSON`, and `--files JSON`. Output extensions must match the
 format. Compilation and rendering finish before an existing output is replaced.
 
-Server commands require `pymalloy[server]`. Marimo rendering also requires the
-`marimo` extra. `--help` works with base dependencies.
+Headless commands require `pymalloy[headless]`. Notebook rendering writes source
+without importing marimo or Jupyter. Install the selected notebook host to run it. `--help` works with base dependencies.

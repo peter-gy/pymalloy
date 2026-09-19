@@ -3,7 +3,7 @@
 Install the native Python runtime:
 
 ```sh
-pip install 'pymalloy[server]'
+pip install 'pymalloy[headless]'
 ```
 
 ```python
@@ -18,7 +18,7 @@ table = result.arrow()
 before returning. The result retains an Arrow table. `result.sql` contains the
 executed SQL and `result.columns` describes the DuckDB columns. `arrow()` returns
 the table, and `rows()` creates detached Python dictionaries. Install the optional
-`dataframes` extra to convert with `result.polars()`.
+`polars` package to convert with `result.polars()`.
 
 Keep a model when you want to select queries or run again with different inputs:
 
@@ -42,7 +42,7 @@ directory. Pass `url=` to choose its import base. Files ending in `.malloynb` or
 `.malloysql` are notebook documents. `document_kind="model"` or `"notebook"`
 overrides filename detection, and a captured `ModelSource` retains that choice.
 
-The `server` extra supplies Deno, DuckDB, and PyArrow. Execution, SQL generation,
+The `headless` extra supplies Deno, DuckDB, and PyArrow. Execution, SQL generation,
 checks, formatting, and notebook preparation work without a browser or widget.
 
 Pass `data_root="data"` to configure an owned connection's `file_search_path`.

@@ -9,7 +9,7 @@ Choose how a model accesses its inputs:
 | `pm.table(Path("orders.parquet"))` | A file resolved by DuckDB                                             |
 | Widget `files={...}`               | Bytes or URLs registered as virtual files in the browser              |
 
-Install `pymalloy[server,dataframes]` to query a captured Polars dataframe:
+Install `pymalloy[headless]` and `polars` to query a captured Polars dataframe:
 
 ```python
 import polars as pl
