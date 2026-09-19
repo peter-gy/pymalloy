@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import json
 import math
 import threading
 import time
 import weakref
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Self
 
 import duckdb
+import msgspec
 
 from pymalloy._authoring.draft import Draft
 from pymalloy._authoring.syntax import Fragment
@@ -27,13 +27,24 @@ from pymalloy._model.source import (
 from pymalloy._notebook import NotebookDisplay
 from pymalloy._protocol.givens import encode_givens, given_values
 from pymalloy._protocol.records import (
+    BeginRequest,
     CheckReady,
+    CheckRequest,
+    Connection,
     DocumentCell,
     DocumentReady,
+    DocumentRequest,
+    InspectionPosition,
     InspectionReady,
+    InspectRequest,
+    MalloyQuery,
     ModelReady,
     QueryReady,
+    QueryRequest,
+    QuerySelection,
+    Request,
     SourceReady,
+    SourceRequest,
 )
 from pymalloy.analysis import (
     CheckReport,
@@ -79,7 +90,7 @@ class _Runtime:
             raise ValueError("Model timeout must be finite and positive")
         if not isinstance(connection_name, str) or not connection_name:
             raise ValueError("connection_name must be a nonempty string")
-        self._connection = {"name": connection_name, "dialect": "duckdb"}
+        self._connection = Connection(name=connection_name, dialect="duckdb")
         deadline = deadline if deadline is not None else time.monotonic() + timeout
         self._engine = Engine(
             data_root=data_root,
@@ -123,7 +134,7 @@ class _Runtime:
     @contextmanager
     def operation(
         self, timeout: float | None = None, *, deadline: float | None = None
-    ) -> Iterator[float]:
+    ) -> Generator[float, None, None]:
         budget = self.timeout if timeout is None else timeout
         if not math.isfinite(budget) or budget <= 0:
             raise ValueError("Operation timeout must be finite and positive")
@@ -153,7 +164,7 @@ class _Runtime:
 
     def request[T](
         self,
-        request: dict[str, Any],
+        request: Request,
         response_type: type[T],
         *,
         deadline: float,
@@ -185,13 +196,12 @@ class _Runtime:
         identity, text, imports = resolve_source(source, url=url, root=self._root)
         with self.operation(deadline=deadline):
             result = self.request(
-                {
-                    "op": "begin",
-                    "url": identity,
-                    "source": text,
-                    "connection": self._connection,
-                    "documentKind": resolve_document_kind(identity, document_kind),
-                },
+                BeginRequest(
+                    url=identity,
+                    source=text,
+                    connection=self._connection,
+                    document_kind=resolve_document_kind(identity, document_kind),
+                ),
                 ModelReady,
                 deadline=deadline,
                 imports=imports,
@@ -237,19 +247,14 @@ class _Runtime:
             url=Path(path).resolve().as_uri() if path is not None else url,
             root=self._root,
         )
-        request: dict[str, Any] = {
-            "op": "check",
-            "source": text,
-            "url": identity,
-            "syntaxOnly": syntax_only,
-            "connection": self._connection,
-            "documentKind": resolve_document_kind(identity, document_kind),
-        }
-        if position is not None:
-            request["position"] = {
-                "line": position.line,
-                "character": position.character,
-            }
+        request = CheckRequest(
+            source=text,
+            url=identity,
+            syntax_only=syntax_only,
+            connection=self._connection,
+            document_kind=resolve_document_kind(identity, document_kind),
+            position=position if position is not None else msgspec.UNSET,
+        )
         with self.operation(deadline=deadline):
             return self.request(
                 request, CheckReady, deadline=deadline, imports=imports
@@ -312,18 +317,18 @@ class Model(NotebookDisplay):
 
         return native(
             self._source,
-            kind="Compiled model",
+            kind="Model",
             queries=self.queries,
             inspect=self.inspect,
             preview=lambda selection, values: self.query(selection).preview(
                 givens=values, timeout=30
             ),
-            connection_name=self._owner._connection["name"],
+            connection_name=self._owner._connection.name,
         )
 
     def _request[T](
         self,
-        request: dict[str, Any],
+        request: Request,
         response_type: type[T],
         timeout: float | None = None,
     ) -> T:
@@ -379,7 +384,7 @@ class Model(NotebookDisplay):
             return Query(
                 self,
                 QueryDescriptor(name="query", kind="run", location=None),
-                {"malloy": malloy},
+                MalloyQuery(malloy=malloy),
                 inputs,
             )
         name = selection
@@ -423,7 +428,7 @@ class Model(NotebookDisplay):
         >>> pm.run(captured).rows()
         [{'n': 42}]
         """
-        source = self._request({"op": "source"}, SourceReady, timeout).source
+        source = self._request(SourceRequest(), SourceReady, timeout).source
         return ModelSource(
             source.url, source.text, source.imports, source.document_kind
         )
@@ -466,15 +471,15 @@ class Model(NotebookDisplay):
             raise TypeError("url must be a string")
         if url is not None and position is None:
             raise ValueError("url requires a position")
-        request: dict[str, Any] = {"op": "inspect"}
-        if position is not None:
-            at: dict[str, Any] = {
-                "line": position.line,
-                "character": position.character,
-            }
-            if url is not None:
-                at["url"] = url
-            request["position"] = at
+        request = InspectRequest(
+            position=InspectionPosition(
+                line=position.line,
+                character=position.character,
+                url=url if url is not None else msgspec.UNSET,
+            )
+            if position is not None
+            else msgspec.UNSET
+        )
         return self._request(request, InspectionReady, timeout).inspection
 
     def document(
@@ -514,13 +519,11 @@ class Model(NotebookDisplay):
         >>> model.close()
         """
         names = query_names(queries, all=all)
-        request: dict[str, Any] = {
-            "op": "document",
-            "all": all,
-            "givens": encode_givens(givens),
-        }
-        if names is not None:
-            request["queries"] = list(names)
+        request = DocumentRequest(
+            all=all,
+            givens=encode_givens(givens),
+            queries=names if names is not None else msgspec.UNSET,
+        )
         return tuple(self._request(request, DocumentReady, timeout).cells)
 
     @property
@@ -654,7 +657,7 @@ class Query(NotebookDisplay):
         self,
         model: Model,
         info: QueryDescriptor,
-        selection: str | dict[str, str],
+        selection: QuerySelection,
         inputs: tuple[DataInput, ...] = (),
     ) -> None:
         self._model = model
@@ -671,23 +674,22 @@ class Query(NotebookDisplay):
         model = self._model
         subject = native(
             model._source,
-            kind=f"Query · {self.name}",
+            kind="Query" if self.kind == "run" else f"Query · {self.name}",
             queries=(self._info,),
             inspect=model.inspect,
             preview=lambda _selection, values: self.preview(givens=values, timeout=30),
-            connection_name=model._owner._connection["name"],
+            connection_name=model._owner._connection.name,
         )
-        if isinstance(self._selection, dict):
-            subject.info = replace(subject.info, source=self._selection["malloy"])
+        if isinstance(self._selection, MalloyQuery):
+            subject.info = replace(subject.info, source=self._selection.malloy)
         return subject
 
     def _sql(self, givens: Mapping[str, Any] | None, deadline: float) -> str:
         return self._model._owner.request(
-            {
-                "op": "query",
-                "selection": self._selection,
-                "givens": encode_givens(givens),
-            },
+            QueryRequest(
+                selection=self._selection,
+                givens=encode_givens(givens),
+            ),
             QueryReady,
             deadline=deadline,
             imports=self._model._imports,
@@ -752,14 +754,14 @@ class Query(NotebookDisplay):
                         self._model._source.document_kind,
                     ),
                     query=self._info,
-                    malloy=self._selection.get("malloy")
-                    if isinstance(self._selection, dict)
+                    malloy=self._selection.malloy
+                    if isinstance(self._selection, MalloyQuery)
                     else None,
                     sql=sql,
                     compiler_version=self._model.compiler_version,
-                    connection_name=runtime._connection["name"],
+                    connection_name=runtime._connection.name,
                     preview_limit=limit,
-                    _givens_json=json.dumps(encoded),
+                    _givens_json=msgspec.json.encode(encoded).decode(),
                     _inputs=self._inputs,
                 )
                 raise ExecutionError(context, error) from error

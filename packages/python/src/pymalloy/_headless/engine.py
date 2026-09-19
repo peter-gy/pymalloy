@@ -86,7 +86,7 @@ class Engine:
             self.connection.close()
             raise
 
-    def describe(self, need: SchemaNeed) -> list[dict[str, str]]:
+    def describe(self, need: SchemaNeed) -> list[Column]:
         sql = "DESCRIBE " + (
             need.table_path if isinstance(need, TableSchemaNeed) else need.sql
         )
@@ -94,7 +94,7 @@ class Engine:
             rows = self.connection.execute(sql).fetchall()
         except duckdb.Error as error:
             raise SchemaError(str(error), sql=sql) from error
-        return [{"name": row[0], "type": row[1]} for row in rows]
+        return [Column(name=row[0], type=row[1]) for row in rows]
 
     def run(self, sql: str) -> Result:
         statements = self.connection.extract_statements(sql)

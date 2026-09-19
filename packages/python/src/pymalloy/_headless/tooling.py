@@ -3,12 +3,19 @@
 import atexit
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 from pymalloy._model.errors import CompilationError
 from pymalloy._model.source import DocumentKind
-from pymalloy._protocol.records import FormatReady, ParseReport, SyntaxNode, SyntaxReady
+from pymalloy._protocol.records import (
+    FormatReady,
+    FormatRequest,
+    ParseReport,
+    SyntaxNode,
+    SyntaxReady,
+    SyntaxRequest,
+)
 
 from .compiler import Compiler
 
@@ -26,7 +33,7 @@ class _ToolingCompiler:
         self._idle_until = 0.0
 
     @contextmanager
-    def lease(self, deadline: float, memory_mb: int) -> Iterator[Compiler]:
+    def lease(self, deadline: float, memory_mb: int) -> Generator[Compiler, None, None]:
         remaining = deadline - time.monotonic()
         if remaining <= 0 or not self._lock.acquire(timeout=remaining):
             raise TimeoutError("Waiting for the tooling compiler exceeded its deadline")
@@ -99,7 +106,7 @@ def compiler_lease(deadline: float, memory_mb: int = 256):
 
 def _format(compiler: Compiler, source: str, deadline: float) -> str:
     result = compiler.request(
-        {"op": "format", "source": source},
+        FormatRequest(source=source),
         FormatReady,
         describe=lambda sql: [],
         deadline=deadline,
@@ -190,7 +197,7 @@ def parse_syntax(source: str, *, url: str, format: bool = False) -> SyntaxNode:
         if format:
             source = _format(compiler, source, deadline)
         return compiler.request(
-            {"op": "syntax", "source": source, "url": url},
+            SyntaxRequest(source=source, url=url),
             SyntaxReady,
             describe=lambda sql: [],
             deadline=deadline,

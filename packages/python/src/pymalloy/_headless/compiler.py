@@ -3,18 +3,27 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from pymalloy._model.errors import CompilationError, CompilerError, SchemaError
 from pymalloy._model.source import DocumentKind, read_text, resolve_document_kind
 from pymalloy._protocol.records import (
+    Column,
     CompileError,
     CompileNeeds,
     CompilerFailure,
+    HostAnswers,
+    HostError,
     ParseReady,
     ParseReport,
+    ParseRequest,
+    Request,
+    SchemaAnswer,
     SchemaNeed,
+    SchemaValue,
+    StepRequest,
+    URLAnswer,
+    URLValue,
 )
 
 from .process import Process
@@ -40,12 +49,11 @@ class Compiler:
         deadline: float,
     ) -> ParseReport:
         return self.request(
-            {
-                "op": "parse",
-                "source": source,
-                "url": url,
-                "documentKind": resolve_document_kind(url, document_kind),
-            },
+            ParseRequest(
+                source=source,
+                url=url,
+                document_kind=resolve_document_kind(url, document_kind),
+            ),
             ParseReady,
             describe=lambda sql: [],
             deadline=deadline,
@@ -53,10 +61,10 @@ class Compiler:
 
     def request[T](
         self,
-        request: dict[str, Any],
+        request: Request,
         response_type: type[T],
         *,
-        describe: Callable[[SchemaNeed], list[dict[str, str]]],
+        describe: Callable[[SchemaNeed], list[Column]],
         deadline: float,
         imports: Mapping[str, str] | None = None,
     ) -> T:
@@ -95,21 +103,22 @@ class Compiler:
                         f"Unexpected compiler response: {type(response).__name__}"
                     )
                 return response
-            fulfilled: dict[str, Any] = {"urls": {}, "schemas": {}}
+            urls: dict[str, URLAnswer] = {}
+            schemas: dict[str, SchemaAnswer] = {}
             for url in response.needs.urls:
                 check_deadline()
                 try:
-                    fulfilled["urls"][url] = {"value": read(url)}
+                    urls[url] = URLValue(value=read(url))
                 except (OSError, ValueError) as error:
-                    fulfilled["urls"][url] = {"error": str(error)}
+                    urls[url] = HostError(error=str(error))
             for need in response.needs.schemas:
                 check_deadline()
                 try:
-                    fulfilled["schemas"][need.key] = {"value": describe(need)}
+                    schemas[need.key] = SchemaValue(value=describe(need))
                 except SchemaError as error:
                     schema_error = error
-                    fulfilled["schemas"][need.key] = {"error": str(error)}
-            request = {"op": "step", "fulfilled": fulfilled}
+                    schemas[need.key] = HostError(error=str(error))
+            request = StepRequest(fulfilled=HostAnswers(urls=urls, schemas=schemas))
 
     def close(self) -> None:
         self._process.close()

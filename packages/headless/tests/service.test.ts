@@ -13,7 +13,7 @@ function finish(service: CompilerService, first: Response): Response {
         schemas: Object.fromEntries(
           response.needs.schemas.map(({ key }) => [
             key,
-            { value: [{ name: "value", type: "INTEGER" }] },
+            { kind: "value", value: [{ name: "value", type: "INTEGER" }] },
           ]),
         ),
       },
@@ -26,14 +26,16 @@ test("a compiler service replaces abandoned work and retains its model after rej
   const service = new CompilerService();
   const begin = {
     op: "begin",
+    documentKind: "model",
     connection,
     url: "file:///model.malloy",
     source: "run: duckdb.sql('SELECT 42 AS value') -> {select:value}",
   } as const;
   expect(service.request(begin).kind).toBe("needs");
-  expect(service.request({ op: "parse", source: "run: missing", url: begin.url }).kind).toBe(
-    "parse",
-  );
+  expect(
+    service.request({ op: "parse", source: "run: missing", url: begin.url, documentKind: "model" })
+      .kind,
+  ).toBe("parse");
   expect(service.request({ op: "step", fulfilled: { urls: {}, schemas: {} } })).toMatchObject({
     kind: "failure",
     message: "Compiler has no pending request",
@@ -60,6 +62,7 @@ test("compiler diagnostics remain distinct from internal request failures", () =
   expect(
     service.request({
       op: "begin",
+      documentKind: "model",
       connection,
       url: "file:///model.malloy",
       source: "run: missing",

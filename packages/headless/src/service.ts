@@ -18,7 +18,7 @@ import {
 function schemas(answers: HostAnswers): Fulfilled {
   const converted: Fulfilled["schemas"] = {};
   for (const [key, answer] of Object.entries(answers.schemas)) {
-    if ("error" in answer) converted[key] = answer;
+    if (answer.kind === "error") converted[key] = { error: answer.error };
     else {
       try {
         converted[key] = { value: fields(answer.value) };
@@ -27,7 +27,15 @@ function schemas(answers: HostAnswers): Fulfilled {
       }
     }
   }
-  return { urls: answers.urls, schemas: converted };
+  return {
+    urls: Object.fromEntries(
+      Object.entries(answers.urls).map(([url, answer]) => [
+        url,
+        answer.kind === "error" ? { error: answer.error } : { value: answer.value },
+      ]),
+    ),
+    schemas: converted,
+  };
 }
 
 export class CompilerService {

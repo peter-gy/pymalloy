@@ -2,7 +2,7 @@
 
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 import duckdb
@@ -14,7 +14,7 @@ def interrupt_at(
     deadline: float | None,
     *,
     message: str,
-) -> Iterator[None]:
+) -> Generator[None, None, None]:
     if deadline is None:
         yield
         return

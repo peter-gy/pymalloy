@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import time
 from collections.abc import Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Unpack
+
+import msgspec
 
 from pymalloy._authoring.syntax import Fragment
 from pymalloy._model import DEFAULT_CONNECTION
@@ -36,7 +37,7 @@ def validate(
 ) -> Validation:
     # One budget covers compilation, metadata, and every data assertion.
     deadline = time.monotonic() + options.get("timeout", 120)
-    bindings = json.dumps(encode_givens(givens))
+    bindings = msgspec.json.encode(encode_givens(givens)).decode()
     connection_name = options.get("connection_name", DEFAULT_CONNECTION)
     selected = tuple(checks.items())
     if not all(

@@ -10,12 +10,12 @@ from collections import deque
 from concurrent.futures import Future
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
-from typing import IO, Any
+from typing import IO
 
 import msgspec
 
 from pymalloy._model.errors import CompilerError
-from pymalloy._protocol.records import CompilerReady, Response
+from pymalloy._protocol.records import CompilerReady, Request, Response
 
 _MAX_FRAME = 64 * 1024 * 1024
 _DECODER = msgspec.json.Decoder(Response)
@@ -143,7 +143,7 @@ class Process:
                 future.set_exception(failure)
             self.close()
 
-    def call(self, request: dict[str, Any], deadline: float) -> Response:
+    def call(self, request: Request, deadline: float) -> Response:
         payload = msgspec.json.encode(request)
         if len(payload) > _MAX_FRAME:
             raise ValueError("Compiler request exceeds 64 MiB")

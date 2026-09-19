@@ -1,6 +1,6 @@
 import { defineConfig } from "vite-plus";
 
-import { bundleNotices } from "../../tools/bundle-notices";
+import { bundleNotices } from "@pymalloy/scripts/bundle-notices";
 
 export default defineConfig({
   plugins: [bundleNotices("headless.LICENSE.txt")],
