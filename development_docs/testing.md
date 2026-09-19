@@ -148,6 +148,7 @@ restricts the run to paths containing the supplied text.
 uv run python tools/benchmark_authoring.py --samples 7 --output nogit/authoring-timings.json
 uv run python tools/benchmark_data_inputs.py --rows 1000000 --samples 7 --output nogit/dataframe-timings.json
 pnpm bench:compiler --samples 7 --output nogit/compiler-timings.json
+uv run python tools/benchmark_notebook.py --samples 7 --output nogit/notebook-timings.json
 ```
 
 The dataframe benchmark measures contiguous and fragmented Arrow snapshots,
@@ -156,6 +157,12 @@ table references. Results include dependency versions and every timing sample.
 Compare medians using the same interpreter, dependencies, input size, and machine.
 Run benchmarks separately from tests and builds. Keep timing thresholds out of
 behavior tests.
+
+The notebook benchmark measures inspection/display of 1,000 fields, decoding
+and publishing 5,000 eight-column rows, and serialization of a 20 MiB native
+preview. It reports timing samples and peak Python allocation during each call.
+Allocation measurements exclude pre-existing objects and Arrow's native buffers,
+so they are not total process memory measurements.
 
 Build the packages before running the compiler benchmark. It measures model
 inspection, fresh model checks, and batches of 100 SQL preparations through the
