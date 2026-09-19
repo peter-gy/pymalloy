@@ -63,6 +63,7 @@ class Widget implements AnyModel<WidgetModel> {
 
   constructor(input: Partial<Input> | null = {}, source: Partial<Definition> = {}) {
     this.values = {
+      _css: "",
       query: input?.query ?? null,
       _input:
         input === null
@@ -193,9 +194,8 @@ function session(loaded = model()) {
 }
 const disposals: Array<() => Promise<void>> = [];
 async function initialize(widget: Widget): Promise<() => Promise<void>> {
-  const dispose = initializeWith(
-    create,
-    ToolingError,
+  const dispose = initializeWith(create, (error) =>
+    error instanceof ToolingError ? error.diagnostics : [],
   )({
     model: widget,
     signal: new AbortController().signal,
