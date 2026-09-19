@@ -1,8 +1,15 @@
 """Notebook representation hooks shared by immutable values and runtime handles."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .subject import Subject
+
 
 class NotebookDisplay:
-    def _notebook_subject(self):
+    def _notebook_subject(self) -> Subject:
         from .subject import describe
 
         return describe(self)

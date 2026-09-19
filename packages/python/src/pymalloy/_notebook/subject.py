@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import msgspec
 
@@ -12,10 +12,15 @@ from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.source import DocumentKind, ModelSource
 from pymalloy._protocol.givens import given_values
 from pymalloy._protocol.records import (
+    ExecutionKind,
+    Input,
     Inspection,
     NotebookBinding,
     NotebookInfo,
     NotebookInput,
+    NotebookInspection,
+    NotebookResponse,
+    NotebookResult,
     QueryDescriptor,
     ScalarCall,
     ScalarField,
@@ -40,40 +45,36 @@ class Subject:
     preview: Callable[[str | None, Mapping[str, Any]], Result] | None = None
     connection_name: str | None = None
 
-    def perform(self, request: Mapping[str, Any]):
-        if request["action"] == "inspect" and self.info.execution != "result":
+    def perform(self, request: Input) -> tuple[NotebookResponse, list[memoryview]]:
+        if request.action == "inspect" and self.info.execution != "result":
             raise ValueError("Choose Preview to execute this value")
-        if request["action"] == "check":
+        if request.action == "check":
             if self.inspect is None:
                 raise ValueError("This value has no compiled model to inspect")
-            return {
-                "kind": "inspection",
-                "inspection": msgspec.to_builtins(self.inspect()),
-            }, []
+            return NotebookInspection(inspection=self.inspect()), []
         if self.preview is None:
             raise ValueError("This value has no Python execution context")
-        selection = request["query"]
+        selection = request.query
         if selection is not None and all(q.name != selection for q in self.queries):
             raise ValueError(f"Unknown query for this displayed value: {selection}")
-        result = self.preview(request["query"], given_values(request["givens"]))
+        result = self.preview(request.query, given_values(request.givens))
         import pyarrow as pa
 
         sink = pa.BufferOutputStream()
         table = result.arrow()
         with pa.ipc.new_stream(sink, table.schema) as writer:
             writer.write_table(table)
-        return {
-            "kind": "result",
-            "sql": result.sql,
-            "columns": [{"name": c.name, "type": c.type} for c in result.columns],
-            "connectionName": self.connection_name or DEFAULT_CONNECTION,
-        }, [memoryview(sink.getvalue())]
+        return NotebookResult(
+            sql=result.sql,
+            columns=result.columns,
+            connection_name=self.connection_name or DEFAULT_CONNECTION,
+        ), [memoryview(sink.getvalue())]
 
 
 def info(
     kind: str,
     source: str,
-    execution: Literal["browser", "python", "result"] | None,
+    execution: ExecutionKind | None,
     message: str | None = None,
 ) -> NotebookInfo:
     return NotebookInfo(
@@ -203,7 +204,7 @@ def describe(value) -> Subject:
             "pipe": "Query",
             "extend": "Source",
         }.get(
-            operation,
+            operation or "",
             operation.replace("_", " ").title()
             if operation
             else "Captured source"
@@ -225,7 +226,7 @@ def describe(value) -> Subject:
         else:
             message = "Compose this fragment into a source or model to resolve its references and run it."
     elif isinstance(value, Expr):
-        kind = value._node.__struct_config__.tag.replace("_", " ").title()
+        kind = "Expression"
         message = "Use this expression in select, dimension, measure, or aggregate. Its type and source scope are resolved by Malloy when the model compiles."
     elif isinstance(value, Sort):
         kind = "Sort direction"

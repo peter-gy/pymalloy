@@ -22,7 +22,7 @@ def render(document: Document, *, output_path: str | Path) -> str:
     cells = []
 
     def append(kind: str, source: str) -> None:
-        cell = {
+        cell: dict[str, object] = {
             "cell_type": kind,
             "id": f"cell-{len(cells) + 1:04d}",
             "metadata": {},

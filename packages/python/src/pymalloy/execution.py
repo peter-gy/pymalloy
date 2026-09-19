@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from typing import Any
+
+import msgspec
 
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.errors import PyMalloyError
 from pymalloy._model.inputs import DataInput
 from pymalloy._model.source import ModelSource
 from pymalloy._protocol.givens import given_values
+from pymalloy._protocol.records import Given
 from pymalloy.analysis import QueryDescriptor
 
 
@@ -56,7 +58,9 @@ class ExecutionContext:
     @property
     def givens(self) -> dict[str, Any]:
         """Return a detached dictionary of exact values bound to the failed query."""
-        return given_values(json.loads(self._givens_json))
+        return given_values(
+            msgspec.json.decode(self._givens_json, type=dict[str, Given])
+        )
 
 
 class ExecutionError(PyMalloyError):

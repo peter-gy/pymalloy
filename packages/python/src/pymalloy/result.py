@@ -4,26 +4,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from pymalloy._notebook import NotebookDisplay
+from pymalloy._protocol.records import Column
+
+__all__ = ["Column", "Result"]
 
 if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
-
-
-@dataclass(frozen=True)
-class Column:
-    """An output field name and its native DuckDB type text.
-
-    Attributes
-    ----------
-    name : str
-        Output column name.
-    type : str
-        Native type description. Use Result.arrow().schema for Arrow types.
-    """
-
-    name: str
-    type: str
 
 
 @dataclass(frozen=True)

@@ -23,7 +23,12 @@ from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.errors import CompilationError
 from pymalloy._model.source import ModelSource
 from pymalloy._protocol.givens import encode_givens, given_values
-from pymalloy._protocol.records import FormatReady, SyntaxReady
+from pymalloy._protocol.records import (
+    FormatReady,
+    FormatRequest,
+    SyntaxReady,
+    SyntaxRequest,
+)
 from pymalloy.authoring import table
 from pymalloy.export._python import file_guard
 from pymalloy.validation import Validation
@@ -149,9 +154,9 @@ def bundle(
             not isinstance(key, str)
             or alias.is_absolute()
             or ".." in alias.parts
-            or "\\" in str(key)
-            or ":" in str(key)
-            or (str(key).startswith("'") and str(key).endswith("'"))
+            or "\\" in key
+            or ":" in key
+            or (key.startswith("'") and key.endswith("'"))
         ):
             alias = PurePosixPath("__files__") / (
                 hashlib.sha256(reference.encode()).hexdigest() + path.suffix
@@ -170,6 +175,7 @@ def bundle(
 
     deadline = time.monotonic() + timeout
     documents = []
+    compiler_version = None
     originals = [(source.url, source.text, PurePosixPath("model.malloy"))]
     originals.extend(
         (url, text, destinations[url]) for url, text in sorted(source.imports.items())
@@ -181,7 +187,7 @@ def bundle(
             text = original
             if format:
                 formatted = compiler.request(
-                    {"op": "format", "source": text},
+                    FormatRequest(source=text),
                     FormatReady,
                     describe=lambda sql: [],
                     deadline=deadline,
@@ -194,6 +200,7 @@ def bundle(
             parsed = compiler.parse(
                 text, url=url, document_kind="model", deadline=deadline
             )
+            compiler_version = parsed.compiler_version
             if any(d.severity == "error" for d in parsed.diagnostics):
                 raise CompilationError(
                     "Cannot parse source bundle", diagnostics=parsed.diagnostics
@@ -244,11 +251,9 @@ def bundle(
             documents.append((url, original, destination, text))
         syntax = from_wire(
             compiler.request(
-                {
-                    "op": "syntax",
-                    "source": documents[0][3],
-                    "url": "memory://bundle/model.malloy",
-                },
+                SyntaxRequest(
+                    source=documents[0][3], url="memory://bundle/model.malloy"
+                ),
                 SyntaxReady,
                 describe=lambda sql: [],
                 deadline=deadline,
@@ -319,9 +324,10 @@ def bundle(
                     "sha256": artifact.sha256,
                 }
             )
+        assert compiler_version is not None  # originals always includes the root model.
         manifest = {
             "format_version": 3,
-            "compiler_version": parsed.compiler_version,
+            "compiler_version": compiler_version,
             "model": "model.malloy",
             "data_root": "data",
             "connection_name": connection_name,

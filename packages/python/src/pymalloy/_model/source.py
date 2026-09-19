@@ -2,19 +2,22 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal
+from typing import get_args
 from urllib.parse import urlsplit
 
 from pymalloy._notebook import NotebookDisplay
+from pymalloy._protocol.records import DocumentKind
 
 DEFAULT_SOURCE_FILENAME = "model.malloy"
-type DocumentKind = Literal["model", "notebook"]
+_DOCUMENT_KINDS = get_args(DocumentKind.__value__)
 
 
 def resolve_document_kind(url: str, kind: DocumentKind | None = None) -> DocumentKind:
     if kind is not None:
-        if kind not in {"model", "notebook"}:
-            raise ValueError("document_kind must be 'model' or 'notebook'")
+        if kind not in _DOCUMENT_KINDS:
+            raise ValueError(
+                "document_kind must be " + " or ".join(map(repr, _DOCUMENT_KINDS))
+            )
         return kind
     return (
         "notebook"

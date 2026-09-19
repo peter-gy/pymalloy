@@ -188,7 +188,7 @@ def compile_document(
             )
         else:
             extra = []
-        cells = []
+        cells: list[Markdown | QueryCell] = []
         for cell in [*selected, *extra]:
             if isinstance(cell, MarkdownCell):
                 cells.append(Markdown(cell.text))

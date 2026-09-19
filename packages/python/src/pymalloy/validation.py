@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import unquote, urlsplit
 
+import msgspec
 from msgspec import structs
 
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.source import ModelSource, read_text
 from pymalloy._protocol.givens import given_values
-from pymalloy._protocol.records import NativeMetadata
+from pymalloy._protocol.records import Given, NativeMetadata
 from pymalloy.analysis import CheckReport, Diagnostic
 from pymalloy.execution import ExecutionContext
 from pymalloy.result import Result
@@ -180,7 +180,9 @@ class Validation:
     @property
     def givens(self) -> dict[str, Any]:
         """Return a detached dictionary of the exact validated parameter bindings."""
-        return given_values(json.loads(self._givens_json))
+        return given_values(
+            msgspec.json.decode(self._givens_json, type=dict[str, Given])
+        )
 
     @property
     def ok(self) -> bool:

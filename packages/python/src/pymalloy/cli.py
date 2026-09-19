@@ -317,7 +317,14 @@ def _run(args: argparse.Namespace) -> None:
         import duckdb
 
         import pymalloy as pm
+    except ImportError as error:
+        print(
+            f"pymalloy: {error}. Install execution with pip install 'pymalloy[headless]'",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
 
+    try:
         deadline = time.monotonic() + args.timeout
         with closing(
             pm.model(

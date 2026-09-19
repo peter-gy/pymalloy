@@ -94,7 +94,6 @@ class Expr(NotebookDisplay):
     _node: Scalar
     _source: builtins.str | None
     _annotations: tuple[tuple[builtins.str, builtins.str], ...]
-    __hash__ = None
 
     def __init__(self) -> None:
         raise TypeError("Create expressions with col(), lit(), or raw_expr()")
@@ -267,10 +266,13 @@ class Expr(NotebookDisplay):
     def __neg__(self) -> Expr:
         return self._with_node(ScalarUnary(operator="-", value=self._node))
 
-    def __eq__(self, other: IntoExpr) -> Expr:  # ty: ignore[invalid-method-override]
+    # Equality constructs syntax. equals() performs structural comparison.
+    # pyrefly: ignore[bad-override]
+    def __eq__(self, other: IntoExpr) -> Expr:  # ty: ignore[invalid-method-override] # pyright: ignore[reportIncompatibleMethodOverride]
         return self._binary("=", other)
 
-    def __ne__(self, other: IntoExpr) -> Expr:  # ty: ignore[invalid-method-override]
+    # pyrefly: ignore[bad-override]
+    def __ne__(self, other: IntoExpr) -> Expr:  # ty: ignore[invalid-method-override] # pyright: ignore[reportIncompatibleMethodOverride]
         return self._binary("!=", other)
 
     def __lt__(self, other: IntoExpr) -> Expr:
