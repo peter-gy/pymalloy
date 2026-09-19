@@ -30,7 +30,13 @@ catalogs:
     '@malloydata/malloy-tag':
       specifier: 0.0.433
       version: 0.0.433
+    '@malloydata/motly-ts-parser':
+      specifier: 0.9.1
+      version: 0.9.1
     '@malloydata/render':
+      specifier: 0.0.433
+      version: 0.0.433
+    '@malloydata/syntax-highlight':
       specifier: 0.0.433
       version: 0.0.433
     '@oxlint/plugins':
@@ -84,6 +90,9 @@ catalogs:
     react-dom:
       specifier: 19.3.0
       version: 19.3.0
+    shiki:
+      specifier: 4.4.3
+      version: 4.4.3
     ts-json-schema-generator:
       specifier: 2.9.0
       version: 2.9.0
@@ -337,7 +346,13 @@ importers:
       '@malloydata/malloy-interfaces':
         specifier: 'catalog:'
         version: 0.0.433
+      '@malloydata/motly-ts-parser':
+        specifier: 'catalog:'
+        version: 0.9.1
       '@malloydata/render':
+        specifier: 'catalog:'
+        version: 0.0.433
+      '@malloydata/syntax-highlight':
         specifier: 'catalog:'
         version: 0.0.433
       '@pymalloy/protocol':
@@ -358,6 +373,9 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.3.0(react@19.3.0)
+      shiki:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@anywidget/types':
         specifier: 'catalog:'
@@ -653,8 +671,15 @@ packages:
   '@malloydata/motly-ts-parser@0.9.0':
     resolution: {integrity: sha512-r3OneNVn3734XV3C4NS4xg/VbVDIVaF3/zxorBCuNUihpPV+JHe2KyfDcFVBJligJxGKkHiFtEu0uw98B9budA==}
 
+  '@malloydata/motly-ts-parser@0.9.1':
+    resolution: {integrity: sha512-D7wJCnF66NkYLdMHixZnHXBjssBNpSXJJ53Q5P1Kz5DqQfFNQ3Oe4DyQ1Tm9BAZqAiBLXavvTeOhsw3B61FWhQ==}
+
   '@malloydata/render@0.0.433':
     resolution: {integrity: sha512-4tt8BYabpBMfMcWBxAe/yw6zERHCiZGWMpUu0/7Dgt2+4Gb3XWZQT0IQlJ1XycJtN3edLRp6fRGxNoc7hbLxwQ==}
+    engines: {node: '>=20'}
+
+  '@malloydata/syntax-highlight@0.0.433':
+    resolution: {integrity: sha512-X0we6ei9EhF5RKZWMd5AJGIZxH8uu+tmEZZaScHqgxj29RWM0e891J925H78UxpD27joRVA1bMlvwF9k2YnnYQ==}
     engines: {node: '>=20'}
 
   '@napi-rs/wasm-runtime@1.2.3':
@@ -3434,6 +3459,8 @@ snapshots:
 
   '@malloydata/motly-ts-parser@0.9.0': {}
 
+  '@malloydata/motly-ts-parser@0.9.1': {}
+
   '@malloydata/render@0.0.433':
     dependencies:
       '@malloydata/malloy-interfaces': 0.0.433
@@ -3447,6 +3474,8 @@ snapshots:
       vega: 6.4.0
       vega-interpreter: 2.3.2
       vega-lite: 5.23.0(vega@6.4.0)
+
+  '@malloydata/syntax-highlight@0.0.433': {}
 
   '@napi-rs/wasm-runtime@1.2.3(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)':
     dependencies:

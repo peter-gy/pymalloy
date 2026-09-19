@@ -10,4 +10,7 @@ new release provenance and license text.
 | `@duckdb/duckdb-wasm@1.33.1-dev57.0` | `ef8a4f8912b6e7f62bc0cc490145ebd391b79e1f` | [upstream LICENSE](https://github.com/duckdb/duckdb-wasm/blob/ef8a4f8912b6e7f62bc0cc490145ebd391b79e1f/LICENSE) |
 | `@malloydata/motly-ts-parser@0.9.0`  | `f5db040f97fe211a0d4a182ea6793792505d70ef` | [upstream LICENSE](https://github.com/malloydata/motly/blob/f5db040f97fe211a0d4a182ea6793792505d70ef/LICENSE)   |
 
+`@malloydata/motly-ts-parser@0.9.1` uses the same notice as 0.9.0, verified at
+release `gitHead` [a7289dab7201ec93de2e0c9e3736072605e62b7b](https://github.com/malloydata/motly/blob/a7289dab7201ec93de2e0c9e3736072605e62b7b/LICENSE).
+
 Provenance is available through `pnpm view '<package>@<version>' gitHead`.

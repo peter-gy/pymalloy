@@ -12,6 +12,10 @@ const upstreamNotices = new Map([
     "@malloydata/motly-ts-parser@0.9.0",
     new URL("./licenses/motly-ts-parser-0.9.0.LICENSE", import.meta.url),
   ],
+  [
+    "@malloydata/motly-ts-parser@0.9.1",
+    new URL("./licenses/motly-ts-parser-0.9.0.LICENSE", import.meta.url),
+  ],
 ]);
 
 /** Collect notices only for packages whose modules occur in this artifact. */

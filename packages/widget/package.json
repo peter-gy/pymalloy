@@ -17,13 +17,16 @@
     "@malloy-runtime/compiler": "workspace:*",
     "@malloy-runtime/duckdb": "workspace:*",
     "@malloydata/malloy-interfaces": "catalog:",
+    "@malloydata/motly-ts-parser": "catalog:",
     "@malloydata/render": "catalog:",
+    "@malloydata/syntax-highlight": "catalog:",
     "@pymalloy/protocol": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "apache-arrow": "catalog:",
     "process": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "shiki": "catalog:"
   },
   "devDependencies": {
     "@anywidget/types": "catalog:",
