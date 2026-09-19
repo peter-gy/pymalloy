@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -36,6 +36,32 @@ class Profile(StrEnum):
     WIDGET = "widget"
 
 
+def remote_urls(values: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(values, str) or any(
+        not isinstance(url, str)
+        or urlsplit(url).scheme not in {"http", "https"}
+        or not urlsplit(url).netloc
+        for url in values
+    ):
+        raise ValueError("remote_files must contain absolute HTTP(S) URLs")
+    return tuple(values)
+
+
+def native_extensions(
+    values: Sequence[str], profile: Profile, remote_files: Collection[str]
+) -> tuple[str, ...]:
+    if isinstance(values, str) or any(
+        not isinstance(name, str) or not name for name in values
+    ):
+        raise ValueError("extensions must contain nonempty extension names")
+    if profile == Profile.WIDGET and values:
+        raise ValueError(
+            "Native extensions apply only to precompiled or headless notebooks"
+        )
+    required = ("httpfs",) if remote_files and profile != Profile.WIDGET else ()
+    return tuple(dict.fromkeys((*values, *required)))
+
+
 @dataclass(frozen=True)
 class Document:
     title: str
@@ -53,39 +79,13 @@ class Document:
     def __post_init__(self) -> None:
         if not isinstance(self.connection_name, str) or not self.connection_name:
             raise ValueError("connection_name must be a nonempty string")
-        if isinstance(self.remote_files, str) or any(
-            not isinstance(url, str)
-            or urlsplit(url).scheme not in {"http", "https"}
-            or not urlsplit(url).netloc
-            for url in self.remote_files
-        ):
-            raise ValueError("remote_files must contain absolute HTTP(S) URLs")
-        object.__setattr__(self, "remote_files", tuple(self.remote_files))
-        if isinstance(self.extensions, str) or any(
-            not isinstance(name, str) or not name for name in self.extensions
-        ):
-            raise ValueError("extensions must contain nonempty extension names")
+        object.__setattr__(self, "profile", Profile(self.profile))
+        object.__setattr__(self, "remote_files", remote_urls(self.remote_files))
         object.__setattr__(
             self,
             "extensions",
-            tuple(
-                dict.fromkeys(
-                    (
-                        *self.extensions,
-                        *(
-                            ("httpfs",)
-                            if self.remote_files and self.profile != Profile.WIDGET
-                            else ()
-                        ),
-                    )
-                )
-            ),
+            native_extensions(self.extensions, self.profile, self.remote_files),
         )
-        object.__setattr__(self, "profile", Profile(self.profile))
-        if self.profile == Profile.WIDGET and self.extensions:
-            raise ValueError(
-                "Native extensions apply only to precompiled or headless notebooks"
-            )
         object.__setattr__(
             self, "givens", freeze(given_values(encode_givens(self.givens)))
         )

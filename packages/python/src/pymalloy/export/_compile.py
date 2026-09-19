@@ -11,9 +11,17 @@ import duckdb
 
 import pymalloy as pm
 from pymalloy._headless.tooling import compiler_lease
+from pymalloy._model.source import read_text
 from pymalloy.analysis import MarkdownCell
 from pymalloy.analysis import QueryCell as CompiledQueryCell
-from pymalloy.export._document import Document, Markdown, Profile, QueryCell
+from pymalloy.export._document import (
+    Document,
+    Markdown,
+    Profile,
+    QueryCell,
+    native_extensions,
+    remote_urls,
+)
 from pymalloy.export._files import check_files, file_config
 from pymalloy.export._sql import export_sql
 
@@ -48,22 +56,8 @@ def compile_document(
         raise ValueError(
             "MalloyWidget export requires files rather than a native database"
         )
-    if isinstance(remote_files, str) or any(
-        not isinstance(url, str)
-        or urlsplit(url).scheme not in {"http", "https"}
-        or not urlsplit(url).netloc
-        for url in remote_files
-    ):
-        raise ValueError("remote_files must contain absolute HTTP(S) URLs")
-    if isinstance(extensions, str) or any(
-        not isinstance(name, str) or not name for name in extensions
-    ):
-        raise ValueError("extensions must contain nonempty extension names")
-    if profile == Profile.WIDGET and extensions:
-        raise ValueError(
-            "Native extensions apply only to precompiled or headless notebooks"
-        )
-    remote = set(remote_files)
+    remote = set(remote_urls(remote_files))
+    extensions = native_extensions(extensions, profile, remote)
     registered = dict(files)
     with ExitStack() as resources:
         parser = resources.enter_context(compiler_lease(deadline))
@@ -134,14 +128,7 @@ def compile_document(
                 pending.append(Path(unquote(target.path)))
     if profile != Profile.WIDGET:
         check_files(registered)
-    native_extensions = tuple(
-        dict.fromkeys(
-            (
-                *extensions,
-                *(("httpfs",) if remote and profile != Profile.WIDGET else ()),
-            )
-        )
-    )
+    extensions = native_extensions(extensions, profile, remote)
     with closing(
         pm.model(
             path,
@@ -150,7 +137,7 @@ def compile_document(
             config=file_config(registered, tuple(remote))
             if profile != Profile.WIDGET
             else None,
-            extensions=native_extensions,
+            extensions=extensions,
             database=database,
             read_only=database is not None,
             timeout=remaining(),
@@ -215,7 +202,7 @@ def compile_document(
             data_root=data_root,
             connection_name=connection_name,
             remote_files=tuple(sorted(remote)),
-            extensions=native_extensions,
+            extensions=tuple(extensions),
             database=database,
             source=captured,
             profile=profile,
