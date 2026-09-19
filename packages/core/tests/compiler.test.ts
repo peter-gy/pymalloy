@@ -276,6 +276,8 @@ test("query discovery and documents expose public views", async () => {
     readURL: async () => "",
   });
   expect(model.queries.map((query) => query.name)).toEqual(["numbers.visible"]);
+  Reflect.set(model.queries[0], "name", "changed_by_consumer");
+  expect(model.queries[0].name).toBe("numbers.visible");
   expect((await drive(model.prepare(undefined, {}))).name).toBe("numbers.visible");
   expect(await drive(model.document({}))).toEqual([
     {

@@ -36,7 +36,7 @@ type QueryEntry =
 
 export class CompiledModel {
   private readonly entries = new Map<string, QueryEntry>();
-  readonly queries: readonly QueryDescriptor[];
+  readonly queries: readonly Readonly<QueryDescriptor>[];
 
   private constructor(private readonly details: LoadedSource) {
     const { model, sqlQueries } = details;
@@ -61,11 +61,11 @@ export class CompiledModel {
       [...this.entries].map(([name, entry]) => {
         const location =
           entry.kind === "run" || entry.kind === "named" ? entry.query.location : undefined;
-        return {
+        return Object.freeze({
           name,
           kind: entry.kind,
           location: location ? plain(location, details.locations) : null,
-        };
+        });
       }),
     );
   }

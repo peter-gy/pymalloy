@@ -26,7 +26,7 @@ export interface ModelDriver {
 }
 
 export class Model {
-  readonly queries: readonly QueryDescriptor[];
+  readonly queries: readonly Readonly<QueryDescriptor>[];
   constructor(
     private compiled: CompiledModel | undefined,
     private driver: ModelDriver | undefined,
