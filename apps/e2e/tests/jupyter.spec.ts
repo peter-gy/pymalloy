@@ -133,9 +133,10 @@ test("Jupyter displays authored values through the standard MIME protocol", asyn
   await run("import pyarrow as pa");
   const draft = views.nth(1);
   await expect(draft.getByRole("status")).toHaveText("Ready to inspect");
-  await draft.getByText("Captured inputs", { exact: true }).click();
-  await expect(draft).toContainText("orders · 2 captured rows");
-  await draft.getByRole("button", { name: "Run query", exact: true }).click();
+  await draft.getByRole("tab", { name: "Context", exact: true }).click();
+  await expect(draft.getByRole("tabpanel")).toContainText("orders");
+  await expect(draft.getByRole("tabpanel")).toContainText("2 rows");
+  await draft.getByRole("button", { name: "Run", exact: true }).click();
   await expect(draft.getByRole("table")).toContainText("42");
   await notebook
     .getByRole("textbox")
@@ -144,7 +145,7 @@ test("Jupyter displays authored values through the standard MIME protocol", asyn
   await notebook.getByRole("button", { name: /Run this cell and advance/ }).click();
   const source = views.nth(2);
   await expect(source.getByRole("status")).toHaveText("Ready to inspect");
-  await source.getByRole("button", { name: "Run query", exact: true }).click();
+  await source.getByRole("button", { name: "Run", exact: true }).click();
   await expect(source.getByRole("status")).toHaveText("2 rows");
   await expect(source.getByRole("cell", { name: "20", exact: true })).toBeVisible();
   await expect(source.getByRole("cell", { name: "22", exact: true })).toBeVisible();

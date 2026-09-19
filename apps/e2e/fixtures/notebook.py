@@ -73,7 +73,11 @@ def _(pm, region):
 def _(pm):
     notebook_draft = (
         pm.draft()
-        .define(values=pm.sql("SELECT 42 AS answer"))
+        .define(
+            values=pm.sql("SELECT 42 AS answer").extend(
+                pm.measure(total=pm.col("answer").sum())
+            )
+        )
         .queries(answer=pm.ref("values").pipe(pm.query(pm.select(pm.col("answer")))))
     )
     notebook_draft

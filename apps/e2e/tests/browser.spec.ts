@@ -456,9 +456,10 @@ test("cancelling one browser query preserves its model and queued work", async (
 test("a widget replaces an active query on its retained browser model", async ({ page }) => {
   await page.goto("/runtime.html");
   const output = await page.evaluate(async () => {
-    const entry = "/widget.mjs";
+    const entry = "/widget/chunks/app.js";
     const { default: createWidget } = await import(entry);
     const state: WidgetModel = {
+      _css: "",
       query: null,
       _state: null,
       _request: null,
@@ -575,10 +576,11 @@ test("a relocated widget executes absolute HTTP data without a native runtime", 
   );
   await page.goto("/runtime.html");
   const output = await page.evaluate(async () => {
-    const entry = "/widget.mjs";
+    const entry = "/widget/chunks/app.js";
     const { default: createWidget } = await import(entry);
     const url = new URL("/remote-values.csv", location.href).href;
     const state: WidgetModel = {
+      _css: "",
       query: null,
       _state: null,
       _request: null,

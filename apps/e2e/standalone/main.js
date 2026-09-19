@@ -3,6 +3,7 @@ const readback = document.querySelector('[aria-label="Python readback"]');
 const target = document.querySelector("#widget");
 const listeners = new Map();
 const pending = {};
+const snapshots = new Map();
 let firstResult;
 const lifetime = new AbortController();
 const pyodide = await globalThis.loadPyodide();
@@ -57,6 +58,7 @@ const publish = () => {
   );
 };
 const changed = (name) => {
+  snapshots.delete(name);
   if (name === "_state" && !firstResult) {
     const state = model.get("_state");
     if (state?.status === "ready") firstResult = structuredClone(state);
@@ -72,15 +74,20 @@ widget.observe(changed)
 `);
 const model = {
   get(name) {
-    return name in pending
-      ? pending[name]
-      : JSON.parse(get(name), (_key, value) => {
-          // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Decode the tagged binary payload at the Python JSON boundary.
-          if (value && typeof value === "object" && "__buffer__" in value) {
-            return new DataView(Uint8Array.from(value.__buffer__).buffer);
-          }
-          return value;
-        });
+    if (name in pending) return pending[name];
+    if (snapshots.has(name)) return snapshots.get(name);
+    const value = JSON.parse(get(name), (_key, value) => {
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Decode the tagged binary payload at the Python JSON boundary.
+      if (value && typeof value === "object" && "__buffer__" in value) {
+        return new DataView(Uint8Array.from(value.__buffer__).buffer);
+      }
+      return value;
+    });
+    snapshots.set(name, value);
+    return value;
+  },
+  send(content) {
+    send(JSON.stringify(content));
   },
   set(name, value) {
     pending[name] = value;
@@ -99,6 +106,21 @@ const model = {
     listeners.get(event)?.delete(callback);
   },
 };
+pyodide.globals.set("custom_reply", (content, buffers) => {
+  const values = buffers.toJs();
+  const views = values.map(
+    (value) => new DataView(value.buffer, value.byteOffset, value.byteLength),
+  );
+  for (const callback of listeners.get("msg:custom") ?? []) callback(JSON.parse(content), views);
+});
+await pyodide.runPythonAsync(`
+def model_send(content):
+    widget._handle_msg({"content": {"data": {"method": "custom", "content": json.loads(content)}}, "buffers": []})
+def model_reply(content, buffers=None):
+    custom_reply(json.dumps(content), buffers or [])
+widget.send = model_reply
+`);
+const send = pyodide.globals.get("model_send");
 const stylesheet = document.createElement("style");
 stylesheet.textContent = model.get("_css");
 document.head.appendChild(stylesheet);
@@ -168,6 +190,7 @@ close.addEventListener("click", async () => {
   URL.revokeObjectURL(moduleURL);
   get.destroy();
   save.destroy();
+  send.destroy();
   kernelStatus.textContent = "Analysis closed";
 });
 kernelStatus.textContent = "Python ready";

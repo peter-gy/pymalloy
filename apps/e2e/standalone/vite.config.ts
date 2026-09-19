@@ -1,10 +1,14 @@
-import { createReadStream, readdirSync } from "node:fs";
+import { createReadStream, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
 const distribution = fileURLToPath(new URL("../../../dist/", import.meta.url));
-const runtimeFiles = new Map([
-  ["/widget.mjs", new URL("../../../packages/widget/dist/widget.js", import.meta.url)],
+const widgetRoot = new URL("../../../packages/widget/dist/", import.meta.url);
+const manifest = JSON.parse(readFileSync(new URL("anywidget.json", widgetRoot), "utf8"));
+const runtimeFiles = new Map<string, URL>([
+  ...manifest.modules.map(
+    (path: string) => [`/widget/${path}`, new URL(path, widgetRoot)] as const,
+  ),
   [
     "/runtime.mjs",
     new URL(
