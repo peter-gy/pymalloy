@@ -1783,6 +1783,92 @@
       "title": "Needs",
       "type": "object"
     },
+    "NotebookBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "kind", "source"],
+      "title": "NotebookBinding",
+      "type": "object"
+    },
+    "NotebookInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "bindings": {
+          "items": {
+            "$ref": "#/definitions/NotebookBinding"
+          },
+          "type": "array"
+        },
+        "execution": {
+          "enum": ["browser", "python", "result", null],
+          "type": ["string", "null"]
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/definitions/NotebookInput"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "message": {
+          "type": ["string", "null"]
+        },
+        "references": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source",
+        "execution",
+        "message",
+        "bindings",
+        "references",
+        "annotations",
+        "inputs"
+      ],
+      "title": "NotebookInfo",
+      "type": "object"
+    },
+    "NotebookInput": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "rows": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["name", "rows"],
+      "title": "NotebookInput",
+      "type": "object"
+    },
     "NumberSubtype": {
       "enum": ["integer", "decimal", "bigint"],
       "type": "string"
@@ -2375,6 +2461,9 @@
         "inspection": {
           "$ref": "#/definitions/Inspection"
         },
+        "notebook": {
+          "$ref": "#/definitions/NotebookInfo"
+        },
         "query": {
           "$ref": "#/definitions/QueryDescriptor"
         },
@@ -2385,7 +2474,7 @@
           "$ref": "#/definitions/State"
         }
       },
-      "required": ["response", "check", "inspection", "diagnostic", "query", "state"],
+      "required": ["response", "check", "inspection", "diagnostic", "query", "state", "notebook"],
       "type": "object"
     },
     "Reference": {
@@ -2963,6 +3052,16 @@
         "error": {
           "type": ["string", "null"]
         },
+        "inspection": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Inspection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "queries": {
           "items": {
             "$ref": "#/definitions/QueryDescriptor"
@@ -2988,7 +3087,7 @@
           "type": "string"
         }
       },
-      "required": ["revision", "status", "queries", "result", "error", "diagnostics"],
+      "required": ["revision", "status", "queries", "result", "error", "diagnostics", "inspection"],
       "title": "State",
       "type": "object"
     },

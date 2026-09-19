@@ -135,6 +135,17 @@ class ModelSource(Record):
     url: str
 
 
+class NotebookBinding(Record):
+    kind: str
+    name: str
+    source: str
+
+
+class NotebookInput(Record):
+    name: str
+    rows: Annotated[int, Meta(ge=0)]
+
+
 type NumberSubtype = Literal["integer", "decimal", "bigint"]
 
 
@@ -370,6 +381,17 @@ class LiteralValueWithTimestampLiteral(
 class Location(Record):
     range: Range
     url: str
+
+
+class NotebookInfo(Record):
+    annotations: Sequence[str]
+    bindings: Sequence[NotebookBinding]
+    execution: Literal["browser", "python", "result"] | None
+    inputs: Sequence[NotebookInput]
+    kind: str
+    message: str | None
+    references: Sequence[str]
+    source: str
 
 
 class ParameterTypeWithTimestampType(Record, tag_field="kind", tag="timestamp_type"):
@@ -878,6 +900,7 @@ class Records(Record):
     check: CheckReport
     diagnostic: Diagnostic
     inspection: Inspection
+    notebook: NotebookInfo
     query: QueryDescriptor
     response: Response
     state: State
@@ -1001,6 +1024,7 @@ class SourceInfo(Record):
 class State(Record):
     diagnostics: Sequence[Diagnostic]
     error: str | None
+    inspection: Inspection | None
     queries: Sequence[QueryDescriptor]
     result: Result | None
     revision: Annotated[int, Meta(ge=0)]

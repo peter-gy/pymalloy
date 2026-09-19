@@ -44,6 +44,7 @@ def decode_state(wire: dict[str, Any]) -> dict[str, Any]:
         "queries": to_dict(validated.queries),
         "error": validated.error,
         "diagnostics": to_dict(validated.diagnostics),
+        "inspection": to_dict(validated.inspection),
         "result": msgspec.to_builtins(validated.result),
     }
     result = wire["result"]

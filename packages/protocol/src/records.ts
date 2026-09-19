@@ -5,7 +5,7 @@ import type {
   Diagnostic,
   QueryDescriptor,
 } from "@malloy-runtime/compiler";
-import type { State } from "./widget";
+import type { NotebookInfo, State } from "./widget";
 export interface Records {
   response: Response;
   check: CheckReport;
@@ -13,4 +13,5 @@ export interface Records {
   diagnostic: Diagnostic;
   query: QueryDescriptor;
   state: State;
+  notebook: NotebookInfo;
 }
