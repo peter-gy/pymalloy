@@ -206,6 +206,11 @@ return detached values. Non-finite values copy only changed result
 branches before browser rendering. Widget result messages disable anywidget echo
 because the browser already owns the publication.
 
+Native notebook previews send a memory view of the Arrow IPC buffer. Python
+readback validates one detached wire tree shared by its decoder and state
+resynchronization. Publishing the public snapshot freezes its own containers,
+so mutations to incoming frames cannot change retained snapshots.
+
 Idle Deno processes exit through stdin EOF to let Deno persist its code cache.
 Active failures terminate the child. Both shutdown paths have bounded waits.
 

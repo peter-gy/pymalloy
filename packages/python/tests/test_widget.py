@@ -180,6 +180,8 @@ def test_widget_readback_preserves_nested_numbers_in_immutable_snapshots():
         with pytest.raises(TypeError):
             retained["rows"][0]["nested"][0]["small"] = 0
         wire["result"]["data"]["array_value"].clear()
+        assert len(retained["result"]["data"]["array_value"]) == 1
+        assert len(widget.get_state()["_state"]["result"]["data"]["array_value"]) == 1
         widget.source = "run: changed"
         assert widget.state["status"] == "idle"
         assert retained["status"] == "ready"

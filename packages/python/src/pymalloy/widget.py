@@ -426,8 +426,9 @@ class MalloyWidget(anywidget.AnyWidget):
             return self._accepted_wire
         if type(wire.get("revision")) is not int:
             raise t.TraitError("Browser state revision must be an integer")
-        decoded = _decode_state(wire)
+        # The decoder and resynchronization retain one detached result tree.
         accepted = to_builtins(wire)
+        decoded = _decode_state(accepted)
         self._decoded_state = decoded
         self._accepted_wire = accepted
         return accepted

@@ -32,6 +32,7 @@ def to_dict(value: Any) -> Any:
 
 
 def decode_state(wire: dict[str, Any]) -> dict[str, Any]:
+    """Validate an owned wire frame and decode rows, sharing its stable result tree."""
     try:
         json.dumps(wire, allow_nan=False)
     except ValueError as error:
@@ -45,7 +46,7 @@ def decode_state(wire: dict[str, Any]) -> dict[str, Any]:
         "error": validated.error,
         "diagnostics": to_dict(validated.diagnostics),
         "inspection": to_dict(validated.inspection),
-        "result": msgspec.to_builtins(validated.result),
+        "result": wire["result"],
     }
     result = wire["result"]
     state.update(sql=None, columns=[], rows=[])
