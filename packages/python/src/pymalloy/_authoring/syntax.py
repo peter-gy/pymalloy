@@ -28,7 +28,32 @@ Kind = Literal[
 
 @dataclass(frozen=True, eq=False)
 class Fragment:
-    """Composable Malloy syntax. Named children delimit editing scopes."""
+    """Immutable source/query syntax with named editing scopes.
+
+    Construct fragments through table, sql, ref, query and clause functions.
+    Use syntax for literal Malloy grammar. A Fragment composes sources and
+    queries, while Expr represents a scalar field, value or calculation.
+
+    Attributes
+    ----------
+    text : str
+        Rendered Malloy with logical references for captured data.
+    names : tuple of str
+        Bindings in this scope, excluding the contents of named child scopes.
+    inputs : tuple of DataInput
+        Captured data retained by this fragment and its children.
+    kind : str
+        Grammar category. Public constructors select the appropriate category.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> source = pm.table("orders.parquet").extend(pm.measure(revenue=pm.col("amount").sum()))
+    >>> source.names
+    ('revenue',)
+    >>> source["revenue"].equals(pm.col("amount").sum())
+    True
+    """
 
     parts: tuple[str | Fragment | Expr | TableReference, ...]
     kind: Kind = "expression"
@@ -77,9 +102,30 @@ class Fragment:
 
     @cached_property
     def text(self) -> str:
+        """Return Malloy text, retaining logical captured-input references."""
         return self.render()
 
     def render(self, *, materialize: bool = False) -> str:
+        """Render source/query syntax, optionally materializing captured inputs.
+
+        Parameters
+        ----------
+        materialize : bool, default False
+            Replace captured-input references with owned temporary Parquet paths.
+            Each capture writes and verifies Parquet once. Keep the owning fragment
+            alive while using those paths. False retains portable logical references.
+
+        Returns
+        -------
+        str
+            Malloy text. Runtime and export APIs normally manage materialization.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.ref("orders").render()
+        'orders'
+        """
         parts = []
         pending: list[tuple[str | Fragment | Expr | TableReference, int]] = [(self, 0)]
         while pending:
@@ -131,6 +177,7 @@ class Fragment:
 
     @cached_property
     def inputs(self) -> tuple[DataInput, ...]:
+        """Return distinct captured input owners ordered by logical name."""
         found: dict[str, DataInput] = {}
         pending: list[Fragment] = [self]
         while pending:
@@ -171,7 +218,7 @@ class Fragment:
 
     @property
     def names(self) -> tuple[str, ...]:
-        """Names owned by this scope, excluding bindings inside named children."""
+        """Return binding names owned by this scope in authored order."""
         return tuple(node.name for node in self._bindings() if node.name is not None)
 
     def _binding(self, name: str) -> Fragment:
@@ -198,6 +245,26 @@ class Fragment:
         return selected
 
     def __getitem__(self, name: str) -> Fragment | Expr:
+        """Select a named right-hand side within this editing scope.
+
+        Parameters
+        ----------
+        name : str
+            Source, query, or field binding in this scope. Missing names raise
+            KeyError and ambiguous names raise ValueError.
+
+        Returns
+        -------
+        Fragment or Expr
+            The bound expression. Nested sources/views are separate editing scopes.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> source = pm.table("orders.parquet").extend(pm.measure(revenue=pm.col("amount").sum()))
+        >>> source["revenue"].text
+        'amount.sum()'
+        """
         return next(
             child
             for child in self._binding(name).parts
@@ -205,7 +272,29 @@ class Fragment:
         )
 
     def replace(self, **expressions: Fragment | Expr) -> Fragment:
-        """Replace named right-hand sides in this scope, preserving surrounding text."""
+        """Replace named expressions in this scope while preserving surrounding source.
+
+        Parameters
+        ----------
+        **expressions : Fragment or Expr
+            Existing binding names mapped to replacements. Scalar fields require
+            Expr values. Source/query bindings require Fragment values. Replacements
+            with annotations replace matching owned routes and preserve other routes.
+
+        Returns
+        -------
+        Fragment
+            A new fragment. Named child scopes remain untouched unless explicitly
+            selected and replaced. Missing names raise KeyError.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> source = pm.table("orders.parquet").extend(pm.measure(revenue=pm.col("amount").sum()))
+        >>> revised = source.replace(revenue=pm.col("amount").avg())
+        >>> revised["revenue"].text, source["revenue"].text
+        ('amount.avg()', 'amount.sum()')
+        """
         replacements = {}
         for name, target in self._select(expressions).items():
             value = expressions[name]
@@ -245,6 +334,26 @@ class Fragment:
         return rewrite(self)
 
     def extend(self, *clauses: Fragment) -> Fragment:
+        """Extend a source expression with definitions, relationships or filters.
+
+        Parameters
+        ----------
+        *clauses : Fragment
+            Source clauses such as dimension, measure, view, primary_key, join and
+            where. With no clauses, return this fragment unchanged.
+
+        Returns
+        -------
+        Fragment
+            A new extended expression. Malloy checks clause validity at compilation.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> source = pm.ref("orders").extend(pm.measure(revenue=pm.col("amount").sum()))
+        >>> source.names
+        ('revenue',)
+        """
         if not clauses:
             return self
         return self._suffix((" extend ", block(clauses)))
@@ -261,6 +370,25 @@ class Fragment:
         return Fragment((*notes, result), _layout=True) if notes else result
 
     def pipe(self, *queries: Fragment) -> Fragment:
+        """Apply query stages to a source or previous query result.
+
+        Parameters
+        ----------
+        *queries : Fragment
+            Query blocks or named view references, in pipeline order. With no
+            stages, return this fragment unchanged.
+
+        Returns
+        -------
+        Fragment
+            A source/query expression joined with Malloy's pipeline operator.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.ref("orders").pipe(pm.ref("by_region")).text
+        'orders -> by_region'
+        """
         if not queries:
             return self
         parts: list[str | Fragment] = []
@@ -271,7 +399,28 @@ class Fragment:
         return self._suffix(tuple(parts))
 
     def annotate(self, text: str, *, route: str = "") -> Fragment:
-        """Attach a native annotation, replacing only the same route."""
+        """Attach or replace an annotation on an unbound source/query expression.
+
+        Parameters
+        ----------
+        text : str
+            Nonempty annotation content, preserved as native Malloy syntax.
+        route : str, default ""
+            Renderer route when empty, documentation when '"', or an application
+            route such as "research". Only the matching owned route is replaced.
+
+        Returns
+        -------
+        Fragment
+            A new annotated expression. Add annotations before binding a name.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> chart = pm.query(pm.aggregate(n=pm.count())).annotate("bar_chart")
+        >>> chart.text.startswith("# bar_chart")
+        True
+        """
         if self.kind != "expression":
             raise TypeError("Annotate an expression or clause before binding it")
         notes, value = _notes(self)
@@ -281,7 +430,25 @@ class Fragment:
         )
 
     def doc(self, text: str) -> Fragment:
-        """Attach a Malloy documentation annotation at this grammar position."""
+        """Attach a native Malloy description to a source or query expression.
+
+        Parameters
+        ----------
+        text : str
+            Nonempty description. State source grain or the question a query answers.
+
+        Returns
+        -------
+        Fragment
+            A new expression with its documentation route replaced.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> source = pm.table("orders.parquet").doc("One row per order.")
+        >>> source.text.startswith('#" One row per order.')
+        True
+        """
         return self.annotate(text, route='"')
 
 
@@ -290,7 +457,37 @@ def syntax(
     kind: Kind = "expression",
     name: str | None = None,
 ) -> Fragment:
-    """Compose literal syntax and nested editable bindings without parsing or I/O."""
+    """Compose literal Malloy grammar with existing fragments and scalar expressions.
+
+    Parameters
+    ----------
+    *parts : str, Fragment, or Expr
+        Pieces concatenated verbatim. Include required spacing. Text is trusted
+        source code, not parsed or escaped data. Internal table references are
+        supplied by table/data constructors.
+    kind : str, default "expression"
+        Grammar category. Keep the default for source/query expressions. Advanced
+        composition may use document, clause, annotation, source, query or field.
+    name : str, optional
+        Required for named binding categories or annotation routes. Ordinary
+        expressions and clauses have no name.
+
+    Returns
+    -------
+    Fragment
+        Literal syntax. Use read_model to recover named editing slots from text.
+
+    See Also
+    --------
+    raw_expr : Embed a scalar expression.
+    query : Prefer symbolic clauses for supported query structure.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> pm.ref("orders").pipe(pm.syntax("{ select: * }")).text
+    'orders -> { select: * }'
+    """
     return Fragment(tuple(parts), kind, name)
 
 

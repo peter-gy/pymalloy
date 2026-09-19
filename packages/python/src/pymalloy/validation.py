@@ -24,7 +24,29 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class DocumentationPolicy:
-    """Routes and object kinds required by authoring checks. Malloy owns route parsing."""
+    """Choose which model objects require nonempty native descriptions.
+
+    Parameters
+    ----------
+    routes : tuple of str, default ('"',)
+        Accepted annotation routes. Any nonempty annotation on one route satisfies
+        the presence check. Use an application route to check project-specific notes.
+    kinds : tuple of str, default ("source", "measure", "view")
+        Object kinds to inspect in Malloy metadata.
+    severity : {"warning", "error"}, default "warning"
+        Severity of missing-description findings. Warnings alone do not fail
+        Validation.ok, but require_valid(warnings_as_errors=True) rejects them.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> from pymalloy.validation import DocumentationPolicy
+    >>> policy = DocumentationPolicy(kinds=("measure",), severity="error")
+    >>> candidate = pm.draft().define(values=pm.sql("SELECT 1 AS n").extend(
+    ...     pm.measure(total=pm.col("n").sum().doc("Total observed n."))))
+    >>> candidate.check(documentation=policy).ok
+    True
+    """
 
     routes: tuple[str, ...] = ('"',)
     kinds: tuple[str, ...] = ("source", "measure", "view")
@@ -83,6 +105,25 @@ def _checked(
 
 @dataclass(frozen=True)
 class DataCheck:
+    """Outcome of one named counterexample query.
+
+    Attributes
+    ----------
+    name : str
+        Assertion key supplied to Draft.validate.
+    status : {"passed", "failed", "error", "skipped"}
+        Zero counterexamples, an observed counterexample, query failure, or an
+        assertion not run because an earlier required stage failed.
+    result : Result or None
+        Materialized check output, bounded to one counterexample on failure.
+    error : str or None
+        Failure description when available.
+    diagnostics : tuple of Diagnostic
+        Authored compiler findings associated with this check.
+    execution : ExecutionContext or None
+        Detached context for a data-engine failure.
+    """
+
     name: str
     status: Literal["passed", "failed", "error", "skipped"]
     result: Result | None = None
@@ -93,7 +134,40 @@ class DataCheck:
 
 @dataclass(frozen=True)
 class Validation:
-    """Evidence for one immutable draft and the supplied data at validation time."""
+    """Evidence for a draft revision and its data at validation time.
+
+    Returned by Draft.validate. Inspect checks and diagnostics before saving or
+    bundling. A successful report proves only the supplied assertions on the
+    observed data, not the model's business meaning or future data quality.
+
+    Attributes
+    ----------
+    draft : Draft
+        Captured revision, imported source and managed data inputs.
+    diagnostics : tuple of Diagnostic
+        Compiler and optional documentation findings.
+    checks : tuple of DataCheck
+        Named assertion outcomes in submission order.
+    error : str or None
+        Model-level authored failure, if any.
+    queries : tuple of str
+        Available query names from the validated model.
+    connection_name : str
+        Connection identifier retained for bundle replay.
+    givens : dict
+        Detached bound values used during validation.
+    ok : bool
+        Whether compilation and every supplied check succeeded, with no errors.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> accepted = pm.draft().define(values=pm.sql("SELECT 42 AS n")).validate()
+    >>> accepted.ok
+    True
+    >>> accepted.checks
+    ()
+    """
 
     draft: Draft
     diagnostics: tuple[Diagnostic, ...]
@@ -105,10 +179,12 @@ class Validation:
 
     @property
     def givens(self) -> dict[str, Any]:
+        """Return a detached dictionary of the exact validated parameter bindings."""
         return given_values(json.loads(self._givens_json))
 
     @property
     def ok(self) -> bool:
+        """Return True when compilation and all supplied checks pass, ignoring warnings."""
         return (
             self.error is None
             and not any(d.severity == "error" for d in self.diagnostics)
@@ -116,6 +192,30 @@ class Validation:
         )
 
     def require_valid(self, *, warnings_as_errors: bool = False) -> Validation:
+        """Require successful evidence before continuing an authoring workflow.
+
+        Parameters
+        ----------
+        warnings_as_errors : bool, default False
+            Reject warning diagnostics as well as errors and non-passing checks.
+
+        Returns
+        -------
+        Validation
+            This report, allowing ``draft.validate(...).require_valid()``.
+
+        Raises
+        ------
+        ValueError
+            Validation failed, a check was skipped/errored, or strict warnings exist.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> accepted = pm.draft().define(values=pm.sql("SELECT 42 AS n")).validate()
+        >>> accepted.require_valid() is accepted
+        True
+        """
         if not self.ok or (
             warnings_as_errors
             and any(d.severity == "warning" for d in self.diagnostics)
@@ -133,7 +233,11 @@ class Validation:
 
     @property
     def source(self) -> ModelSource:
-        """The closed source graph accepted by validation, ready for export."""
+        """Return the accepted closed source snapshot for export.
+
+        Raises ValueError for failed validation or missing captured imports. Source
+        contains code, not table data. Use export.bundle to publish managed inputs too.
+        """
         self.require_valid()
         if self.draft.imports is None:
             raise ValueError("Validation has no captured source graph")
@@ -151,7 +255,36 @@ class Validation:
         overwrite: bool = False,
         warnings_as_errors: bool = False,
     ) -> Path:
-        """Save the validated root revision, rejecting failed or incomplete checks."""
+        """Save an accepted root revision with import-change checks.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path, optional
+            Destination, defaulting to the loaded source path. Validated imports must
+            be saved beside their original root so relative resolution is preserved.
+        overwrite : bool, default False
+            Permit replacing an unrelated destination. Existing loaded files retain
+            the observed-revision checks of Draft.save.
+        warnings_as_errors : bool, default False
+            Reject warnings before writing, in addition to failed validation.
+
+        Returns
+        -------
+        pathlib.Path
+            Absolute saved path. Changed imported source is rejected. Captured data
+            requires export.bundle rather than a source-only save.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> accepted = pm.draft().define(values=pm.sql("SELECT 42 AS n")).validate()
+        >>> with TemporaryDirectory() as directory:
+        ...     saved = accepted.save(Path(directory) / "model.malloy")
+        ...     print(saved.is_file())
+        True
+        """
         self.require_valid(warnings_as_errors=warnings_as_errors)
         if self.draft.imports:
             root = urlsplit(self.draft.url)
