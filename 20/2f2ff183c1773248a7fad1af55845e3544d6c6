@@ -1,0 +1,73 @@
+packages/python/src/pymalloy/_model/errors.py
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 7,9-12,16-28,36,38-40,44-48,52-60
+  s_eb8331ad77ae5f::t_12d1cae50d4677 8,37
+packages/python/src/pymalloy/result.py
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 13-22,29-53,60-83,87-101,105-114,116-124
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 115
+packages/python/src/pymalloy/_authoring/syntax.py
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 31-56,109-128,248-267,275-297,337-356,373-391,402-423,433-451,460-490
+packages/python/src/pymalloy/widget.py
+  s_eb8331ad77ae5f::t_280b25382e52a1 87-89,120-128
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 72
+  s_eb8331ad77ae5f::t_af106487d9f214 69
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 70-71,73-86,90-119,129,308-312
+development_docs/README.md
+  s_eb8331ad77ae5f::t_9589be24927f95 87-94
+packages/python/src/pymalloy/validation.py
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 27-49,108-126,137-170,195-218,236-240,258-287
+docs/reference/authoring.md
+  s_eb8331ad77ae5f::t_9589be24927f95 3-6
+packages/python/src/pymalloy/_model/inputs.py
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 19-34,51-68,87-101,107-130
+packages/core/src/types.ts
+  s_eb8331ad77ae5f::t_d77dd3fd8d95fa 30-32,41-43
+  s_eb8331ad77ae5f::t_3a42db153da23d 33-40
+packages/python/schema/protocol.json
+  s_eb8331ad77ae5f::t_ad0dcf8ab8a935 2309
+packages/python/src/pymalloy/execution.py
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 19-44,63-75
+packages/python/src/pymalloy/_authoring/draft.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 287,368,582
+  s_eb8331ad77ae5f::t_280b25382e52a1 226-228
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 40-69,89,94,98-117,121-144,169-189,193-213,217-225,229-244,255-273,288-306,319,336-359,366-367,369-389,402-435,443-475,493-519,532-563,569-581,583-598
+packages/python/src/pymalloy/browser.py
+  s_eb8331ad77ae5f::t_9589be24927f95 11-32,50-57,59-64,67-69
+  s_eb8331ad77ae5f::t_db327469c602e6 65-66
+packages/python/src/pymalloy/_model/source.py
+  s_eb8331ad77ae5f::t_af106487d9f214 40
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 41-70
+packages/python/tests/test_docstrings.py
+  s_eb8331ad77ae5f::t_f3f315bd0bdd2a 5-6,31-40,44-45,48-50
+  s_eb8331ad77ae5f::t_9589be24927f95 1-4,7-20,24-30,46-47,51
+  s_eb8331ad77ae5f::t_c80e2bf589a523 41-43
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 21-23
+packages/python/src/pymalloy/expressions.py
+  s_eb8331ad77ae5f::t_280b25382e52a1 375,1093
+  s_eb8331ad77ae5f::t_7000a6e069c914 180
+  s_eb8331ad77ae5f::t_af106487d9f214 314,330,698,718,721,724
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 62-91,119-142,150-169,174-179,181,188-208,303-313,315,319-329,331,335-355,359-374,376-379,388-406,410-428,432-450,454-472,476-494,498-522,528-553,561-573,577-589,594-607,612-625,631-646,661-689,699-717,719-720,722-723,725-726,733-762,790-815,828-852,859-883,900-920,925-946,961-972,976-988,992-1004,1008-1020,1024-1043,1047-1066,1070-1089,1094-1105,1109-1129,1140-1151,1155-1168,1172-1185,1189-1202,1206-1219,1223-1236,1240-1253,1257-1277,1287-1299
+packages/python/src/pymalloy/authoring.py
+  s_eb8331ad77ae5f::t_c71c9b5a35396f 52-88,95-119,122-136,142-171,180-199,204-223,228-247,252-271,276-306,326-353,358-385,390-417,422-441,446-464,469-487,492-513,531-554,561-585,594-629
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 120-121
+packages/python/src/pymalloy/__init__.py
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 25-28
+  s_eb8331ad77ae5f::t_d77dd3fd8d95fa 1-24,29-40
+tools/generate-records.py
+  s_eb8331ad77ae5f::t_d77dd3fd8d95fa 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "202f2ff183c1773248a7fad1af55845e3544d6c6",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
