@@ -1,10 +1,21 @@
 import { fileURLToPath } from "node:url";
+import stylex from "@stylexjs/unplugin/vite";
+import anywidgetBundle from "anywidget-bundle";
 import { defineConfig } from "vite-plus";
+import { bundleNotices } from "@pymalloy/scripts/bundle-notices";
 
-import { bundleNotices } from "../../tools/bundle-notices";
-
-export default defineConfig({
-  plugins: [bundleNotices("widget.LICENSE.txt")],
+export default defineConfig(({ mode }) => ({
+  plugins:
+    mode === "test"
+      ? []
+      : [
+          stylex({
+            useCSSLayers: true,
+            unstable_moduleResolution: { type: "commonJS", rootDir: import.meta.dirname },
+          }),
+          anywidgetBundle({ app: "./src/index.ts", outDir: "./dist" }),
+          bundleNotices("widget.LICENSE.txt"),
+        ],
   resolve: {
     alias: {
       "@malloy-runtime/browser": fileURLToPath(new URL("../browser/src/index.ts", import.meta.url)),
@@ -14,18 +25,8 @@ export default defineConfig({
   build: {
     minify: true,
     target: "es2022",
-    cssCodeSplit: false,
     rollupOptions: {
-      input: "src/index.ts",
-      preserveEntrySignatures: "strict",
       transform: { inject: { process: "process/browser" }, define: { global: "globalThis" } },
-      output: {
-        format: "es",
-        entryFileNames: "widget.js",
-        assetFileNames: "widget.[ext]",
-        codeSplitting: false,
-      },
     },
-    sourcemap: "hidden",
   },
-});
+}));

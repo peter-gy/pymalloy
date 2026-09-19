@@ -12,19 +12,33 @@
     "test": "vp test"
   },
   "dependencies": {
+    "@anywidget/react": "catalog:",
     "@malloy-runtime/browser": "workspace:*",
     "@malloy-runtime/compiler": "workspace:*",
     "@malloy-runtime/duckdb": "workspace:*",
     "@malloydata/malloy-interfaces": "catalog:",
     "@malloydata/render": "catalog:",
     "@pymalloy/protocol": "workspace:*",
+    "@stylexjs/stylex": "catalog:",
     "apache-arrow": "catalog:",
-    "process": "catalog:"
+    "process": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@anywidget/types": "catalog:",
+    "@pymalloy/scripts": "workspace:*",
+    "@stylexjs/unplugin": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "anywidget-bundle": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
-  }
+  },
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 Firefox versions",
+    "last 2 Safari versions"
+  ]
 }
