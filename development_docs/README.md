@@ -58,12 +58,18 @@ uv run --frozen pytest
 uv run --frozen ruff format --check packages/python examples apps/e2e scripts
 uv run --frozen ruff check packages/python examples apps/e2e scripts
 uv run --frozen ty check
+uv run --frozen pyrefly check
+uv run --frozen basedpyright
 git diff --check
 ```
 
 `pnpm check` runs formatting, type-aware Oxlint with anti-slop rules, typechecks,
 generated-contract freshness, and Knip. Use `pnpm check:knip` for unused-code and dependency checks alone.
 Build first to provide workspace package declarations.
+
+The three Python type checkers cover `packages/python/src` with dependencies from
+the root `.venv`. Pyrefly uses its default preset and fails on warnings.
+basedpyright uses standard mode. Configure their source roots in `pyproject.toml`.
 
 `scripts/` is a private pnpm workspace. It owns build utilities, generators, consumer
 checks, benchmarks, and their dependencies. TypeScript scripts run directly on
