@@ -39,6 +39,7 @@ same needs synchronously. Compiler jobs contain no connection or filesystem APIs
 | `pymalloy._model`                            | Source snapshots, captured data, persistence, selection, and shared failure contracts                 |
 | `pymalloy._protocol`                         | Generated compiler/widget records, exact givens, result decoding, and immutable wire snapshots        |
 | `pymalloy.validation`                        | Detached reports and documentation-presence policy                                                    |
+| `pymalloy._notebook`                         | Deferred notebook projections, rich display hooks and cell lifetime ownership                         |
 | `pymalloy.widget`                            | Python inputs and detached widget snapshots                                                           |
 | `pymalloy.export`                            | Source bundles, notebook plans, COPY destination anchoring, and format serialization                  |
 | `apps`                                       | Documentation and notebook-host acceptance tests                                                      |
@@ -62,6 +63,7 @@ Private packages own related implementation files:
 | `_authoring` | `draft.py` coordinates edits, `syntax.py` owns fragments, `operations.py` renders scalar operations, and `python.py` reconstructs Python. Annotations, identifiers, generated lexer keywords, and table-reference syntax live beside them. |
 | `_model`     | `source.py` owns source identity and snapshots, `inputs.py` captures data, `persistence.py` publishes source, and `selection.py` validates query selection. Shared errors and the default connection name belong here.                     |
 | `_protocol`  | `records.py` is generated against `base.py`. `givens.py`, `codec.py`, and `snapshot.py` encode values, decode results, and freeze boundary data.                                                                                           |
+| `_notebook`  | `subject.py` projects authored metadata and deferred native operations. Display hooks and `lifetime.py` own implicit views.                                                                                                                |
 | `_headless`  | Compiler processes, tooling leases, native engine execution, deadlines, and retained runtime models.                                                                                                                                       |
 | `export`     | Public notebook/bundle APIs and their private document, planning, file-access, and serialization modules.                                                                                                                                  |
 
@@ -131,6 +133,28 @@ Worker death and compiler crashes also close the affected runtime.
 `compiler_memory_mb` limits the compiler V8 heap independently of DuckDB memory.
 `pm.run` closes resources before returning. Retained Python models use finalizer
 cleanup, expose `close()` for early release, and support optional context management. Queries keep their model alive.
+
+## Notebook display
+
+`NotebookDisplay` supplies marimo's `_display_` and Jupyter's `_repr_mimebundle_`
+hooks. It creates an inspection-first MalloyWidget for each display. Subject
+projection reads authored structure and retained metadata. It neither compiles
+nor materializes captured inputs. Check and Run requests trigger that work.
+Isolated expressions and clauses keep their unresolved context visible.
+
+Browser subjects use the existing browser session adapter. Native subjects
+borrow a model and send bounded preview results as Arrow IPC over standard
+anywidget custom messages. Materialized results use the same transport for a
+20-row slice. The widget reuses DuckDB Arrow conversion and Malloy stable-result
+rendering. Native previews carry column types and values, while browser query
+results also retain Malloy rendering annotations.
+
+Implicit views close when their last frontend view unmounts. In marimo,
+`_notebook/lifetime.py` also registers with the private cell lifecycle registry:
+marimo closes a comm on cell rerun, while ipywidgets retains its Python widget
+until `close()`. This isolated host seam releases captured inputs and borrowed
+model references on rerun and deletion. Explicit MalloyWidget instances keep
+caller ownership. Closing a view never closes a borrowed native model.
 
 ## Records and rendering
 

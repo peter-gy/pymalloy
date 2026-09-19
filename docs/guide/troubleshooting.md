@@ -13,6 +13,13 @@ For widget errors, inspect `widget.state["error"]` and `diagnostics`. Remote fil
 and WebAssembly assets require reachable URLs and CORS permission. Declare SQL
 reader files explicitly when exporting widgets.
 
+After upgrading PyMalloy or editing its Python classes in an editable install,
+save the notebook and restart its kernel. Automatic module reload can leave
+existing expressions and constructors referring to different versions of a
+class. Errors such as `Use col(), lit(), or raw_expr()` on a value created by
+`pm.col()` can indicate this mismatch. Rerunning the import cell alone may keep
+those old class references alive.
+
 A SQL timeout interrupts the statement and leaves a healthy model or TypeScript
 session available for another query. A timeout while waiting for queued work
 leaves the active operation running. Compiler failure or worker death requires a

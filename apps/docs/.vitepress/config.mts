@@ -16,6 +16,7 @@ const sections = [
     text: "Guides",
     items: [
       { text: "Author and validate models", link: "/guide/authoring" },
+      { text: "Edit models in notebooks", link: "/guide/notebook-editing" },
       { text: "Reuse models and select queries", link: "/guide/models" },
       { text: "Connect files, tables, and Python data", link: "/guide/data" },
       { text: "Parameterize queries with givens", link: "/guide/givens" },

@@ -49,16 +49,30 @@ active statement and leaves a healthy model usable. A queued timeout leaves the
 active operation running. Closing reaps the child and closes its pipes. Internal
 compiler and transport failures become `CompilerError`, while source and schema
 errors remain `CompilationError` with diagnostics. Both derive from
-`PyMalloyError`. Widgets create no compiler process.
+`PyMalloyError`. Browser-backed widgets create no compiler process. Native previews use the supplied model.
 
 ## MalloyWidget synchronization
 
-| Trait         | Shape                                                               | Published when              |
-| ------------- | ------------------------------------------------------------------- | --------------------------- |
-| `_definition` | revision, source, URL, documentKind, connectionName, imports, files | Source or files change      |
-| `_input`      | revision, definitionRevision, query, typed givens                   | Any validated input changes |
-| `_state`      | revision, status, query descriptors, result, error, diagnostics     | Browser work progresses     |
-| `_runtime`    | DuckDB WebAssembly bundles                                          | MalloyWidget construction   |
+| Trait         | Shape                                                                                  | Published when              |
+| ------------- | -------------------------------------------------------------------------------------- | --------------------------- |
+| `_definition` | revision, source, URL, documentKind, connectionName, imports, files, notebook, queries | Source or files change      |
+| `_input`      | revision, definitionRevision, query, typed givens, action                              | Any validated input changes |
+| `_state`      | revision, status, query descriptors, result, inspection, error, diagnostics            | Browser work progresses     |
+| `_runtime`    | DuckDB WebAssembly bundles                                                             | MalloyWidget construction   |
+
+`action` is `inspect`, `check`, or `run`. Inspect publishes authored metadata
+without starting a browser session. `_request` carries an explicit action and
+current revision from the view to Python. Native preview requests use custom
+`pymalloy-request` / `pymalloy-response` messages correlated by ID and input
+revision. Result replies include Arrow IPC buffers. `_transient` enables
+mount/unmount messages for implicitly created views.
+
+Capture materialization and given encoding complete before definition/input
+revisions advance. A failed Check or Run preparation publishes an error against
+the current revision and leaves the request retryable. Notebook metadata uses
+generated `NotebookInfo` records. The native notebook adapter owns Arrow IPC
+encoding and decoding, while initialization owns revision guards, cancellation,
+and publication for both execution backends.
 
 Python validates inputs before publishing them. Definition and input revisions
 travel separately. The browser waits until `input.definitionRevision` matches
@@ -84,8 +98,8 @@ Givens use a tagged recursive protocol shared by Python headless execution and t
 widget. Integers travel as exact decimal text. Arrays and records recursively
 contain tagged values.
 
-Widget results use Malloy's stable schema and cell tree. Native Python results
-stay in the engine adapter and do not use this transport. Bigints use `subtype: "bigint"`
+Widget results use Malloy's stable schema and cell tree. Native notebook previews arrive as Arrow IPC and are converted to the same
+stable tree in the browser. Bigints use `subtype: "bigint"`
 and exact `string_value`. Decimal cells retain their string value. NaN and
 infinities use their spelling in `string_value`, with a finite `number_value` for
 JSON transport. Python validates the generated record shape and decodes values
