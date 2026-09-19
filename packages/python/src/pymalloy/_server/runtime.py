@@ -262,7 +262,33 @@ class _Runtime:
 
 
 class Model:
-    """Reusable compiled model created by `pymalloy.model`."""
+    """A compiled model with retained source, schemas and query inventory.
+
+    Create with model or Draft.compile. Reuse queries to execute against current
+    data. Recompile after source/schema changes. Explicit close releases owned
+    resources promptly, and optional context management is also supported.
+
+    Attributes
+    ----------
+    queries : sequence of QueryDescriptor
+        Available names, kinds and authored locations. Pass a name to query.
+    compiler_version : str
+        Malloy compiler version used to compile the model.
+    connection : duckdb.DuckDBPyConnection
+        The native data connection. A borrowed connection remains caller-owned.
+    closed : bool
+        Whether this model is closed and cannot accept more work.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> model = pm.model("query: answer is duckdb.sql('SELECT 42 AS n') -> {select: n}")
+    >>> [q.name for q in model.queries]
+    ['answer']
+    >>> model.query("answer").run().rows()
+    [{'n': 42}]
+    >>> model.close()
+    """
 
     def __init__(
         self,
@@ -294,6 +320,33 @@ class Model:
     def query(
         self, selection: str | Fragment | None = None, *, malloy: str | None = None
     ) -> Query:
+        """Select a named query or extend this model with an ad hoc query.
+
+        Parameters
+        ----------
+        selection : str or Fragment, optional
+            A query inventory name, or a composed source/query expression. A string
+            selects a name and is not interpreted as Malloy text. With None, choose
+            the last run or the sole query. Otherwise an explicit selection is needed.
+        malloy : str, optional
+            Complete Malloy query text, such as ``run: orders -> { select: * }``.
+            Mutually exclusive with selection. It can reference this model's sources.
+
+        Returns
+        -------
+        Query
+            A selection retaining this model. SQL is prepared and givens are bound
+            when sql, run or preview is called.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> model = pm.model("source: values is duckdb.sql('SELECT 42 AS n')")
+        >>> query = model.query(pm.ref("values").pipe(pm.query(pm.select(pm.col("n")))))
+        >>> query.run().rows()
+        [{'n': 42}]
+        >>> model.close()
+        """
         self._owner._check_open()
         if selection is not None and not isinstance(selection, (str, Fragment)):
             raise TypeError("Query selection must be a name or source/query fragment")
@@ -332,6 +385,29 @@ class Model:
         return Query(self, info, info.name)
 
     def source(self, *, timeout: float | None = None) -> ModelSource:
+        """Capture the model's source text and resolved imports.
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Deadline in seconds. None uses the model's default operation budget.
+
+        Returns
+        -------
+        ModelSource
+            Detached source snapshot usable after model closure. Table data and
+            captured Python data owners are not included. Use bundle for data files.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> text = "run: duckdb.sql('SELECT 42 AS n') -> {select: n}"
+        >>> model = pm.model(text)
+        >>> captured = model.source()
+        >>> model.close()
+        >>> pm.run(captured).rows()
+        [{'n': 42}]
+        """
         source = self._request({"op": "source"}, SourceReady, timeout).source
         return ModelSource(
             source.url, source.text, source.imports, source.document_kind
@@ -344,6 +420,31 @@ class Model:
         url: str | None = None,
         timeout: float | None = None,
     ) -> Inspection:
+        """Inspect schemas, annotations, dependencies, givens and source references.
+
+        Parameters
+        ----------
+        position : SourcePosition, optional
+            Zero-based line and code-point character for a reference lookup.
+        url : str, optional
+            Imported source URL for that lookup. Requires position.
+        timeout : float, optional
+            Deadline in seconds, defaulting to the model's operation budget.
+
+        Returns
+        -------
+        Inspection
+            Detached metadata. Source schemas and query outputs are distinct entries.
+            Use pymalloy.analysis.to_dict for mutable Python containers.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> model = pm.model("source: values is duckdb.sql('SELECT 42 AS n')")
+        >>> [s.name for s in model.inspect().model.sources]
+        ['values']
+        >>> model.close()
+        """
         if position is not None and not isinstance(position, SourcePosition):
             raise TypeError("position must be a SourcePosition")
         if url is not None and not isinstance(url, str):
@@ -369,6 +470,34 @@ class Model:
         givens: Mapping[str, Any] | None = None,
         timeout: float | None = None,
     ) -> tuple[DocumentCell, ...]:
+        """Prepare ordered Markdown and query cells for inspection or export.
+
+        Parameters
+        ----------
+        queries : sequence of str, optional
+            Query names in requested order. None uses document defaults. An empty
+            sequence selects no query cells while retaining Markdown/source inventory.
+        all : bool, default False
+            Select all available queries. Mutually exclusive with queries.
+        givens : mapping, optional
+            Values bound when preparing query SQL.
+        timeout : float, optional
+            Operation deadline in seconds, otherwise the model's default.
+
+        Returns
+        -------
+        tuple of DocumentCell
+            Ordered cells with authored text and prepared SQL. Queries are not executed.
+            Use pymalloy.export.prepare for a format-ready notebook Document.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> [cell.name for cell in model.document()]
+        ['run:0']
+        >>> model.close()
+        """
         names = query_names(queries, all=all)
         request: dict[str, Any] = {
             "op": "document",
@@ -381,21 +510,73 @@ class Model:
 
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
+        """Return the native DuckDB connection while this model is open.
+
+        A borrowed connection and its transactions remain caller-owned. Changing
+        schemas requires recompilation. Access after model closure raises ModelError.
+        """
         self._owner._check_open()
         return self._owner.connection
 
     @property
     def closed(self) -> bool:
+        """Return whether this model has closed or suffered a terminal runtime failure."""
         return self._owner.closed
 
     def sql(
         self, *, givens: Mapping[str, Any] | None = None, timeout: float | None = None
     ) -> str:
+        """Prepare SQL for the default query without executing it.
+
+        Parameters
+        ----------
+        givens : mapping, optional
+            Values bound for this call's declared parameters.
+        timeout : float, optional
+            Operation deadline in seconds. None uses the model's default.
+
+        Returns
+        -------
+        str
+            The result of ``model.query().sql(...)``. Use query(name) when
+            the model has several named queries and no default run.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> isinstance(model.sql(), str)
+        True
+        >>> model.close()
+        """
         return self.query().sql(givens=givens, timeout=timeout)
 
     def run(
         self, *, givens: Mapping[str, Any] | None = None, timeout: float | None = None
     ) -> Result:
+        """Execute the default query against current data.
+
+        Parameters
+        ----------
+        givens : mapping, optional
+            Values bound for this call's declared parameters.
+        timeout : float, optional
+            Operation deadline in seconds. None uses the model's default.
+
+        Returns
+        -------
+        Result
+            The result of ``model.query().run(...)``. Use query(name) when
+            the model has several named queries and no default run.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> model.run().rows()
+        [{'n': 42}]
+        >>> model.close()
+        """
         return self.query().run(givens=givens, timeout=timeout)
 
     def __enter__(self) -> Self:
@@ -406,11 +587,53 @@ class Model:
         self.close()
 
     def close(self) -> None:
+        """Release the compiler and owned connection, invalidating retained queries.
+
+        Repeated calls are safe. Borrowed connections remain open. Already materialized
+        Result objects retain their data after closure.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> result = model.run()
+        >>> model.close()
+        >>> result.rows()
+        [{'n': 42}]
+        """
         self._owner.close()
 
 
 class Query:
-    """A query selection that retains its model and binds values per call."""
+    """A selection that retains its model and binds parameters separately per call.
+
+    Obtain one from Model.query. Selecting does not execute SQL. The same Query
+    can run repeatedly against current data with different givens.
+
+    Attributes
+    ----------
+    name : str
+        Inventory name, or "query" for an ad hoc selection.
+    kind : str
+        run, named, view or sql.
+    location : SourceLocation or None
+        Authored source location when available.
+
+    See Also
+    --------
+    Model.query, Query.sql, Query.run, Query.preview
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> model = pm.model("query: answer is duckdb.sql('SELECT 42 AS n') -> {select: n}")
+    >>> query = model.query("answer")
+    >>> query.name
+    'answer'
+    >>> query.run().rows()
+    [{'n': 42}]
+    >>> model.close()
+    """
 
     def __init__(
         self,
@@ -440,6 +663,34 @@ class Query:
     def sql(
         self, *, givens: Mapping[str, Any] | None = None, timeout: float | None = None
     ) -> str:
+        """Prepare SQL with this call's given values.
+
+        Parameters
+        ----------
+        givens : mapping, optional
+            Typed values for declared Malloy parameters. Omitted values use declared
+            defaults. Bindings are scoped to this call and not stored on the Query.
+        timeout : float, optional
+            Positive seconds for waiting, SQL preparation and execution as applicable.
+            None uses the parent model's default budget.
+
+        Returns
+        -------
+        str
+            SQL text generated by Malloy.
+
+        Notes
+        -----
+        Does not execute the result query. Preparing ad hoc source may discover schemas.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> isinstance(model.query().sql(), str)
+        True
+        >>> model.close()
+        """
         with self._model._owner.operation(timeout) as deadline:
             return self._sql(givens, deadline)
 
@@ -483,6 +734,34 @@ class Query:
     def run(
         self, *, givens: Mapping[str, Any] | None = None, timeout: float | None = None
     ) -> Result:
+        """Execute this selection and materialize its result.
+
+        Parameters
+        ----------
+        givens : mapping, optional
+            Typed values for declared Malloy parameters. Omitted values use declared
+            defaults. Bindings are scoped to this call and not stored on the Query.
+        timeout : float, optional
+            Positive seconds for waiting, SQL preparation and execution as applicable.
+            None uses the parent model's default budget.
+
+        Returns
+        -------
+        Result
+            Materialized Arrow-backed values, native columns and executed SQL.
+
+        Notes
+        -----
+        Reads current data. DuckDB errors raise ExecutionError with detached replay context.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> model.query().run().rows()
+        [{'n': 42}]
+        >>> model.close()
+        """
         return self._execute(givens, timeout, None)
 
     def preview(
@@ -492,7 +771,35 @@ class Query:
         givens: Mapping[str, Any] | None = None,
         timeout: float | None = None,
     ) -> Result:
-        """Execute a SELECT with an outer row limit. COPY is rejected before execution."""
+        """Execute a SELECT with a bounded number of output rows.
+
+        Parameters
+        ----------
+        limit : int, default 20
+            Outer result limit, from 1 through 10,000. Booleans are rejected.
+        givens : mapping, optional
+            Values for this execution's declared parameters.
+        timeout : float, optional
+            Operation deadline in seconds, defaulting to the model's budget.
+
+        Returns
+        -------
+        Result
+            At most limit output rows. COPY is rejected before execution.
+
+        Notes
+        -----
+        An outer limit does not bound aggregation/input-scanning cost. Set a timeout
+        for exploratory queries. Add order_by when the preview needs a stable order.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> model = pm.model("run: duckdb.sql('SELECT range AS n FROM range(10)') -> {select: n order_by: n}")
+        >>> model.query().preview(limit=2).rows()
+        [{'n': 0}, {'n': 1}]
+        >>> model.close()
+        """
         if type(limit) is not int or not 1 <= limit <= 10000:
             raise ValueError("Preview limit must be an integer from 1 to 10000")
         return self._execute(givens, timeout, limit)

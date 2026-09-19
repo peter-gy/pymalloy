@@ -37,7 +37,37 @@ def freeze_imports(imports: Mapping[str, str]) -> Mapping[str, str]:
 
 @dataclass(frozen=True, init=False)
 class ModelSource:
-    """Original model text and captured imports, indexed by absolute URL."""
+    r"""An immutable snapshot of model text and its imported source files.
+
+    Parameters
+    ----------
+    url : str
+        Absolute root URL, used for source locations and relative import resolution.
+    text : str
+        Root Malloy model or notebook-document text.
+    imports : mapping of str to str, optional
+        Imported source text keyed by absolute URL. Defaults to an empty mapping.
+        Missing imports fail during compilation instead of falling back to I/O.
+    document_kind : {"model", "notebook"}, optional
+        Explicit root grammar. Otherwise inferred from the URL extension.
+
+    Notes
+    -----
+    Constructing the snapshot validates its shape, not the model or import closure.
+    It contains no table data, database state or Python dataframe preparation logic.
+    Use Model.source to capture resolved imports and export.bundle to copy inputs.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> source = pm.ModelSource(
+    ...     "memory://tour/report.malloy",
+    ...     "import 'base.malloy'\nrun: values -> {select: n}",
+    ...     {"memory://tour/base.malloy": "source: values is duckdb.sql('SELECT 42 AS n')"},
+    ... )
+    >>> pm.run(source).rows()
+    [{'n': 42}]
+    """
 
     url: str
     text: str

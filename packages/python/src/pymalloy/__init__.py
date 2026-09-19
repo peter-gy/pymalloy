@@ -1,3 +1,43 @@
+"""Author, inspect, execute, and share Malloy models from Python.
+
+Start with ``import pymalloy as pm``. Constructors build immutable syntax.
+Malloy resolves language semantics, and runtime adapters execute with DuckDB.
+
+Choose an entry point
+--------------------
+table, sql, data
+    Start from a table/file, SQL source, or captured Python dataframe.
+col, lit, given
+    Reference a field, encode a scalar value, or reference a parameter.
+draft, read_model
+    Compose a new model or parse existing Malloy for scoped edits.
+query, group_by, aggregate, select
+    Build reusable query syntax. These constructors do not execute it.
+model, run
+    Retain a compiled model or execute once and release runtime resources.
+parse, check, format
+    Inspect syntax, check schemas/types, or format Malloy source.
+MalloyWidget
+    Execute in a notebook browser and observe revision-bound results.
+
+Notes
+-----
+Syntax construction uses the lightweight base package. Native execution and
+compiler tooling require ``pymalloy[server]``. Widgets need ``pymalloy[widget]``
+and run without Deno. ``pymalloy[dataframes]`` adds Polars and Arrow, while
+``pymalloy[agent]`` supplies installed agent guidance. Combine extras as needed.
+
+Examples
+--------
+>>> import pymalloy as pm
+>>> candidate = pm.draft().define(values=pm.sql("SELECT 42 AS amount"))
+>>> candidate = candidate.queries(answer=pm.ref("values").pipe(
+...     pm.query(pm.select(pm.col("amount")))
+... ))
+>>> pm.run(candidate).rows()
+[{'amount': 42}]
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

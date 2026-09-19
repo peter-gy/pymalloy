@@ -16,6 +16,22 @@ from typing import Any
 
 @dataclass(frozen=True)
 class MaterializedInput:
+    """Verified Parquet artifact owned by a DataInput.
+
+    Attributes
+    ----------
+    path : pathlib.Path
+        Owned temporary Parquet file.
+    sha256 : str
+        Digest of the actual Parquet bytes.
+    schema : str
+        Human-readable Arrow schema.
+    arrow_schema : str
+        Base64-encoded Arrow schema for machine-readable reconstruction.
+    rows : int
+        Verified number of rows.
+    """
+
     path: Path
     sha256: str
     schema: str
@@ -32,7 +48,24 @@ class _Storage:
 
 @dataclass(frozen=True, eq=False)
 class DataInput:
-    """Captured input data. Values and schemas are independent of the original producer."""
+    """An immutable Python-data capture retained by a fragment or draft.
+
+    Obtain through Fragment.inputs or Draft.inputs after calling data. Direct
+    construction is internal. Values and schema are detached from the producer.
+
+    Attributes
+    ----------
+    name : str
+        Logical input name for Python reconstruction and bundle metadata.
+    id : str
+        Capture identity used in its logical Parquet reference.
+    rows : int
+        Number of captured rows.
+    reference : str
+        Logical filename used before runtime materialization.
+    fingerprint : str
+        SHA-256 identity of captured Arrow IPC bytes, not the Parquet file hash.
+    """
 
     name: str
     id: str
@@ -42,19 +75,59 @@ class DataInput:
 
     @property
     def reference(self) -> str:
+        """Return the logical Parquet reference associated with this capture."""
         return f"pymalloy-inputs/{self.id}.parquet"
 
     @cached_property
     def fingerprint(self) -> str:
+        """Return the SHA-256 digest of the immutable captured Arrow IPC bytes."""
         return hashlib.sha256(self._ipc).hexdigest()
 
     def arrow(self) -> Any:
+        """Read the captured values as an Arrow table.
+
+        Returns
+        -------
+        pyarrow.Table
+            Values and schema reconstructed from retained Arrow IPC bytes.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> import pyarrow as pa
+        >>> source = pm.data(pa.table({"n": [1, 2]}), name="numbers")
+        >>> source.inputs[0].arrow().to_pylist()
+        [{'n': 1}, {'n': 2}]
+        """
         import pyarrow as pa
 
         return pa.ipc.open_stream(pa.py_buffer(self._ipc)).read_all()
 
     def materialize(self) -> MaterializedInput:
-        """Write once, retain the file for this value's lifetime, and reuse exact bytes."""
+        """Write and verify an owned Parquet file once, then reuse it.
+
+        Returns
+        -------
+        MaterializedInput
+            Path, SHA-256 file digest, schemas and row count. The path remains valid
+            while its DataInput owner is alive. Concurrent calls share the same file.
+
+        Notes
+        -----
+        Runtime and export APIs manage this automatically. Verification checks exact
+        values, schema and row count before publishing the materialization.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> import pyarrow as pa
+        >>> source = pm.data(pa.table({"n": [1, 2]}), name="numbers")
+        >>> captured = source.inputs[0]
+        >>> captured.materialize().rows
+        2
+        >>> captured.materialize().path.is_file()
+        True
+        """
         import pyarrow.parquet as pq
 
         with self._storage.lock:

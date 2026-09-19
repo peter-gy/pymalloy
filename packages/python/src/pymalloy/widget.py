@@ -66,15 +66,67 @@ def _decode_state(wire: dict[str, Any]) -> dict[str, Any]:
 
 
 class MalloyWidget(anywidget.AnyWidget):
-    """Run a Malloy model in a browser widget.
+    r"""Run Malloy in a browser widget and observe results from Python.
 
-    Assign `source`, `query`, `givens`, or `files` to run an updated model.
-    Files map virtual names to UTF-8 text, bytes, or `{"url": "https://..."}`.
-    `files`, `givens`, and `state` are recursively read-only mappings. Sequences
-    are tuples. Assign a complete input mapping to apply an update.
-    `state` contains status, queries, SQL, columns, rows, diagnostics with source
-    locations, and an error message. Observe `state` to receive immutable result
-    snapshots that stay valid after later updates.
+    Display in a notebook supporting anywidget, such as marimo or Jupyter.
+    Requires ``pymalloy[widget]``. Malloy and DuckDB WebAssembly run in the browser,
+    so the widget itself requires neither Deno nor native Python DuckDB.
+
+    Parameters
+    ----------
+    source : str, ModelSource, or Draft
+        Model text, closed source snapshot, or symbolic draft. Captured Python
+        inputs on a draft are materialized and sent as Parquet bytes.
+    files : mapping, optional
+        Virtual names mapped to UTF-8 text, bytes, or {"url": "https://..."}.
+        Remote files require browser-accessible URLs with suitable CORS headers.
+    query : str, optional
+        Inventory name to select. None uses the last run or sole available
+        query, otherwise exposes query choices without executing a selection.
+    givens : mapping, optional
+        Finite JSON-compatible values for declared parameters: strings, numbers,
+        booleans, nulls, lists and mappings. Unlike native execution, widget input
+        validation does not accept Python Decimal, date or datetime objects.
+    runtime : pymalloy.browser.Runtime, optional
+        Explicit WebAssembly/worker asset URLs for the widget's lifetime.
+        Omitted uses the bundled runtime's defaults, downloaded on first use.
+    connection_name : str, default "duckdb"
+        Malloy name for this widget's DuckDB connection. Fixed for its lifetime.
+
+    Attributes
+    ----------
+    state : read-only mapping
+        status, queries, sql, columns, rows, result, error and diagnostics for
+        the current input revision. Nested mappings are read-only and sequences
+        are tuples. Read results after status becomes "ready".
+
+    Notes
+    -----
+    Assign source, query, givens or files to trigger updates. Assign complete
+    input mappings rather than mutating them. Observe ``state`` with traitlets
+    for asynchronous readback. pymalloy.analysis.to_dict creates mutable copies.
+    Construction alone does not execute anything until a browser view is attached.
+    Call close when finished. New inputs supersede older in-flight results.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> widget = pm.MalloyWidget("run: duckdb.table('orders.csv') -> {select: amount}",
+    ...     files={"orders.csv": "amount\n42\n"})
+    >>> def receive(change):
+    ...     if change.new["status"] == "ready":
+    ...         print(change.new["rows"])
+    >>> widget.observe(receive, names="state")
+    >>> widget.state["status"]
+    'idle'
+
+    Display the widget as a notebook cell's output to start browser execution:
+
+    >>> widget  # doctest: +SKIP
+
+    Once finished, close it to release its resources:
+
+    >>> widget.close()
     """
 
     _esm = Path(__file__).with_name("_assets") / "widget.js"
@@ -253,7 +305,11 @@ class MalloyWidget(anywidget.AnyWidget):
             self.set_trait("state", self._decoded_state)
 
     def close(self) -> None:
-        """Close the widget and release its browser connection."""
+        """Close the widget and release its browser resources when attached.
+
+        Pending state becomes closed, and further input assignment is rejected.
+        Repeated calls are safe. Retained immutable state snapshots remain readable.
+        """
         if getattr(self, "_closed", True):
             return
         self._closed = True

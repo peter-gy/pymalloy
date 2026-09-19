@@ -16,7 +16,32 @@ from pymalloy.analysis import QueryDescriptor
 
 @dataclass(frozen=True)
 class ExecutionContext:
-    """The model, query, bound parameters and SQL submitted to the engine."""
+    """Detached source and parameters for investigating an engine failure.
+
+    Attributes
+    ----------
+    source : ModelSource
+        Root source and captured imports at the failed execution.
+    query : QueryDescriptor
+        Selected query identity and authored location.
+    malloy : str or None
+        Ad hoc query text when the selection extended the model.
+    sql : str
+        Prepared SQL associated with the execution.
+    compiler_version : str
+        Malloy compiler version used to prepare the query.
+    connection_name : str
+        Connection identifier needed when reconstructing the runtime.
+    givens : dict
+        A detached copy of the exact bound values.
+    preview_limit : int or None
+        Output bound requested by preview, if any.
+
+    Notes
+    -----
+    The context retains managed input owners, not arbitrary external table data.
+    Replaying against a changed database or file can produce different results.
+    """
 
     source: ModelSource
     query: QueryDescriptor
@@ -30,12 +55,24 @@ class ExecutionContext:
 
     @property
     def givens(self) -> dict[str, Any]:
-        """A detached copy of the exact compiler bindings, including large integers."""
+        """Return a detached dictionary of exact values bound to the failed query."""
         return given_values(json.loads(self._givens_json))
 
 
 class ExecutionError(PyMalloyError):
-    """Engine failure with replay context. The original exception is __cause__."""
+    """A data-engine failure with the source needed to investigate it.
+
+    Attributes
+    ----------
+    context : ExecutionContext
+        Captured source, SQL, selection and parameter bindings.
+    __cause__ : Exception
+        Original engine exception. Compiler diagnostics instead use CompilationError.
+
+    See Also
+    --------
+    Query.run, Query.preview, ExecutionContext
+    """
 
     def __init__(self, context: ExecutionContext, cause: Exception) -> None:
         self.context = context

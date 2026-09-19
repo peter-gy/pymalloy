@@ -8,7 +8,28 @@ __all__ = ["Bundle", "Runtime"]
 
 @dataclass(frozen=True)
 class Bundle:
-    """Absolute HTTP URLs for one DuckDB WebAssembly module and worker."""
+    """Locate one matching DuckDB WebAssembly module and browser worker.
+
+    Parameters
+    ----------
+    module : str
+        Absolute HTTP(S) URL of the WebAssembly binary.
+    worker : str
+        Absolute HTTP(S) URL of the matching JavaScript worker.
+
+    Notes
+    -----
+    Assets must be reachable from the notebook browser and allowed by its
+    CORS and worker policies. Construction validates URL shape, not availability.
+
+    Examples
+    --------
+    >>> from pymalloy.browser import Bundle
+    >>> bundle = Bundle("https://assets.example/duckdb.wasm",
+    ...                 "https://assets.example/duckdb.worker.js")
+    >>> bundle.module
+    'https://assets.example/duckdb.wasm'
+    """
 
     module: str
     worker: str
@@ -26,10 +47,26 @@ class Bundle:
 
 @dataclass(frozen=True)
 class Runtime:
-    """DuckDB bundles used for a widget's lifetime.
+    """Choose immutable DuckDB assets for a widget's lifetime.
 
-    `mvp` supplies the baseline WebAssembly bundle. Optional `eh` supplies the
-    exception-handling bundle selected when the browser supports it.
+    Parameters
+    ----------
+    mvp : Bundle
+        Baseline WebAssembly module and worker.
+    eh : Bundle, optional
+        Exception-handling bundle selected when supported by the browser.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> from pymalloy.browser import Bundle, Runtime
+    >>> runtime = Runtime(Bundle("https://assets.example/duckdb.wasm",
+    ...                          "https://assets.example/duckdb.worker.js"))
+    >>> widget = pm.MalloyWidget(
+    ...     "run: duckdb.sql('SELECT 42 AS n') -> {select: n}", runtime=runtime)
+    >>> widget.runtime is runtime
+    True
+    >>> widget.close()
     """
 
     mvp: Bundle

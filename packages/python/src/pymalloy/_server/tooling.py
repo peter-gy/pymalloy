@@ -113,6 +113,31 @@ def _format(compiler: Compiler, source: str, deadline: float) -> str:
 
 
 def format(source: str) -> str:
+    """Format Malloy source using the installed compiler's formatter.
+
+    Parameters
+    ----------
+    source : str
+        Plain Malloy source text. Requires pymalloy[server] for the compiler,
+        but this operation opens no DuckDB connection.
+
+    Returns
+    -------
+    str
+        Formatted source. A shared tooling compiler is reused and expires when idle.
+
+    Raises
+    ------
+    CompilationError
+        The source cannot be formatted, with native compiler diagnostics.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> formatted = pm.format("source: values is duckdb.sql('SELECT 42 AS n')")
+    >>> pm.format(formatted) == formatted
+    True
+    """
     deadline = time.monotonic() + 30
     with compiler_lease(deadline) as compiler:
         return _format(compiler, source, deadline)
@@ -121,7 +146,37 @@ def format(source: str) -> str:
 def parse(
     source: str, *, url: str, document_kind: DocumentKind | None = None
 ) -> ParseReport:
-    """Parse Malloy source and enumerate imports and table references."""
+    """Parse source and return locations, symbols, imports and table references.
+
+    Parameters
+    ----------
+    source : str
+        Malloy model or notebook-document text.
+    url : str
+        Absolute identity used in source locations and import URLs.
+    document_kind : {"model", "notebook"}, optional
+        Override extension-based classification of the supplied URL.
+
+    Returns
+    -------
+    ParseReport
+        Syntax diagnostics and tooling metadata. Undefined sources and fields
+        require semantic checking with check. Imported source is not loaded.
+
+    Notes
+    -----
+    Requires the server compiler but opens no DuckDB connection. Coordinates
+    are zero-based Unicode code-point offsets rather than JavaScript UTF-16 units.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> report = pm.parse("run: missing_source", url="memory://tour/model.malloy")
+    >>> len(report.diagnostics)
+    0
+    >>> pm.check("run: missing_source").ok
+    False
+    """
     deadline = time.monotonic() + 30
     with compiler_lease(deadline) as compiler:
         return compiler.parse(
