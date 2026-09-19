@@ -47,7 +47,7 @@ The standalone server requires exactly one `pymalloy-*-py3-none-any.whl` in root
 `dist/`. Move older wheels aside before running the suite.
 
 Local marimo and JupyterLab tests use the installed Python workspace. To test the
-wheel as CI does, install it immediately before `pnpm e2e`:
+built wheel, install it immediately before `pnpm e2e`:
 
 ```sh
 uv pip install --no-deps --reinstall-package pymalloy dist/pymalloy-*.whl
@@ -56,9 +56,9 @@ pnpm e2e
 
 The test servers use `uv run --no-sync` to retain the selected installation.
 Set `PYMALLOY_KERNEL_PYTHON` to run the Jupyter kernel with a separate interpreter.
-CI installs the wheel with the `widget` extra, PyArrow, and ipykernel there, with
-neither Deno nor native DuckDB.
-The fixture authoring process may use the server extra to prepare an exported
+Install the base wheel, PyArrow, and ipykernel into that environment, with
+neither Deno nor native DuckDB. PyArrow supports the captured-data fixture.
+The fixture authoring process may use the headless extra to prepare an exported
 notebook. Execution of that notebook happens in the widget-only kernel.
 Run `uv sync --frozen --all-packages --all-extras` to return to the editable
 workspace afterward.
@@ -70,45 +70,18 @@ Playwright starts and stops three servers defined in
 | ------------------ | ----- | --------------------------------------------------------------------------------------------------- |
 | marimo             | 28441 | MalloyWidget rendering, reactive Python readback, and input updates                                 |
 | JupyterLab         | 28442 | Kernel communication, several views of one widget, recovery, and close                              |
-| Standalone Pyodide | 28443 | Widget-extra installation in browser Python, binary inputs, precise readback, and browser execution |
+| Standalone Pyodide | 28443 | Base-package installation in browser Python, binary inputs, precise readback, and browser execution |
 
 Pyodide supplies an anywidget-model adapter to test the packaged frontend against
-browser Python. JupyterLab tests the host's widget manager and communication.
+browser Python. Its bootstrap loads `micropip` and the unvendored standard-library
+module `lzma` needed by agent-plugins. The test reads the installed agent skill
+and executes a widget from the base wheel. JupyterLab tests the host's widget manager and communication.
 Keep both checks when changing synchronization.
 
 Tests run serially in Chromium. Failure screenshots and traces are in
 `apps/e2e/playwright-report/` and `apps/e2e/test-results/`. DuckDB workers and
 WebAssembly use the configured bundles. Pyodide and Python packages load over
 the network.
-
-## Continuous integration
-
-`.github/workflows/ci.yml` starts documentation, static checks, and runtime
-artifact production independently:
-
-| Job               | Inputs and result                                                                                 |
-| ----------------- | ------------------------------------------------------------------------------------------------- |
-| `docs`            | Calls the reusable Pages workflow to build and check the public site                              |
-| `check`           | Checks the Python lock, Ruff formatting/lint, Python types, and whitespace                        |
-| `build`           | Builds runtime packages and Python distributions, checks metadata, and uploads shared artifacts   |
-| `test-javascript` | Downloads built packages, runs `pnpm check` including Oxlint and Knip, then JavaScript tests      |
-| `test-python`     | Downloads staged Python assets and runs pytest on Python 3.12, 3.13, and 3.14                     |
-| `package`         | Downloads distributions, rebuilds a wheel from the source archive, and verifies isolated installs |
-| `e2e`             | Downloads distributions and assets, installs the built wheel, and tests all three browser hosts   |
-| `required`        | Fails unless every prerequisite job succeeds                                                      |
-
-Four test jobs consume `build` artifacts. Static checks use
-`--no-install-workspace` to run before Python assets exist. JavaScript typechecks,
-type-aware lint, and Knip run after package declarations are built.
-
-CI builds docs separately from runtime packages. Local `pnpm build` builds the
-whole workspace. Pages deploys on `main` and contributes to the required gate.
-Pull requests and release tags build docs without deploying.
-
-Use `required` for branch protection. CI covers the Python version matrix on
-Ubuntu with Chromium, plus a Python 3.12 run resolving direct dependencies at
-their lower bounds. Test other affected platforms when changing paths,
-processes, or workers.
 
 ## Check upstream samples
 
@@ -121,7 +94,7 @@ uv run python packages/python/tests/check_samples.py /path/to/malloy-samples \
 
 `results.json` records the checkout revision and per-source outcomes. The checker
 verifies deterministic exports, executes marimo and Jupyter notebooks, and
-compares results by query selector against server-model SQL. `--runtime` also
+compares results by query selector against headless-model SQL. `--runtime` also
 compares `Model.run()`. Each query records which consumers passed.
 
 Comparisons preserve column names, row and nested-list order, and exact floats.

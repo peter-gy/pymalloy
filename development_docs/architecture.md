@@ -33,8 +33,8 @@ same needs synchronously. Compiler jobs contain no connection or filesystem APIs
 | `packages/browser`                           | WebAssembly worker ownership, virtual files, imports and execution                                    |
 | `packages/widget`                            | anywidget revision synchronization and Malloy result rendering                                        |
 | `packages/protocol`                          | Shared Python wire contracts, exact givens, and widget state                                          |
-| `packages/server`                            | Deno compiler service and framed process entry point                                                  |
-| `pymalloy._server`                           | Deno process, Python DuckDB engine, model ownership and deadlines                                     |
+| `packages/headless`                          | Deno compiler service and framed process entry point                                                  |
+| `pymalloy._headless`                         | Deno process, Python DuckDB engine, model ownership and deadlines                                     |
 | `pymalloy._authoring`                        | Immutable syntax, scoped drafts, annotations, and Python reconstruction                               |
 | `pymalloy._model`                            | Source snapshots, captured data, persistence, selection, and shared failure contracts                 |
 | `pymalloy._protocol`                         | Generated compiler/widget records, exact givens, result decoding, and immutable wire snapshots        |
@@ -62,21 +62,22 @@ Private packages own related implementation files:
 | `_authoring` | `draft.py` coordinates edits, `syntax.py` owns fragments, `operations.py` renders scalar operations, and `python.py` reconstructs Python. Annotations, identifiers, generated lexer keywords, and table-reference syntax live beside them. |
 | `_model`     | `source.py` owns source identity and snapshots, `inputs.py` captures data, `persistence.py` publishes source, and `selection.py` validates query selection. Shared errors and the default connection name belong here.                     |
 | `_protocol`  | `records.py` is generated against `base.py`. `givens.py`, `codec.py`, and `snapshot.py` encode values, decode results, and freeze boundary data.                                                                                           |
-| `_server`    | Compiler processes, tooling leases, native engine execution, deadlines, and retained runtime models.                                                                                                                                       |
+| `_headless`  | Compiler processes, tooling leases, native engine execution, deadlines, and retained runtime models.                                                                                                                                       |
 | `export`     | Public notebook/bundle APIs and their private document, planning, file-access, and serialization modules.                                                                                                                                  |
 
 `_protocol` is independent of runtime and authoring code. `_model` depends on
 protocol types and imports Arrow when capturing data. Authoring consumes both
-packages. Parsing, formatting, checking, and compilation load the compiler/server
+packages. Parsing, formatting, checking, and compilation load the compiler/headless
 code on demand. Widget and export adapters reuse those values. Keep package initializers small
 and import private definitions from their owning modules.
 
-Python's base imports expose syntax construction and captured-source records.
-The `widget` extra supplies anywidget, `server` supplies Deno, DuckDB and PyArrow,
-and `agent` supplies the installed-guidance reader. `pm.data` loads PyArrow when
-called. The `dataframes` extra adds Polars and PyArrow for standalone capture.
-The wheel carries separate compiler and widget bundles, so browser execution needs no Deno process.
-Deno comes from its Python distribution, giving server installs a packaged
+The base Python package includes syntax construction, source records, anywidget,
+and agent guidance. Optional components are imported at their use sites. The
+`headless` extra supplies Deno, native DuckDB, PyArrow and timezone data.
+`pm.data` loads PyArrow when called. Polars and notebook hosts are installed
+directly when needed. Separate compiler and widget bundles let browser execution
+remain independent of Deno.
+Deno comes from its Python distribution, giving headless installs a packaged
 JavaScript runtime. Its permission sandbox and V8 heap limit bound compiler
 access and memory independently of DuckDB. Native DuckDB supplies Arrow results.
 Timezone-aware Arrow values retain their timezone through PyArrow conversion.
@@ -116,7 +117,7 @@ imports resolve exclusively through the snapshot.
 | MalloyWidget session                   | anywidget initialization, released by initialization cleanup            |
 | MalloyWidget DOM and renderer          | Rendered view, listeners and visualization disposed on cleanup          |
 | Precompiled notebook connection        | Query cell, closed after materialization or COPY                        |
-| Server notebook model                  | Generated setup shared by query cells                                   |
+| Headless notebook model                | Generated setup shared by query cells                                   |
 
 Operations serialize per Python model or TypeScript session. Queued cancellation
 rejects that call. Active engine cancellation interrupts the statement and waits
@@ -208,7 +209,7 @@ Remote inputs enable HTTP(S) directory prefixes so redirects remain usable.
 Native profiles install and load `httpfs` before applying those restrictions.
 `Document.remote_files` records discovered table URLs and explicitly declared
 SQL reader URLs. Remote bytes remain live dependencies.
-Server notebooks hydrate `ModelSource` and use `model.query(name).run()`. MalloyWidget
+Headless notebooks hydrate `ModelSource` and use `model.query(name).run()`. MalloyWidget
 notebooks create `MalloyWidget` instances from source and registered files. The exporter
 uses public model, parse, and connection methods.
 

@@ -8,8 +8,7 @@ pnpm build
 uv sync --frozen --all-packages --all-extras
 ```
 
-Use Node 24.11 or newer and the pnpm version in `package.json`. CI reads Node,
-Python, and uv versions from `.node-version`, `.python-version`, and
+Use Node 24.11 or newer and the pnpm version in `package.json`. Node, Python, and uv versions are recorded in `.node-version`, `.python-version`, and
 `pyproject.toml`. JavaScript dependencies use the pnpm catalog. Python uses `uv.lock`.
 
 Build before syncing the Python workspace. The build compiles JavaScript, stages Python
@@ -72,7 +71,7 @@ owning boundary before adding exceptions.
 
 Run `pnpm records` after changing compiler or widget records, or upgrading Malloy.
 Commit the generated schema, `_protocol/records.py` and `_authoring/lexicon.py` keyword metadata
-together. CI checks generation for drift.
+together. Review their diff after generation.
 
 Rebuild after changes to generated-asset inputs. Browser, widget, lifecycle, and
 cross-language changes also require the [browser suite](testing.md#browser-tests).

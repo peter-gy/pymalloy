@@ -38,7 +38,7 @@ that owned route, and `.doc(text)` selects the documentation route. Shared
 statement annotations remain literal text so an edit cannot claim another
 declaration's annotations.
 
-`read_model` parses plain Malloy through the optional server compiler.
+`read_model` parses plain Malloy through the optional headless compiler.
 `draft(*parts)` constructs syntax without runtime dependencies. Both return the
 same `Draft`. The parser projects supported scalar expressions into operation
 records. Python construction produces those same records through `col`, `lit`,
@@ -99,7 +99,7 @@ Borrowed connections remain caller-owned, including transaction recovery after
 engine errors. Preview limits bound returned rows, not scan cost or nested values.
 
 The public validation module owns reports and documentation diagnostics. The
-private server adapter owns compilation and assertion execution. Draft execution
+private headless adapter owns compilation and assertion execution. Draft execution
 and root runtime exports use the same optional-dependency loader. Pure authoring
 exports load directly and require no native engine or compiler process.
 
@@ -127,9 +127,9 @@ by the ordinary Python API.
 
 The asset build stages the root plugin and `skills/pymalloy` under
 `pymalloy/_assets/agent`. Standard Hatch packages those assets in wheels and source
-archives. Guidance access requires the `agent` extra. Syntax construction works
-with base dependencies. Parser-backed reading, compilation and execution require
-the server extra.
+archives. Guidance access and syntax construction use base dependencies.
+Parser-backed reading, compilation and execution require
+the headless extra.
 
 Verify semantic Python roundtrips and unchanged-file preservation on upstream
 models, scoped edits, source/query behavior, closed imports, stale writes, failed assertions, and installed skill discovery.
@@ -167,7 +167,7 @@ composition. The compiler sees an ordinary DuckDB path and has no Arrow dependen
 Runtime models, queries, execution evidence, and validations retain input owners
 independently of connection lifetime. Extracting `ModelSource` retains source
 text only. Widget definitions pair logical paths with Parquet bytes without loading
-the server adapter.
+the headless adapter.
 
 The producer notebook or script owns dataframe preparation and its dependency
 graph. Bundling publishes accepted snapshots without executing that producer.

@@ -7,7 +7,7 @@ Malloy compiles the queries, and [DuckDB](https://duckdb.org/) executes them.
 ## Author and run a model
 
 ```sh
-pip install 'pymalloy[server]'
+pip install 'pymalloy[headless]'
 ```
 
 ```python
@@ -37,7 +37,7 @@ Parquet. Retain the producing notebook or script for preparation logic.
 ## Explore in a browser widget
 
 ```sh
-pip install 'pymalloy[widget]'
+pip install 'pymalloy'
 ```
 
 ```python
@@ -48,7 +48,7 @@ widget
 ```
 
 Display the widget in Jupyter or marimo. Malloy and DuckDB WebAssembly run in the
-browser. The widget extra requires no Deno or server extra. First use downloads
+browser. The base install includes widgets and agent guidance, without Deno. First use downloads
 DuckDB WebAssembly and needs browser worker support.
 
 ## Learn more
@@ -57,13 +57,13 @@ DuckDB WebAssembly and needs browser worker support.
 - [Author and validate models](https://peter-gy.github.io/pymalloy/guide/authoring)
 - [Capture Python data](https://peter-gy.github.io/pymalloy/guide/dataframes)
 - [Bundle models and inputs](https://peter-gy.github.io/pymalloy/guide/bundles)
-- [Run queries from Python](https://peter-gy.github.io/pymalloy/guide/server-python)
+- [Run queries from Python](https://peter-gy.github.io/pymalloy/guide/headless-python)
 - [Use widgets](https://peter-gy.github.io/pymalloy/guide/getting-started) or
   [export notebooks](https://peter-gy.github.io/pymalloy/guide/export)
 - [Node](https://peter-gy.github.io/pymalloy/reference/node) and
   [browser JavaScript](https://peter-gy.github.io/pymalloy/reference/browser) APIs
 
-Install `pymalloy[agent]` for the versioned agent instructions, then import
+For the included versioned agent instructions, import
 `pymalloy.agent` and start with `help(pymalloy.agent)`.
 
 [Examples](examples) · [Contributing](development_docs/README.md)

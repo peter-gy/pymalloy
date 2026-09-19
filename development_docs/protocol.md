@@ -12,10 +12,10 @@ locations. Hosts decide whether fulfilment is synchronous or asynchronous.
 
 ## Python compiler process
 
-`packages/protocol` defines requests and tagged replies. `packages/server` owns one
+`packages/protocol` defines requests and tagged replies. `packages/headless` owns one
 compiled model and one pending compiler job per process. Python starts the executable
 provided by the optional Python `deno` distribution. It runs the
-wheel's self-contained `server.mjs` with local configuration, npm resolution,
+wheel's self-contained `headless.mjs` with local configuration, npm resolution,
 and remote imports disabled. Deno receives no filesystem or network permissions.
 
 Each frame contains a four-byte unsigned big-endian length followed by UTF-8
@@ -23,7 +23,7 @@ JSON, bounded to 64 MiB. Startup returns `{kind:"ready"}`. Operations serialize
 per Python model, with one response per request. Replies report needs, errors,
 or the requested result. Diagnostic failures use `{kind:"error",message,diagnostics}`.
 Internal compiler failures use `{kind:"failure",message}`.
-`packages/protocol/src/server.ts` defines the tagged request and response unions.
+`packages/protocol/src/headless.ts` defines the tagged request and response unions.
 Generated msgspec records validate the complete reply before it reaches the Python
 caller, which checks the expected result type. Python fulfils source and schema
 needs between requests. SQL result rows remain in Python.
@@ -33,7 +33,7 @@ kind. `step` fulfils pending needs. Query, inspection,
 source, and document operations use the retained model. Check, parse, format,
 and syntax projection operations process supplied text. A new operation closes
 an abandoned job. A `step` requires a pending job. The compiled model remains available until process close.
-Python sends DuckDB column descriptions and the server converts them to compiler
+Python sends DuckDB column descriptions and the Deno host converts them to compiler
 field definitions. Expected engine schema failures become compiler diagnostics.
 Unexpected host failures remain exceptions.
 
@@ -80,7 +80,7 @@ prevents further publication.
 
 ## Values
 
-Givens use a tagged recursive protocol shared by Python server execution and the
+Givens use a tagged recursive protocol shared by Python headless execution and the
 widget. Integers travel as exact decimal text. Arrays and records recursively
 contain tagged values.
 

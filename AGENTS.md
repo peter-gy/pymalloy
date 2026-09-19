@@ -1,6 +1,6 @@
 # PyMalloy
 
-PyMalloy runs Malloy in a browser widget, in server-side Python or native Node sessions, and
+PyMalloy runs Malloy in a browser widget, in headless Python or native Node sessions, and
 in exported notebooks. Malloy owns language semantics. Runtime adapters own
 DuckDB execution, data access, and resource lifetime.
 
@@ -13,9 +13,9 @@ DuckDB execution, data access, and resource lifetime.
   `packages/browser` owns DuckDB WebAssembly workers and virtual files.
 - `packages/widget` owns anywidget synchronization and rendering. `MalloyWidget` in
   `packages/python` owns Python inputs and detached state snapshots.
-- `packages/protocol` owns Python wire records shared by the widget and server.
-- `packages/server` owns the bundled Deno compiler service and framed stdin/stdout.
-- `pymalloy._server` owns optional server dependencies, the Deno process, Python
+- `packages/protocol` owns Python wire records shared by the widget and headless host.
+- `packages/headless` owns the bundled Deno compiler service and framed stdin/stdout.
+- `pymalloy._headless` owns optional headless dependencies, the Deno process, Python
   DuckDB connections, and deadlines. Keep the base widget import Deno-free.
 - Exporters own format-specific serialization and reproducible notebook data access.
 - `apps` compose packages. Public guides and reference live in `docs`, contributor
@@ -62,5 +62,5 @@ constraints, and remove comments that narrate ordinary code.
 Read [contributor setup](development_docs/README.md) and
 [architecture](development_docs/architecture.md) for build and ownership details.
 
-Release and deployment contracts live in [the release guide](development_docs/releasing.md).
-Keep annotated tags, package metadata, artifact verification, and Trusted Publishing aligned.
+Distribution contracts live in [the packaging guide](development_docs/releasing.md).
+Keep package metadata and artifact verification aligned.
