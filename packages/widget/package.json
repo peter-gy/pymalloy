@@ -14,9 +14,11 @@
   "dependencies": {
     "@malloy-runtime/browser": "workspace:*",
     "@malloy-runtime/compiler": "workspace:*",
+    "@malloy-runtime/duckdb": "workspace:*",
     "@malloydata/malloy-interfaces": "catalog:",
     "@malloydata/render": "catalog:",
     "@pymalloy/protocol": "workspace:*",
+    "apache-arrow": "catalog:",
     "process": "catalog:"
   },
   "devDependencies": {

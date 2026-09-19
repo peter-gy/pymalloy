@@ -1,3 +1,4 @@
+import { executeNative } from "./native";
 import type { InitializeProps } from "@anywidget/types";
 import type { Model, ModelSpec, SessionOptions, ToolingError } from "@malloy-runtime/browser";
 import {
@@ -10,7 +11,7 @@ import {
 } from "./protocol";
 interface WidgetQuery {
   readonly queries: Model["queries"];
-  inspect(): Pick<ReturnType<Model["inspect"]>, "diagnostics">;
+  inspect(): ReturnType<Model["inspect"]>;
   query(selection?: string): Pick<ReturnType<Model["query"]>, "run">;
   close(): void;
 }
@@ -28,7 +29,8 @@ export function initialize(
     let closed = false;
     let generation = 0;
     let session: Promise<WidgetSession> | undefined;
-    let retained: { revision: number; model: WidgetQuery; diagnostics: Diagnostic[] } | undefined;
+    let retained: { revision: number; model: WidgetQuery } | undefined;
+    let inspected: { revision: number; inspection: ReturnType<Model["inspect"]> } | undefined;
     let pending: { input: Input; definition: Definition; generation: number } | undefined;
     let running = false;
     const lifetime = new AbortController();
@@ -76,16 +78,48 @@ export function initialize(
         result: null,
         error: null,
         diagnostics: [],
+        inspection: null,
       };
-      if (!definition.source.trim()) {
-        releaseModel();
-        publish({ ...empty, status: "idle" });
-        return;
-      }
-      publish({ ...empty, status: "loading" });
-      let queries: Model["queries"][number][] = [];
-      let diagnostics: Diagnostic[] = [];
+      const backend = definition.notebook.execution;
+      if (backend !== "browser" || retained?.revision !== definition.revision) releaseModel();
+      let queries = retained ? [...retained.model.queries] : definition.queries;
+      let inspection = inspected?.revision === definition.revision ? inspected.inspection : null;
+      let diagnostics: Diagnostic[] = inspection?.diagnostics ?? [];
       try {
+        if (
+          backend === null ||
+          (input.action === "inspect" && backend !== "result") ||
+          (backend === "browser" && !definition.source.trim())
+        ) {
+          publish({ ...empty, queries, inspection, diagnostics, status: "idle" });
+          return;
+        }
+        publish({ ...empty, queries, inspection, diagnostics, status: "loading" });
+        if (backend === "python" || backend === "result") {
+          const response = await executeNative(model, input, operation.signal);
+          if (closed || generation !== current) return;
+          if ("inspection" in response) {
+            inspection = response.inspection;
+            inspected = { revision: definition.revision, inspection };
+            publish({
+              ...empty,
+              queries,
+              inspection,
+              diagnostics: inspection.diagnostics,
+              status: "idle",
+            });
+          } else {
+            publish({
+              ...empty,
+              queries,
+              inspection,
+              diagnostics,
+              result: response.result,
+              status: "ready",
+            });
+          }
+          return;
+        }
         const runtime = await getSession();
         if (closed || generation !== current) return;
         if (retained?.revision !== definition.revision) {
@@ -121,25 +155,25 @@ export function initialize(
             loaded.close();
             return;
           }
-          retained = {
-            revision: definition.revision,
-            model: loaded,
-            diagnostics: loaded.inspect().diagnostics,
-          };
+          retained = { revision: definition.revision, model: loaded };
+          inspection = loaded.inspect();
         }
         const loaded = retained.model;
         queries = [...loaded.queries];
-        diagnostics = retained.diagnostics;
+        inspection ??= loaded.inspect();
+        inspected = { revision: definition.revision, inspection };
+        diagnostics = inspection.diagnostics;
         if (closed || generation !== current) return;
         if (
-          !input.query &&
-          (queries.length === 0 ||
-            (queries.length > 1 && !queries.some((query) => query.kind === "run")))
+          input.action === "check" ||
+          (!input.query &&
+            (queries.length === 0 ||
+              (queries.length > 1 && !queries.some((query) => query.kind === "run"))))
         ) {
-          publish({ ...empty, queries, diagnostics, status: "idle" });
+          publish({ ...empty, queries, diagnostics, inspection, status: "idle" });
           return;
         }
-        publish({ ...empty, queries, diagnostics, status: "loading" });
+        publish({ ...empty, queries, diagnostics, inspection, status: "loading" });
         const result = await loaded.query(input.query ?? undefined).run({
           givens: givens(input),
           signal: operation.signal,
@@ -150,6 +184,7 @@ export function initialize(
           result: result.malloy,
           error: null,
           diagnostics,
+          inspection,
         });
       } catch (error) {
         if (error instanceof DiagnosticError) diagnostics = error.diagnostics;
@@ -158,6 +193,7 @@ export function initialize(
           status: "error",
           queries,
           diagnostics,
+          inspection,
           error: error instanceof Error ? error.message : String(error),
         });
       } finally {

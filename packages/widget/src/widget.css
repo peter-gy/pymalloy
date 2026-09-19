@@ -78,3 +78,40 @@
 .pymalloy-widget .pymalloy-diagnostics[role="alert"] {
   padding-left: 12px;
 }
+
+.pymalloy-widget .pymalloy-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.pymalloy-widget .pymalloy-controls[hidden] {
+  display: none;
+}
+.pymalloy-widget button {
+  color: inherit;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+.pymalloy-widget button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.pymalloy-widget .pymalloy-inspector > details {
+  margin: 8px 0;
+}
+.pymalloy-widget .pymalloy-inspector pre {
+  padding: 10px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  max-height: 320px;
+  overflow: auto;
+}
+.pymalloy-widget .pymalloy-inspector p {
+  margin: 8px 0;
+}

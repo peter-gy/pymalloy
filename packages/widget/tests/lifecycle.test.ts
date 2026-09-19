@@ -1,8 +1,16 @@
+import { tableFromArrays, tableToIPC } from "apache-arrow";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import type { AnyModel } from "@anywidget/types";
 import { ToolingError, type QueryOptions } from "@malloy-runtime/compiler";
 import { initialize as initializeWith } from "../src/initialize";
-import type { Definition, Diagnostic, Input, State, WidgetModel } from "../src/protocol";
+import type {
+  Definition,
+  Diagnostic,
+  Input,
+  NotebookResponse,
+  State,
+  WidgetModel,
+} from "../src/protocol";
 
 const create = vi.fn<Parameters<typeof initializeWith>[0]>();
 
@@ -16,9 +24,35 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function definition(overrides: Partial<Definition> = {}): Definition {
+  const source = overrides.source ?? "run: example";
+  return {
+    revision: 1,
+    source,
+    documentKind: "model",
+    connectionName: "duckdb",
+    files: {},
+    queries: [],
+    ...overrides,
+    notebook: {
+      kind: "Model",
+      execution: "browser",
+      message: null,
+      bindings: [],
+      references: [],
+      annotations: [],
+      inputs: [],
+      ...overrides.notebook,
+      source,
+    },
+  };
+}
+
+type Listener = Parameters<AnyModel<WidgetModel>["on"]>[1];
+
 class Widget implements AnyModel<WidgetModel> {
   private values: WidgetModel;
-  private listeners = new Map<string, Set<() => void>>();
+  private listeners = new Map<string, Set<Listener>>();
   saved: State[] = [];
   widget_manager = {
     get_model: async () => {
@@ -27,24 +61,23 @@ class Widget implements AnyModel<WidgetModel> {
   };
   send = vi.fn();
 
-  constructor(input: Partial<Input & Definition> | null = {}) {
+  constructor(input: Partial<Input> | null = {}, source: Partial<Definition> = {}) {
     this.values = {
       query: input?.query ?? null,
       _input:
         input === null
           ? null
-          : { revision: 1, definitionRevision: 1, query: null, givens: {}, ...input },
-      _definition:
-        input === null
-          ? null
           : {
               revision: 1,
-              source: "run: example",
-              documentKind: "model",
-              connectionName: "duckdb",
-              files: {},
+              definitionRevision: source.revision ?? 1,
+              query: null,
+              givens: {},
+              action: "run",
               ...input,
             },
+      _definition: input === null ? null : definition(source),
+      _request: null,
+      _transient: false,
       _runtime: null,
       _state: null,
     };
@@ -56,44 +89,52 @@ class Widget implements AnyModel<WidgetModel> {
     this.values[key] = value;
     for (const callback of this.listeners.get(`change:${key}`) ?? []) callback();
   }
-  on(event: string, callback: () => void): void {
+  on(event: string, callback: Listener): void {
     const listeners = this.listeners.get(event) ?? new Set();
     listeners.add(callback);
     this.listeners.set(event, listeners);
   }
-  off(event?: string | null, callback?: (() => void) | null): void {
+  off(event?: string | null, callback?: Listener | null): void {
     if (!event) this.listeners.clear();
     else if (callback) this.listeners.get(event)?.delete(callback);
     else this.listeners.delete(event);
+  }
+  reply(response: NotebookResponse, buffers: (ArrayBuffer | DataView)[] = []): void {
+    const [[request]] = this.send.mock.calls.slice(-1);
+    for (const callback of this.listeners.get("msg:custom") ?? [])
+      callback({ kind: "pymalloy-response", id: request.id, response }, buffers);
   }
   save_changes(): void {
     const state = this.values._state;
     if (state) this.saved.push(structuredClone(state));
   }
-  update(input: Partial<Input & Definition> = {}): void {
+  async request(action: "check" | "run"): Promise<void> {
+    this.update({ action });
+    await vi.waitFor(() =>
+      expect(this.send.mock.lastCall?.[0]).toMatchObject({
+        kind: "pymalloy-request",
+        id: expect.any(String),
+        input: this.get("_input"),
+      }),
+    );
+  }
+  update(input: Partial<Input> = {}, changes?: Partial<Definition>): void {
     const previous = this.get("_input") ?? {
       revision: 0,
       definitionRevision: 1,
       query: null,
       givens: {},
+      action: "run",
     };
-    const definition = this.get("_definition");
-    const changed = !definition || "source" in input || "files" in input;
-    const definitionRevision = (definition?.revision ?? 0) + Number(changed);
-    if (changed)
-      this.set("_definition", {
-        source: definition?.source ?? "run: example",
-        documentKind: definition?.documentKind ?? "model",
-        connectionName: definition?.connectionName ?? "duckdb",
-        files: definition?.files ?? {},
-        ...input,
-        revision: definitionRevision,
-      });
+    const current = this.get("_definition");
+    const definitionRevision = (current?.revision ?? 0) + Number(!current || changes !== undefined);
+    if (!current || changes !== undefined)
+      this.set("_definition", definition({ ...current, ...changes, revision: definitionRevision }));
     this.set("_input", {
       ...previous,
       ...input,
       revision: previous.revision + 1,
-      definitionRevision: definitionRevision,
+      definitionRevision,
     });
   }
 }
@@ -133,7 +174,16 @@ function model(queries = ["run:0"], diagnostics: Diagnostic[] = []) {
       location: null,
     })),
     query: vi.fn(() => ({ run })),
-    inspect: vi.fn(() => ({ diagnostics })),
+    inspect: vi.fn(() => ({
+      diagnostics,
+      model: { sources: [], model: null, annotations: [] },
+      queries: [],
+      givens: [],
+      annotations: [],
+      modelAnnotations: [],
+      dependencies: [],
+      imports: [],
+    })),
     run,
     close: vi.fn(),
   };
@@ -174,8 +224,8 @@ test("a later input owns the published result while earlier work finishes", asyn
   const widget = new Widget();
   await initialize(widget);
   await vi.waitFor(() => expect(oldModel.run).toHaveBeenCalled());
-  widget.update({ source: "run: newer" });
-  widget.update({ source: "run: newest" });
+  widget.update({}, { source: "run: newer" });
+  widget.update({}, { source: "run: newest" });
   pending.resolve(result("SELECT 'old'"));
   await vi.waitFor(() => expect(widget.get("_state")?.result?.sql).toBe("SELECT 'new'"));
   await vi.waitFor(() => expect(oldModel.close).toHaveBeenCalled());
@@ -245,20 +295,16 @@ test("a definition can arrive after the input that references it", async () => {
   await initialize(widget);
   expect(create).not.toHaveBeenCalled();
   expect(widget.saved).toEqual([]);
-  widget.set("_input", { revision: 1, definitionRevision: 3, query: null, givens: {} });
-  widget.set("_definition", {
-    revision: 2,
-    source: "run: obsolete",
-    documentKind: "model",
-    files: {},
+  widget.set("_input", {
+    revision: 1,
+    definitionRevision: 3,
+    query: null,
+    givens: {},
+    action: "run",
   });
+  widget.set("_definition", definition({ revision: 2, source: "run: obsolete" }));
   expect(create).not.toHaveBeenCalled();
-  widget.set("_definition", {
-    revision: 3,
-    source: "run: current",
-    documentKind: "model",
-    files: {},
-  });
+  widget.set("_definition", definition({ revision: 3, source: "run: current" }));
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
   expect(runtime.model).toHaveBeenCalledExactlyOnceWith(
     {
@@ -322,12 +368,12 @@ test("query choices support selection and recovery after a failed query", async 
 test("source-only models stay idle until a query is added", async () => {
   const runtime = session(model([]));
   create.mockResolvedValue(runtime);
-  const widget = new Widget({ source: "source: example is data" });
+  const widget = new Widget({}, { source: "source: example is data" });
   await initialize(widget);
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("idle"));
   expect(widget.get("_state")?.queries.map((q) => q.name)).toEqual([]);
   runtime.model.mockResolvedValue(model());
-  widget.update({ source: "run: example" });
+  widget.update({}, { source: "run: example" });
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
 });
 
@@ -369,18 +415,86 @@ test("model revisions publish warnings, located errors, and recovered results", 
     error: null,
     result: { sql: "SELECT 1" },
   });
-  widget.update({ source: "run: missing_source" });
+  widget.update({}, { source: "run: missing_source" });
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("error"));
   expect(widget.get("_state")).toMatchObject({
     diagnostics: [diagnostic],
     error: diagnostic.message,
     result: null,
   });
-  widget.update({ source: "run: recovered" });
+  widget.update({}, { source: "run: recovered" });
   await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
   expect(widget.get("_state")).toMatchObject({
     diagnostics: [],
     error: null,
     result: { sql: "SELECT 1" },
   });
+});
+
+test("inspection-only cell output waits for an explicit compilation request", async () => {
+  const runtime = session(model(["orders.by_region", "orders.detail"]));
+  create.mockResolvedValue(runtime);
+  const widget = new Widget({ action: "inspect" });
+  await initialize(widget);
+  expect(widget.get("_state")?.status).toBe("idle");
+  expect(create).not.toHaveBeenCalled();
+  widget.update({ action: "check" });
+  await vi.waitFor(() => expect(widget.get("_state")?.inspection?.model.sources).toEqual([]));
+  expect(runtime.model).toHaveBeenCalledTimes(1);
+  expect(widget.get("_state")?.result).toBeNull();
+  widget.update({ query: "orders.by_region", action: "inspect" });
+  await vi.waitFor(() =>
+    expect(widget.get("_state")?.queries.map((query) => query.name)).toEqual([
+      "orders.by_region",
+      "orders.detail",
+    ]),
+  );
+  widget.update({ action: "run" });
+  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  expect(runtime.model).toHaveBeenCalledTimes(1);
+});
+
+test("native previews retain inspection, recover from malformed replies, and settle on close", async () => {
+  const widget = new Widget({ action: "inspect" });
+  const definition = widget.get("_definition");
+  if (!definition) throw new Error("Test requires a definition");
+  widget.set("_definition", {
+    ...definition,
+    notebook: { ...definition.notebook, execution: "python" },
+  });
+  const close = await initialize(widget);
+  expect(create).not.toHaveBeenCalled();
+  expect(widget.send).not.toHaveBeenCalled();
+  await widget.request("check");
+  const inspection = model().inspect();
+  widget.reply({ kind: "inspection", inspection });
+  await vi.waitFor(() => expect(widget.get("_state")?.inspection).toEqual(inspection));
+  await widget.request("run");
+  const result: NotebookResponse = {
+    kind: "result",
+    sql: "SELECT 42 AS answer",
+    columns: [{ name: "answer", type: "DOUBLE" }],
+    connectionName: "duckdb",
+  };
+  widget.reply(result);
+  await vi.waitFor(() => expect(widget.get("_state")?.error).toContain("Arrow buffer"));
+  await widget.request("run");
+  const bytes = tableToIPC(tableFromArrays({ answer: [42] }));
+  widget.reply(result, [new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)]);
+  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  expect(widget.get("_state")?.inspection).toEqual(inspection);
+  expect(widget.get("_state")?.result).toMatchObject({
+    sql: "SELECT 42 AS answer",
+    data: {
+      kind: "array_cell",
+      array_value: [
+        { kind: "record_cell", record_value: [{ kind: "number_cell", number_value: 42 }] },
+      ],
+    },
+  });
+  await widget.request("run");
+  await close();
+  const saved = widget.get("_state");
+  widget.reply({ kind: "error", message: "late failure", diagnostics: [] });
+  expect(widget.get("_state")).toBe(saved);
 });

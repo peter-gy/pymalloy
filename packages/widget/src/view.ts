@@ -1,27 +1,46 @@
 import type { Cell } from "@malloydata/malloy-interfaces";
 import { MalloyRenderer } from "@malloydata/render";
 import type { RenderProps } from "@anywidget/types";
-import { type WidgetModel } from "./protocol";
+import { type WidgetModel, type NotebookInfo } from "./protocol";
+import type { Inspection } from "@malloy-runtime/compiler";
 
-function text(tag: string, value: string): HTMLElement {
-  const element = document.createElement(tag);
-  element.textContent = value;
-  return element;
-}
+import { text } from "./dom";
+import { renderInspector } from "./inspector";
 
 export function render({ model, el }: RenderProps<WidgetModel>): () => void {
-  const viz = new MalloyRenderer().createViz();
+  let viz: ReturnType<MalloyRenderer["createViz"]> | undefined;
   const root = document.createElement("section");
   root.className = "pymalloy-widget";
   root.setAttribute("aria-label", "Malloy query");
+  const viewId = crypto.randomUUID();
+  if (model.get("_transient")) model.send({ kind: "pymalloy-view", action: "mount", id: viewId });
   const header = document.createElement("header");
+  const title = text("strong", "Malloy");
+  const controls = document.createElement("div");
+  controls.className = "pymalloy-controls";
+  const check = text("button", "Check model");
+  const run = text("button", "Run query");
+  const request = (action: "check" | "run") => {
+    const input = model.get("_input");
+    if (!input) return;
+    model.set("_request", { revision: input.revision, action });
+    model.save_changes();
+  };
+  const checkModel = () => request("check");
+  const runQuery = () => request("run");
+  check.addEventListener("click", checkModel);
+  run.addEventListener("click", runQuery);
+  const inspector = document.createElement("div");
+  inspector.className = "pymalloy-inspector";
+  inspector.setAttribute("aria-label", "Malloy value inspector");
   const label = text("label", "Query");
   const select = document.createElement("select");
   select.setAttribute("aria-label", "Query");
   label.append(select);
   const status = text("span", "");
   status.setAttribute("role", "status");
-  header.append(label, status);
+  controls.append(label, check, run);
+  header.append(title, status);
   const body = document.createElement("div");
   body.className = "pymalloy-result";
   const styles = document.createElement("style");
@@ -65,7 +84,7 @@ export function render({ model, el }: RenderProps<WidgetModel>): () => void {
   const sql = document.createElement("details");
   const code = document.createElement("pre");
   sql.append(text("summary", "SQL"), code);
-  root.append(styles, header, body, sql);
+  root.append(styles, header, inspector, controls, body, sql);
   el.append(root);
   const choose = () => {
     model.set("query", select.value || null);
@@ -76,10 +95,31 @@ export function render({ model, el }: RenderProps<WidgetModel>): () => void {
     select.value = model.get("query") ?? "";
   };
   let queryNames: string[] = [];
+  let shownInfo: NotebookInfo | undefined;
+  let shownInspection: Inspection | null | undefined;
   select.append(new Option("Default query", ""));
   const update = () => {
+    const definition = model.get("_definition");
+    if (!definition) return;
+    const info = definition.notebook;
+    title.textContent = info.kind;
+    root.setAttribute("data-marimo-lens-label", info.kind);
+    root.setAttribute(
+      "data-marimo-lens-detail",
+      (info.message ?? `Malloy ${info.kind.toLowerCase()}`).slice(0, 512),
+    );
     const state = model.get("_state");
     if (!state || state.revision !== model.get("_input")?.revision) return;
+    if (info !== shownInfo || state.inspection !== shownInspection) {
+      renderInspector(inspector, info, state.inspection);
+      shownInfo = info;
+      shownInspection = state.inspection;
+    }
+    const executable = info.execution !== null && info.execution !== "result";
+    controls.hidden = !executable;
+    check.hidden = !executable;
+    run.textContent = info.execution === "python" ? "Preview 20 rows" : "Run query";
+    check.disabled = run.disabled = state.status === "loading";
     const names = state.queries.map((query) => query.name);
     if (
       names.length !== queryNames.length ||
@@ -93,15 +133,23 @@ export function render({ model, el }: RenderProps<WidgetModel>): () => void {
     }
     updateSelection();
     select.disabled = state.status === "loading" || !state.queries.length;
+    label.hidden = !state.queries.length;
     code.textContent = state.result?.sql ?? "";
     sql.hidden = !state.result?.sql;
-    viz.remove();
+    viz?.remove();
     body.replaceChildren();
     body.style.height = "";
     root.setAttribute("aria-busy", String(state.status === "loading"));
     const messages = {
-      idle: state.queries.length ? "Choose a query" : "Add a Malloy query to begin",
-      loading: "Running query…",
+      idle: state.inspection ? "Model checked" : executable ? "Ready to inspect" : "Syntax",
+      loading:
+        info.execution === "result"
+          ? "Displaying result…"
+          : model.get("_input")?.action === "check"
+            ? "Checking model…"
+            : info.execution === "python"
+              ? "Preparing preview…"
+              : "Running query…",
       error: "Query failed",
       closed: "Closed",
       ready: `${state.result?.data?.kind === "array_cell" ? state.result.data.array_value.length : 0} ${state.result?.data?.kind === "array_cell" && state.result.data.array_value.length === 1 ? "row" : "rows"}`,
@@ -143,6 +191,7 @@ export function render({ model, el }: RenderProps<WidgetModel>): () => void {
     if (state.error) return;
     if (state.status !== "ready") return;
     if (state.result) {
+      viz ??= new MalloyRenderer().createViz();
       const data = state.result.data && restoreNumbers(state.result.data);
       const result = data === state.result.data ? state.result : { ...state.result, data };
       viz.setResult(result);
@@ -159,12 +208,16 @@ export function render({ model, el }: RenderProps<WidgetModel>): () => void {
   update();
   return () => {
     model.off("change:_state", update);
+    check.removeEventListener("click", checkModel);
+    run.removeEventListener("click", runQuery);
     model.off("change:query", updateSelection);
     select.removeEventListener("change", choose);
     styleObserver.disconnect();
     tableObserver.disconnect();
-    viz.remove();
+    viz?.remove();
     root.remove();
+    if (model.get("_transient"))
+      model.send({ kind: "pymalloy-view", action: "unmount", id: viewId });
   };
 }
 
