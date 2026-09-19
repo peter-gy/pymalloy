@@ -70,7 +70,7 @@ def compile_document(
                 continue
             visited.add(source_path)
             parsed = parser.parse(
-                source_path.read_text(),
+                read_text(source_path),
                 url=source_path.as_uri(),
                 deadline=deadline,
                 document_kind=None if source_path == path else "model",
