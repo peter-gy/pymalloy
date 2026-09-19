@@ -16,6 +16,18 @@ from pymalloy import CompilationError, ModelError
 ONE = "run: duckdb.sql('SELECT 1 AS value') -> { select: value }"
 
 
+def test_schema_discovery_rejects_additional_statements_before_execution():
+    with duckdb.connect() as connection:
+        report = pm.check(
+            'source: numbers is duckdb.sql("SELECT 1 AS value; CREATE TABLE touched AS SELECT 2 AS value")',
+            connection=connection,
+        )
+        assert not report.ok
+        assert connection.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'touched'"
+        ).fetchone() == (0,)
+
+
 def test_rows_preserve_arrow_scalar_types_and_huge_integer_precision():
     result = pm.run('''run: duckdb.sql("""
 SELECT 170141183460469231731687303715884105727::HUGEINT AS huge,
@@ -208,7 +220,8 @@ def test_interrupt_during_schema_discovery_preserves_the_caller_connection(
     execute = duckdb.DuckDBPyConnection.execute
 
     def interrupted(self, query, *args, **kwargs):
-        if query.startswith("DESCRIBE"):
+        text = query.query if isinstance(query, duckdb.Statement) else query
+        if text.startswith("DESCRIBE"):
             raise interrupt()
         return execute(self, query, *args, **kwargs)
 
@@ -399,12 +412,11 @@ def test_model_rejects_ambiguous_query_selection():
 
 
 def test_waiting_query_timeout_preserves_the_active_model(monkeypatch):
+    model = pm.model(ONE)
     started, release = (threading.Event(), threading.Event())
     sql = duckdb.DuckDBPyConnection.execute
 
     def execute(self, *args, **kwargs):
-        if args and str(args[0]).startswith(("SET ", "DESCRIBE ")):
-            return sql(self, *args, **kwargs)
         started.set()
         if not release.wait(timeout=5):
             raise AssertionError("Active query was not released")
@@ -412,7 +424,6 @@ def test_waiting_query_timeout_preserves_the_active_model(monkeypatch):
 
     monkeypatch.setattr(duckdb.DuckDBPyConnection, "execute", execute)
     with ThreadPoolExecutor(max_workers=1) as pool:
-        model = pm.model(ONE)
         active = pool.submit(lambda: model.query().run().polars())
         try:
             assert started.wait(timeout=5)

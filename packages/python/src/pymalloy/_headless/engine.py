@@ -91,7 +91,10 @@ class Engine:
             need.table_path if isinstance(need, TableSchemaNeed) else need.sql
         )
         try:
-            rows = self.connection.execute(sql).fetchall()
+            statements = self.connection.extract_statements(sql)
+            if len(statements) != 1:
+                raise SchemaError("Schema discovery requires one statement", sql=sql)
+            rows = self.connection.execute(statements[0]).fetchall()
         except duckdb.Error as error:
             raise SchemaError(str(error), sql=sql) from error
         return [Column(name=row[0], type=row[1]) for row in rows]

@@ -90,19 +90,20 @@ def test_tooling_and_documents_return_typed_records_with_explicit_selection():
 
 
 def test_expired_schema_discovery_does_not_start_another_database_request(monkeypatch):
+    from pymalloy._headless.engine import Engine
+
     now = [100.0]
     descriptions = []
-    execute = duckdb.DuckDBPyConnection.execute
+    original = Engine.describe
 
-    def describe(self, sql, *args, **kwargs):
-        result = execute(self, sql, *args, **kwargs)
-        if sql.startswith("DESCRIBE"):
-            descriptions.append(sql)
-            now[0] = 102.0
+    def describe(self, need):
+        result = original(self, need)
+        descriptions.append(need)
+        now[0] = 102.0
         return result
 
     monkeypatch.setattr(time, "monotonic", lambda: now[0])
-    monkeypatch.setattr(duckdb.DuckDBPyConnection, "execute", describe)
+    monkeypatch.setattr(Engine, "describe", describe)
     with pytest.raises(TimeoutError):
         pm.model(
             "source: a is duckdb.sql('SELECT 1 AS value')\n"
