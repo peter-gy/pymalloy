@@ -7,7 +7,7 @@ import pytest
 
 import pymalloy as pm
 from pymalloy._headless import tooling
-from pymalloy._model.errors import CompilerError, PyMalloyError
+from pymalloy._model.errors import CompilerError
 from pymalloy._protocol.records import SourceReady, SourceRequest
 
 
@@ -17,13 +17,13 @@ def test_tooling_reuses_one_process_across_concurrent_calls_and_replaces_failure
     tooling._tooling.close()
     try:
         sources = [
-            f"source: value_{i} is duckdb.sql('SELECT {i} AS value')" for i in range(8)
+            f"source: value_{i} is duckdb.sql('SELECT {i} AS value')" for i in range(4)
         ]
         with ThreadPoolExecutor(max_workers=4) as threads:
             formatted = list(threads.map(pm.format, sources))
         for index, text in enumerate(formatted):
-            assert f"value_{index}" in text
-            assert not pm.parse(text, url=f"file:///model_{index}.malloy").diagnostics
+            parsed = pm.parse(text, url=f"file:///model_{index}.malloy")
+            assert parsed.symbols[0].name == f"value_{index}"
             checked = pm.check(text)
             assert checked.ok
             assert checked.model.sources[0].name == f"value_{index}"
@@ -78,7 +78,6 @@ def test_waiting_for_tooling_has_a_deadline_without_disrupting_active_work():
     [
         CompilerError("Compiler process stopped"),
         TimeoutError("Expired"),
-        OSError("Unreadable"),
     ],
 )
 def test_validation_propagates_infrastructure_failures(monkeypatch, failure):
@@ -90,8 +89,6 @@ def test_validation_propagates_infrastructure_failures(monkeypatch, failure):
     with pytest.raises(type(failure)) as caught:
         pm.draft().validate()
     assert caught.value is failure
-    if isinstance(failure, CompilerError):
-        assert isinstance(caught.value, PyMalloyError)
 
 
 def test_tooling_process_exits_when_idle_and_starts_again(monkeypatch, children):

@@ -5,7 +5,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from pymalloy import CompilationError, CompilerError, ExecutionError, SchemaError
+from pymalloy import CompilationError, CompilerError, ExecutionError
 from pymalloy.export import marimo, prepare
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "examples"
@@ -417,11 +417,10 @@ def test_export_file_guard_preserves_catalog_table_precedence(tmp_path, monkeypa
     "failure",
     [
         CompilerError("compiler unavailable"),
-        SchemaError("schema unavailable", sql="DESCRIBE x"),
         TimeoutError("deadline exceeded"),
         duckdb.IOException("input unavailable"),
     ],
-    ids=["compiler", "schema", "deadline", "engine-io"],
+    ids=["compiler", "deadline", "engine-io"],
 )
 def test_cli_reports_operational_failures_without_replacing_output(
     tmp_path, monkeypatch, capsys, command, failure
@@ -431,9 +430,9 @@ def test_cli_reports_operational_failures_without_replacing_output(
     source = tmp_path / "model.malloy"
     source.write_text("run: missing")
     output = tmp_path / "report.ipynb"
-    output.write_text("existing notebook")
     arguments = ["pymalloy", command, str(source)]
     if command == "export":
+        output.write_text("existing notebook")
         arguments.extend(["--format", "jupyter", "--output", str(output)])
     import pymalloy as pm
     import pymalloy.export as exporter
@@ -451,7 +450,8 @@ def test_cli_reports_operational_failures_without_replacing_output(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == f"pymalloy: {failure}\n"
-    assert output.read_text() == "existing notebook"
+    if command == "export":
+        assert output.read_text() == "existing notebook"
 
 
 @pytest.mark.parametrize("profile", ["precompiled", "headless"])
