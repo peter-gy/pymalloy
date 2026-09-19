@@ -95,9 +95,7 @@ test("JupyterLab renders, synchronizes, recovers, and closes multiple views", as
   await expect(page.getByRole("button", { name: "No Kernel", exact: true })).toBeVisible();
 });
 
-test("a captured Arrow input executes in the browser from a server-free kernel", async ({
-  page,
-}) => {
+test("a captured Arrow input executes in the browser from a base-only kernel", async ({ page }) => {
   await page.goto("/lab/tree/dataframe.ipynb");
   await expect(
     page.getByRole("button", { name: "Python 3 (PyMalloy) | Idle", exact: true }),

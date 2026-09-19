@@ -548,7 +548,9 @@ test("a widget replaces an active query on its retained browser model", async ({
   expect(output).toEqual([{ revision: 2, status: "ready", value: 42, error: null }]);
 });
 
-test("a relocated widget executes absolute HTTP data without a native server", async ({ page }) => {
+test("a relocated widget executes absolute HTTP data without a native runtime", async ({
+  page,
+}) => {
   await page.route("**/remote-values.csv", (route) =>
     route.fulfill({ contentType: "text/csv", body: "value\n42\n" }),
   );

@@ -1,6 +1,6 @@
 import { expect, test } from "./fixture";
 
-test("the widget extra runs a synchronized Malloy widget in Pyodide", async ({
+test("the base package runs a synchronized Malloy widget in Pyodide", async ({
   page,
 }, testInfo) => {
   const requestedAssets: string[] = [];
