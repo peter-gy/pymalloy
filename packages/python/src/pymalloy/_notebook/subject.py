@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import msgspec
 
+from pymalloy._authoring.annotations import annotation_content
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.source import DocumentKind, ModelSource
 from pymalloy._protocol.givens import given_values
@@ -155,7 +156,8 @@ def describe(value) -> Subject:
             pending.append(node.expression)
         elif isinstance(node, Expr):
             annotations.extend(
-                f"{route or 'render'}: {text}" for route, text in node._annotations
+                text if route == '"' else f"{route or 'render'}: {text}"
+                for route, text in node._annotations
             )
             scalars = [node._node]
             while scalars:
@@ -176,7 +178,10 @@ def describe(value) -> Subject:
             independent_source = True
         elif isinstance(node, Fragment):
             if node.kind == "annotation":
-                annotations.append(node.text.strip())
+                content = annotation_content(node.text) if node.name == '"' else None
+                annotations.append(
+                    content if content is not None else node.text.strip()
+                )
             elif node._operation and node._operation.kind == "sql":
                 independent_source = True
             elif node._operation and node._operation.kind == "ref":

@@ -6,6 +6,7 @@ import keyword
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
+from pymalloy._authoring.annotations import annotation_content
 from pymalloy._authoring.operations import to_python
 from pymalloy._authoring.syntax import Fragment
 from pymalloy._authoring.tables import TableReference
@@ -32,17 +33,8 @@ def _annotation_suffix(notes: list[Fragment]) -> str | None:
         if note.name is None or note.name in routes:
             return None
         routes.add(note.name)
-        lines = note.text.splitlines()
-        content_lines = []
-        for line in lines:
-            if not line.startswith("#") or line.startswith(("#|", "##")):
-                return None
-            boundary = next((i for i, char in enumerate(line) if char in " \t"), None)
-            if boundary is None:
-                return None
-            content_lines.append(line[boundary + 1 :])
-        content = "\n".join(content_lines)
-        if not content.strip():
+        content = annotation_content(note.text)
+        if content is None:
             return None
         suffix += (
             f".doc({content!r})"

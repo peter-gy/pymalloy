@@ -20,6 +20,20 @@ def annotation_text(text: str, route: str) -> str:
     return "".join(f"#{prefix} {line}\n" for line in text.splitlines())
 
 
+def annotation_content(text: str) -> str | None:
+    """Read reconstructible line annotations; leave opaque native syntax intact."""
+    content_lines = []
+    for line in text.splitlines():
+        if not line.startswith("#") or line.startswith(("#|", "##")):
+            return None
+        boundary = next((i for i, char in enumerate(line) if char in " \t"), None)
+        if boundary is None:
+            return None
+        content_lines.append(line[boundary + 1 :])
+    content = "\n".join(content_lines)
+    return content if content.strip() else None
+
+
 def with_annotation(
     notes: tuple[tuple[str, str], ...], text: str, route: str
 ) -> tuple[tuple[str, str], ...]:

@@ -53,7 +53,7 @@ def test_expression_and_fragment_outputs_expose_authored_structure():
         definition = to_dict(widget.get_state()["_definition"])
         assert definition["notebook"]["execution"] is None
         assert definition["notebook"]["references"] == ["orders.amount"]
-        assert definition["notebook"]["annotations"] == ['": Booked amount in USD.']
+        assert definition["notebook"]["annotations"] == ["Booked amount in USD."]
         assert widget._input["action"] == "inspect"
     finally:
         widget.close()
@@ -61,11 +61,16 @@ def test_expression_and_fragment_outputs_expose_authored_structure():
         pm.group_by(pm.col("region")),
         pm.aggregate(revenue=expression),
         pm.where(pm.call("coalesce", pm.col("kind"), pm.given("fallback")) == "chosen"),
-    )
+    ).doc("Totals by region.\nAmounts are USD; refunds are excluded.")
     widget = block._display_()
     try:
         info = to_dict(widget._definition["notebook"])
         assert info["source"] == block.text
+        assert '#" Booked amount in USD.' in info["source"]
+        assert info["annotations"] == [
+            "Totals by region.\nAmounts are USD; refunds are excluded.",
+            "Booked amount in USD.",
+        ]
         assert info["references"] == ["$fallback", "kind", "orders.amount", "region"]
         assert info["bindings"] == [
             {"name": "revenue", "kind": "field", "source": "orders.amount.sum()"}
