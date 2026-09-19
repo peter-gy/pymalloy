@@ -1,0 +1,197 @@
+docs/reference/export.md
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 43
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 55
+  s_eb8331ad77ae5f::t_604e7963243a8a 25
+packages/python/tests/test_runtime.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 533
+development_docs/architecture.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 36-37,65,70,80,212
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 74-79
+  s_eb8331ad77ae5f::t_9e60e867961f30 120
+packages/python/src/pymalloy/_headless/validation.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-114
+packages/python/src/pymalloy/_headless/api.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-309
+docs/guide/headless-python.md
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 21
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-20,22-52
+AGENTS.md
+  s_eb8331ad77ae5f::t_604e7963243a8a 16
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 3,17-18
+pyproject.toml
+  s_eb8331ad77ae5f::t_694d8cf560f9b5 13-17
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 12
+packages/python/src/pymalloy/export/jupyter.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 17
+packages/headless/README.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-14
+packages/python/src/pymalloy/_headless/compiler.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-115
+packages/python/tests/test_docstrings.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 21-23
+knip.jsonc
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 19
+packages/python/src/pymalloy/_headless/tooling.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-197
+apps/e2e/standalone/main.js
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 15,17-21
+  s_eb8331ad77ae5f::t_be5136262c5ded 9-10
+packages/python/src/pymalloy/widget.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 72
+docs/reference/cli.md
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 21-22
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 17
+packages/protocol/src/index.ts
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 4
+packages/python/tests/test_authoring.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 405
+docs/guide/authoring.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 5
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 222
+packages/python/src/pymalloy/export/_plan.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 57,86,106,108,171
+  s_eb8331ad77ae5f::t_694d8cf560f9b5 87-90
+packages/python/tests/test_compile.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 457,481,485,497
+packages/python/tests/test_profiles.py
+  s_eb8331ad77ae5f::t_4a3f2a4176a877 212
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 52-53,56,92,110,168,210-211,246,255,268,337,345,360
+skills/pymalloy/references/artifacts.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 13
+packages/python/src/pymalloy/export/_python.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 112
+docs/reference/python.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 36
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 37,41
+packages/python/src/pymalloy/_headless/process.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-199
+packages/python/src/pymalloy/export/_compile.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 13,64
+docs/guide/export.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 9,23-27,29
+packages/python/src/pymalloy/_authoring/draft.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 32-33,289,307,360,372,390,436,588,605
+packages/python/src/pymalloy/export/_document.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 35,87
+  s_eb8331ad77ae5f::t_9e60e867961f30 103
+apps/e2e/tests/browser.spec.ts
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 551-553
+docs/guide/getting-started.md
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 16
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 5,12
+apps/e2e/tests/pyodide.spec.ts
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 3
+packages/python/hatch_build.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 12,14
+packages/python/src/pymalloy/_model/inputs.py
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 188
+packages/headless/package.json
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-21
+packages/python/src/pymalloy/export/_bundle.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 64
+docs/guide/bundles.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 6
+packages/python/src/pymalloy/result.py
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 115
+docs/guide/dataframes.md
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 5,56,113
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 115
+  s_eb8331ad77ae5f::t_e7e9c44b7a97a3 81-82
+skills/pymalloy/references/triage.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 14
+packages/python/src/pymalloy/cli.py
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 78
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 76,179,269,294,344
+packages/python/pyproject.toml
+  s_eb8331ad77ae5f::t_694d8cf560f9b5 8,18
+packages/python/tests/test_result.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 8
+apps/docs/.vitepress/config.mts
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 11,34
+packages/python/src/pymalloy/authoring.py
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 120-121
+packages/protocol/src/records.ts
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1
+packages/headless/vite.config.ts
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-19
+docs/guide/data.md
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 12
+packages/protocol/README.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 4
+docs/guide/widget.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 3
+docs/guide/troubleshooting.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 20
+skills/pymalloy/SKILL.md
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 17-21
+packages/python/src/pymalloy/_headless/__init__.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-11
+packages/python/tests/test_widget.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 397
+  s_eb8331ad77ae5f::t_9e60e867961f30 345
+packages/python/tests/test_tooling.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 108,124
+packages/python/tests/test_agent.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 27,55,70,72
+development_docs/authoring.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 41,102,132,170
+  s_eb8331ad77ae5f::t_e7e9c44b7a97a3 130-131
+skills/pymalloy/references/api.md
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 131
+development_docs/testing.md
+  s_eb8331ad77ae5f::t_be5136262c5ded 76-78
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 61,97
+package.json
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 9
+docs/index.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 28,31
+README.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 10,40,60
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 51,66
+docs/reference/headless.md
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 114
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-113,115-146
+packages/python/package.json
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 10
+docs/reference/authoring.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 133
+development_docs/protocol.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 15,18,26,83
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 36
+docs/guide/overview.md
+  s_eb8331ad77ae5f::t_be5136262c5ded 40-43
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 14
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 22-38
+packages/python/src/pymalloy/__init__.py
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 25-28
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 93-94,162,166
+  s_eb8331ad77ae5f::t_694d8cf560f9b5 158-159
+packages/python/tests/test_headless.py
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 1-146
+packages/python/build.mjs
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 10,14
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 23
+packages/python/README.md
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 10,46,66
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 57,72
+packages/python/src/pymalloy/agent.py
+  s_eb8331ad77ae5f::t_c108adf6a0a5bb 19
+  s_eb8331ad77ae5f::t_93ad7b195d12b5 20
+  s_eb8331ad77ae5f::t_694d8cf560f9b5 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1b4e2b3edcb6c407f18c982dc1e531720b905249",
+  "prompts": {},
+  "sessions": {
+    "s_eb8331ad77ae5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b242-0385-7481-a8c4-64d8dd53252b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
