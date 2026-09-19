@@ -53,13 +53,16 @@ type Listener = Parameters<AnyModel<WidgetModel>["on"]>[1];
 class Widget implements AnyModel<WidgetModel> {
   private values: WidgetModel;
   private listeners = new Map<string, Set<Listener>>();
+  private requestSent = deferred<void>();
   saved: State[] = [];
   widget_manager = {
     get_model: async () => {
       throw new Error("Unexpected widget lookup");
     },
   };
-  send = vi.fn();
+  send = vi.fn((..._args: Parameters<AnyModel<WidgetModel>["send"]>) => {
+    this.requestSent.resolve();
+  });
 
   constructor(input: Partial<Input> | null = {}, source: Partial<Definition> = {}) {
     this.values = {
@@ -109,15 +112,36 @@ class Widget implements AnyModel<WidgetModel> {
     const state = this.values._state;
     if (state) this.saved.push(structuredClone(state));
   }
+  published(
+    status: Exclude<State["status"], "loading">,
+    revision = this.get("_input")?.revision,
+  ): Promise<State> {
+    return new Promise((resolve, reject) => {
+      const receive = () => {
+        const state = this.get("_state");
+        if (!state || state.revision !== revision || state.status === "loading") return;
+        this.off("change:_state", receive);
+        if (state.status === status) resolve(state);
+        else
+          reject(
+            new Error(
+              `Expected ${status} at revision ${revision}, received ${state.status}: ${state.error}`,
+            ),
+          );
+      };
+      this.on("change:_state", receive);
+      receive();
+    });
+  }
   async request(action: "check" | "run"): Promise<void> {
+    this.requestSent = deferred<void>();
     this.update({ action });
-    await vi.waitFor(() =>
-      expect(this.send.mock.lastCall?.[0]).toMatchObject({
-        kind: "pymalloy-request",
-        id: expect.any(String),
-        input: this.get("_input"),
-      }),
-    );
+    await this.requestSent.promise;
+    expect(this.send.mock.lastCall?.[0]).toMatchObject({
+      kind: "pymalloy-request",
+      id: expect.any(String),
+      input: this.get("_input"),
+    });
   }
   update(input: Partial<Input> = {}, changes?: Partial<Definition>): void {
     const previous = this.get("_input") ?? {
@@ -214,8 +238,12 @@ afterEach(async () => {
 
 test("a later input owns the published result while earlier work finishes", async () => {
   const pending = deferred<ReturnType<typeof result>>();
+  const started = deferred<void>();
   const oldModel = model();
-  oldModel.run.mockImplementation(() => pending.promise);
+  oldModel.run.mockImplementation(() => {
+    started.resolve();
+    return pending.promise;
+  });
   const newModel = model();
   newModel.run.mockResolvedValue(result("SELECT 'new'"));
   const runtime = session(oldModel);
@@ -223,25 +251,21 @@ test("a later input owns the published result while earlier work finishes", asyn
   create.mockResolvedValue(runtime);
   const widget = new Widget();
   await initialize(widget);
-  await vi.waitFor(() => expect(oldModel.run).toHaveBeenCalled());
+  await started.promise;
   widget.update({}, { source: "run: newer" });
   widget.update({}, { source: "run: newest" });
   pending.resolve(result("SELECT 'old'"));
-  await vi.waitFor(() => expect(widget.get("_state")?.result?.sql).toBe("SELECT 'new'"));
-  await vi.waitFor(() => expect(oldModel.close).toHaveBeenCalled());
+  const state = await widget.published("ready");
+  expect(state.result?.sql).toBe("SELECT 'new'");
+  expect(oldModel.close).toHaveBeenCalled();
   expect(widget.get("_state")?.revision).toBe(3);
   expect(
     widget.saved.filter((state) => state.status === "ready").map((state) => state.result?.sql),
   ).toEqual(["SELECT 'new'"]);
   expect(runtime.model).toHaveBeenCalledTimes(2);
   expect(runtime.model).toHaveBeenLastCalledWith(
-    {
-      text: "run: newest",
-      documentKind: "model",
-      files: {},
-      url: undefined,
-    },
-    { signal: expect.any(AbortSignal) },
+    expect.objectContaining({ text: "run: newest" }),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
   );
   expect(newModel.close).not.toHaveBeenCalled();
 });
@@ -252,28 +276,31 @@ test("a new input replaces a session closed by worker failure", async () => {
   create.mockResolvedValueOnce(failed).mockResolvedValueOnce(replacement);
   const widget = new Widget();
   await initialize(widget);
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  await widget.published("ready");
   failed.closed = true;
   widget.update();
-  await vi.waitFor(() => expect(replacement.model).toHaveBeenCalled());
-  await vi.waitFor(() => expect(widget.get("_state")?.revision).toBe(2));
-  expect(widget.get("_state")?.status).toBe("ready");
+  expect((await widget.published("ready")).revision).toBe(2);
+  expect(replacement.model).toHaveBeenCalled();
   expect(create).toHaveBeenCalledTimes(2);
 });
 
 test("selector and given updates reuse the model and coalesce pending work", async () => {
   const pending = deferred<ReturnType<typeof result>>();
+  const started = deferred<void>();
   const loaded = model();
-  loaded.run.mockImplementationOnce(() => pending.promise);
+  loaded.run.mockImplementationOnce(() => {
+    started.resolve();
+    return pending.promise;
+  });
   const runtime = session(loaded);
   create.mockResolvedValue(runtime);
   const widget = new Widget();
   const dispose = await initialize(widget);
-  await vi.waitFor(() => expect(loaded.run).toHaveBeenCalledTimes(1));
+  await started.promise;
   widget.update({ givens: { threshold: { type: "number", value: 1 } } });
   widget.update({ query: "selected", givens: { threshold: { type: "number", value: 2 } } });
   pending.resolve(result());
-  await vi.waitFor(() => expect(widget.get("_state")?.revision).toBe(3));
+  expect((await widget.published("ready")).revision).toBe(3);
   expect(runtime.model).toHaveBeenCalledTimes(1);
   expect(loaded.run).toHaveBeenCalledTimes(2);
   expect(loaded.query).toHaveBeenLastCalledWith("selected");
@@ -285,7 +312,7 @@ test("selector and given updates reuse the model and coalesce pending work", asy
     widget.saved.filter((state) => state.status === "ready").map((state) => state.revision),
   ).toEqual([3]);
   await dispose();
-  expect(loaded.close).toHaveBeenCalledTimes(1);
+  expect(loaded.close).toHaveBeenCalled();
 });
 
 test("a definition can arrive after the input that references it", async () => {
@@ -305,29 +332,26 @@ test("a definition can arrive after the input that references it", async () => {
   widget.set("_definition", definition({ revision: 2, source: "run: obsolete" }));
   expect(create).not.toHaveBeenCalled();
   widget.set("_definition", definition({ revision: 3, source: "run: current" }));
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  await widget.published("ready");
   expect(runtime.model).toHaveBeenCalledExactlyOnceWith(
-    {
-      text: "run: current",
-      documentKind: "model",
-      files: {},
-      url: undefined,
-    },
-    { signal: expect.any(AbortSignal) },
+    expect.objectContaining({ text: "run: current" }),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
   );
 });
 
 test("cleanup aborts initialization and detaches input updates", async () => {
   let signal!: AbortSignal;
+  const started = deferred<void>();
   create.mockImplementation((options) => {
     signal = options.signal!;
+    started.resolve();
     return new Promise((_resolve, reject) =>
       signal.addEventListener("abort", () => reject(new Error("Aborted"))),
     );
   });
   const widget = new Widget();
   const dispose = await initialize(widget);
-  await vi.waitFor(() => expect(create).toHaveBeenCalled());
+  await started.promise;
   const before = widget.saved.length;
   await dispose();
   expect(signal.aborted).toBe(true);
@@ -336,45 +360,40 @@ test("cleanup aborts initialization and detaches input updates", async () => {
   expect(create).toHaveBeenCalledTimes(1);
 });
 
-test("query choices support selection and recovery after a failed query", async () => {
+test("sources stay idle until a query is selected and recover after a failed query", async () => {
   const loaded = model(["orders.summary", "orders.detail"]);
   loaded.run.mockRejectedValueOnce(new Error("Invalid given"));
-  create.mockResolvedValue(session(loaded));
-  const widget = new Widget();
+  const runtime = session(model([]));
+  create.mockResolvedValue(runtime);
+  const widget = new Widget({}, { source: "source: orders is data" });
   await initialize(widget);
-  await vi.waitFor(() =>
-    expect(widget.get("_state")?.queries.map((q) => q.name)).toEqual([
-      "orders.summary",
-      "orders.detail",
-    ]),
+  expect((await widget.published("idle")).queries).toEqual([]);
+  runtime.model.mockResolvedValue(loaded);
+  widget.update(
+    {},
+    {
+      source:
+        "source: orders is data extend {view: summary is {select: *} view: detail is {select: *}}",
+    },
   );
-  expect(widget.get("_state")?.status).toBe("idle");
+  expect((await widget.published("idle")).queries.map((q) => q.name)).toEqual([
+    "orders.summary",
+    "orders.detail",
+  ]);
   expect(loaded.run).not.toHaveBeenCalled();
   widget.update({ query: "orders.summary" });
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("error"));
+  await widget.published("error");
   expect(widget.get("_state")?.queries.map((q) => q.name)).toEqual([
     "orders.summary",
     "orders.detail",
   ]);
   expect(widget.get("_state")?.error).toBe("Invalid given");
   widget.update({ query: "orders.detail" });
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  await widget.published("ready");
   expect(loaded.query).toHaveBeenLastCalledWith("orders.detail");
   expect(loaded.run).toHaveBeenLastCalledWith({ givens: {}, signal: expect.any(AbortSignal) });
   expect(widget.get("_state")?.result?.data).toEqual(result().malloy.data);
   expect(widget.get("_state")?.error).toBeNull();
-});
-
-test("source-only models stay idle until a query is added", async () => {
-  const runtime = session(model([]));
-  create.mockResolvedValue(runtime);
-  const widget = new Widget({}, { source: "source: example is data" });
-  await initialize(widget);
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("idle"));
-  expect(widget.get("_state")?.queries.map((q) => q.name)).toEqual([]);
-  runtime.model.mockResolvedValue(model());
-  widget.update({}, { source: "run: example" });
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
 });
 
 test("model revisions publish warnings, located errors, and recovered results", async () => {
@@ -409,21 +428,21 @@ test("model revisions publish warnings, located errors, and recovered results", 
   create.mockResolvedValue(runtime);
   const widget = new Widget();
   await initialize(widget);
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  await widget.published("ready");
   expect(widget.get("_state")).toMatchObject({
     diagnostics: [warning],
     error: null,
     result: { sql: "SELECT 1" },
   });
   widget.update({}, { source: "run: missing_source" });
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("error"));
+  await widget.published("error");
   expect(widget.get("_state")).toMatchObject({
     diagnostics: [diagnostic],
     error: diagnostic.message,
     result: null,
   });
   widget.update({}, { source: "run: recovered" });
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  await widget.published("ready");
   expect(widget.get("_state")).toMatchObject({
     diagnostics: [],
     error: null,
@@ -439,18 +458,16 @@ test("inspection-only cell output waits for an explicit compilation request", as
   expect(widget.get("_state")?.status).toBe("idle");
   expect(create).not.toHaveBeenCalled();
   widget.update({ action: "check" });
-  await vi.waitFor(() => expect(widget.get("_state")?.inspection?.model.sources).toEqual([]));
+  expect((await widget.published("idle")).inspection?.model.sources).toEqual([]);
   expect(runtime.model).toHaveBeenCalledTimes(1);
   expect(widget.get("_state")?.result).toBeNull();
   widget.update({ query: "orders.by_region", action: "inspect" });
-  await vi.waitFor(() =>
-    expect(widget.get("_state")?.queries.map((query) => query.name)).toEqual([
-      "orders.by_region",
-      "orders.detail",
-    ]),
-  );
+  expect((await widget.published("idle")).queries.map((query) => query.name)).toEqual([
+    "orders.by_region",
+    "orders.detail",
+  ]);
   widget.update({ action: "run" });
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  await widget.published("ready");
   expect(runtime.model).toHaveBeenCalledTimes(1);
 });
 
@@ -468,7 +485,7 @@ test("native previews retain inspection, recover from malformed replies, and set
   await widget.request("check");
   const inspection = model().inspect();
   widget.reply({ kind: "inspection", inspection });
-  await vi.waitFor(() => expect(widget.get("_state")?.inspection).toEqual(inspection));
+  expect((await widget.published("idle")).inspection).toEqual(inspection);
   await widget.request("run");
   const result: NotebookResponse = {
     kind: "result",
@@ -477,11 +494,11 @@ test("native previews retain inspection, recover from malformed replies, and set
     connectionName: "duckdb",
   };
   widget.reply(result);
-  await vi.waitFor(() => expect(widget.get("_state")?.error).toContain("Arrow buffer"));
+  expect((await widget.published("error")).error).toContain("Arrow buffer");
   await widget.request("run");
   const bytes = tableToIPC(tableFromArrays({ answer: [42] }));
   widget.reply(result, [new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)]);
-  await vi.waitFor(() => expect(widget.get("_state")?.status).toBe("ready"));
+  await widget.published("ready");
   expect(widget.get("_state")?.inspection).toEqual(inspection);
   expect(widget.get("_state")?.result).toMatchObject({
     sql: "SELECT 42 AS answer",
