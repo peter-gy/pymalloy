@@ -143,6 +143,19 @@ display(widget)"""),
             metadata=notebook.metadata,
         )
         nbformat.write(dataframe, notebooks / "dataframe.ipynb")
+        authoring = nbformat.v4.new_notebook(
+            cells=[
+                nbformat.v4.new_code_cell(
+                    'import pymalloy as pm\npm.col("amount").sum().doc("Booked amount in USD.")'
+                ),
+                nbformat.v4.new_code_cell(
+                    'import pyarrow as pa\norders = pm.data(pa.table({"amount": [20, 22]}), name="orders")\ncandidate = pm.draft().define(orders=orders).queries(total=pm.ref("orders").pipe(pm.query(pm.aggregate(total=pm.col("amount").sum()))))\ncandidate'
+                ),
+                nbformat.v4.new_code_cell("orders"),
+            ],
+            metadata=notebook.metadata,
+        )
+        nbformat.write(authoring, notebooks / "authoring.ipynb")
         model = root / "report.malloy"
         imported = root / "sales.malloy"
         imported.write_text(SOURCE)

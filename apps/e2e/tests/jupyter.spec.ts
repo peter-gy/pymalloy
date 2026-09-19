@@ -110,3 +110,49 @@ test("a captured Arrow input executes in the browser from a base-only kernel", a
   await page.getByRole("menuitem", { name: /Shut Down Kernel/ }).click();
   await expect(page.getByRole("button", { name: "No Kernel", exact: true })).toBeVisible();
 });
+
+test("Jupyter displays authored values through the standard MIME protocol", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/lab/tree/authoring.ipynb");
+  const notebook = page.getByRole("tabpanel", { name: "authoring.ipynb", exact: true });
+  await expect(notebook).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Python 3 (PyMalloy) | Idle", exact: true }),
+  ).toBeVisible();
+  const run = async (source: string) => {
+    await notebook.getByRole("textbox").filter({ hasText: source }).click();
+    await notebook.getByRole("button", { name: /Run this cell and advance/ }).click();
+  };
+  await run("import pymalloy as pm");
+  const views = notebook.getByRole("region", { name: "Malloy query", exact: true });
+  await expect(views).toHaveCount(1);
+  await expect(views.first().getByLabel("Malloy source", { exact: true })).toHaveText(
+    "amount.sum()",
+  );
+  await run("import pyarrow as pa");
+  const draft = views.nth(1);
+  await expect(draft.getByRole("status")).toHaveText("Ready to inspect");
+  await draft.getByText("Captured inputs", { exact: true }).click();
+  await expect(draft).toContainText("orders · 2 captured rows");
+  await draft.getByRole("button", { name: "Run query", exact: true }).click();
+  await expect(draft.getByRole("table")).toContainText("42");
+  await notebook
+    .getByRole("textbox")
+    .filter({ hasText: /^orders$/ })
+    .click();
+  await notebook.getByRole("button", { name: /Run this cell and advance/ }).click();
+  const source = views.nth(2);
+  await expect(source.getByRole("status")).toHaveText("Ready to inspect");
+  await source.getByRole("button", { name: "Run query", exact: true }).click();
+  await expect(source.getByRole("status")).toHaveText("2 rows");
+  await expect(source.getByRole("cell", { name: "20", exact: true })).toBeVisible();
+  await expect(source.getByRole("cell", { name: "22", exact: true })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("jupyter-grammar-inspector.png"),
+    fullPage: true,
+  });
+  await page.getByRole("menuitem", { name: "Kernel", exact: true }).click();
+  await page.getByRole("menuitem", { name: /Shut Down Kernel/ }).click();
+  await expect(page.getByRole("button", { name: "No Kernel", exact: true })).toBeVisible();
+});

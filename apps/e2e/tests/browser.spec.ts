@@ -461,6 +461,8 @@ test("a widget replaces an active query on its retained browser model", async ({
     const state: WidgetModel = {
       query: null,
       _state: null,
+      _request: null,
+      _transient: false,
       _runtime: {
         mvp: {
           mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
@@ -469,6 +471,17 @@ test("a widget replaces an active query on its retained browser model", async ({
       },
       _definition: {
         revision: 1,
+        queries: [],
+        notebook: {
+          kind: "Model",
+          source: "",
+          execution: "browser",
+          message: null,
+          bindings: [],
+          references: [],
+          annotations: [],
+          inputs: [],
+        },
         files: {},
         documentKind: "model",
         connectionName: "duckdb",
@@ -477,7 +490,7 @@ test("a widget replaces an active query on its retained browser model", async ({
           query: fast is duckdb.sql('SELECT 42 AS answer') -> {select: answer}
         `,
       },
-      _input: { revision: 1, definitionRevision: 1, query: "slow", givens: {} },
+      _input: { revision: 1, definitionRevision: 1, query: "slow", givens: {}, action: "run" },
     };
     const listeners = new Map<string, Set<() => void>>();
     const publications: Array<{
@@ -529,7 +542,13 @@ test("a widget replaces an active query on its retained browser model", async ({
         !message.data[1].startsWith("DESCRIBE")
       ) {
         replaced = true;
-        state._input = { definitionRevision: 1, givens: {}, revision: 2, query: "fast" };
+        state._input = {
+          definitionRevision: 1,
+          givens: {},
+          revision: 2,
+          query: "fast",
+          action: "run",
+        };
         for (const callback of listeners.get("change:_input") ?? []) callback();
       }
     };
@@ -562,6 +581,8 @@ test("a relocated widget executes absolute HTTP data without a native runtime", 
     const state: WidgetModel = {
       query: null,
       _state: null,
+      _request: null,
+      _transient: false,
       _runtime: {
         mvp: {
           mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
@@ -570,6 +591,17 @@ test("a relocated widget executes absolute HTTP data without a native runtime", 
       },
       _definition: {
         revision: 1,
+        queries: [],
+        notebook: {
+          kind: "Model",
+          source: "",
+          execution: "browser",
+          message: null,
+          bindings: [],
+          references: [],
+          annotations: [],
+          inputs: [],
+        },
         files: {},
         documentKind: "model",
         connectionName: "warehouse",
@@ -577,7 +609,7 @@ test("a relocated widget executes absolute HTTP data without a native runtime", 
         source: `run: warehouse.table(${JSON.stringify(url)}) -> { select: value }`,
         imports: {},
       },
-      _input: { revision: 1, definitionRevision: 1, query: null, givens: {} },
+      _input: { revision: 1, definitionRevision: 1, query: null, givens: {}, action: "run" },
     };
     let finished!: () => void;
     const ready = new Promise<void>((resolve) => {

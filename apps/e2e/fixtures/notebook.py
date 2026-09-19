@@ -9,10 +9,11 @@ def _():
     import marimo as mo
     from model import SALES, SOURCE
 
+    import pymalloy as pm
     from pymalloy import MalloyWidget
     from pymalloy.analysis import to_dict
 
-    return MalloyWidget, SALES, SOURCE, mo, to_dict
+    return MalloyWidget, SALES, SOURCE, mo, pm, to_dict
 
 
 @app.cell
@@ -57,6 +58,42 @@ def _(analysis, mo, to_dict):
         f"Python received: `{state.get('status')}`\n\nRows: `{state.get('rows', [])}`"
     )
     return
+
+
+@app.cell
+def _(pm, region):
+    notebook_expression = (
+        pm.col("amount").sum().doc(f"Booked amount in USD for {region.value}.")
+    )
+    notebook_expression
+    return (notebook_expression,)
+
+
+@app.cell
+def _(pm):
+    notebook_draft = (
+        pm.draft()
+        .define(values=pm.sql("SELECT 42 AS answer"))
+        .queries(answer=pm.ref("values").pipe(pm.query(pm.select(pm.col("answer")))))
+    )
+    notebook_draft
+    return (notebook_draft,)
+
+
+@app.cell
+def _(pm):
+    import duckdb
+
+    native_connection = duckdb.connect()
+    native_connection.execute(
+        "CREATE TABLE local_values AS SELECT 9007199254740993::BIGINT AS id, 1.2300::DECIMAL(12,4) AS amount, [1, NULL, 3] AS nested"
+    )
+    native_model = pm.model(
+        "run: duckdb.table('local_values') -> {select: *}", connection=native_connection
+    )
+    native_query = native_model.query()
+    native_query
+    return native_connection, native_model, native_query
 
 
 if __name__ == "__main__":
