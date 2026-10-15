@@ -3,8 +3,8 @@ packages:
   - apps/*
   - scripts
 catalog:
-  react: 19.3.0
-  react-dom: 19.3.0
+  react: 19.3.1
+  react-dom: 19.3.1
   "@types/react": 19.3.0
   "@types/react-dom": 19.3.0
   "@anywidget/react": 0.2.2
@@ -19,28 +19,28 @@ catalog:
   "process": 0.11.10
   "ts-json-schema-generator": 2.9.0
   "@oxlint/plugins": 1.76.0
-  knip: 6.32.2
-  portless: 0.15.6
+  knip: 6.41.0
+  portless: 0.15.8
   "@malloydata/malloy": 0.0.435
   "@malloydata/malloy-sql": 0.0.435
-  "@duckdb/node-api": 1.5.5-r.4
-  "@types/node": 22.20.1
+  "@duckdb/node-api": 1.5.6-r.1
+  "@types/node": 24.19.2
   "@types/emscripten": 1.41.6
   typescript: 6.0.3
   vite-plus: 0.3.0
   vite: npm:@voidzero-dev/vite-plus-core@0.3.0
-  vitepress: 2.0.0-alpha.19
-  "@duckdb/duckdb-wasm": 1.33.1-dev57.0
+  vitepress: 2.0.0-alpha.20
+  "@duckdb/duckdb-wasm": 1.33.1-dev65.0
   apache-arrow: 17.0.0
   "@anywidget/types": 0.4.0
-  "@playwright/test": 1.61.1
-  shiki: 4.4.3
+  "@playwright/test": 1.64.1
+  shiki: 4.5.0
   "@malloydata/syntax-highlight": 0.0.435
   "@malloydata/motly-ts-parser": 0.9.1
 overrides:
   vite: npm:@voidzero-dev/vite-plus-core@0.3.0
   vitest: 4.1.11
-  vitepress>vite: 8.2.0
+  vitepress>vite: 8.3.4
 publicHoistPattern:
   - vue
   - "@vue/*"
@@ -51,3 +51,9 @@ peerDependencyRules:
     vite: 0.3.0
 patchedDependencies:
   "@malloydata/malloy@0.0.435": patches/@malloydata__malloy@0.0.435.patch
+minimumReleaseAgeExclude:
+  - '@playwright/test@1.64.1'
+  - playwright-core@1.64.1
+  - playwright@1.64.1
+  - react-dom@19.3.1
+  - react@19.3.1
