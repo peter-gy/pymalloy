@@ -8,9 +8,9 @@ requires-python = ">=3.12"
 dependencies = [
   "agent-plugins>=0.2",
   "anywidget>=0.11",
-  "anywidget-bundle>=0.1.1",
-  "msgspec>=0.19",
-  "traitlets>=5",
+  "anywidget-bundle>=0.0.1",
+  "msgspec>=0.18.5",
+  "traitlets>=5.13",
 ]
 
 [project.urls]
@@ -21,7 +21,7 @@ Issues = "https://github.com/peter-gy/pymalloy/issues"
 
 [project.optional-dependencies]
 # Arrow timestamp rows use stdlib zoneinfo; tzdata also covers systems without an IANA database.
-headless = ["deno>=2.9.6,<3", "duckdb>=1.5", "pyarrow>=25.0", "tzdata>=2026.3"]
+headless = ["deno>=2.4.5,<3", "duckdb>=1.5", "pyarrow>=21.0", "tzdata>=2020.1"]
 
 [project.scripts]
 pymalloy = "pymalloy.cli:main"
