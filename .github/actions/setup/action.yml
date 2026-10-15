@@ -7,7 +7,7 @@ inputs:
     required: false
     default: "3.12"
   build:
-    description: Build JavaScript packages and stage Python assets.
+    description: Build JavaScript packages and install the Python workspace with its staged assets.
     required: false
     default: "true"
 
@@ -27,6 +27,7 @@ runs:
       run: corepack enable pnpm
 
     - name: Set up uv and Python
+      if: inputs.build == 'true'
       uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       with:
         enable-cache: true
@@ -39,5 +40,6 @@ runs:
       run: pnpm build
 
     - name: Install Python workspace
+      if: inputs.build == 'true'
       shell: bash
       run: uv sync --all-packages --all-extras --frozen
