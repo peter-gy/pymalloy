@@ -37,3 +37,11 @@ Queries expose `name`, `kind`, `location`, `sql({givens?})`, and
 
 Results contain `sql`, `columns`, `rows`, and `malloy`, the typed Malloy result
 used for rendering. [Data resolution](../guide/data.md) follows native DuckDB rules.
+Date and timestamp rows use JavaScript `Date` values. The Node driver truncates
+timestamp microseconds to milliseconds, so Malloy timestamp cells contain
+millisecond ISO strings such as `"2024-02-03T04:05:06.123Z"` for
+`TIMESTAMP '2024-02-03 04:05:06.123456'`.
+
+Fields containing `Infinity`, `-Infinity`, or `NaN` render as string fields in
+`malloy`, with every value in that field encoded as text. `rows` and `columns`
+retain the native numeric values and database types.

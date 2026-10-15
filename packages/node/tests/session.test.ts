@@ -699,6 +699,83 @@ test("inspection retains independent query outputs when a query requires givens"
   ]);
 });
 
+test("Session.run renders BLOB bytes in records, lists, and maps", async () => {
+  const runtime = await session();
+  const result = await runtime.run(`run: duckdb.sql("""
+    SELECT 'abc'::BLOB AS bytes, ''::BLOB AS empty,
+      {'items': ['abc'::BLOB, ''::BLOB], 'mapping': MAP(['key'], ['abc'::BLOB])} AS nested
+  """) -> {select: *}`);
+  expect(result.malloy.data).toEqual({
+    kind: "array_cell",
+    array_value: [
+      {
+        kind: "record_cell",
+        record_value: [
+          { kind: "sql_native_cell", sql_native_value: "[97,98,99]" },
+          { kind: "sql_native_cell", sql_native_value: "[]" },
+          {
+            kind: "sql_native_cell",
+            sql_native_value:
+              '{"items":[[97,98,99],[]],"mapping":[{"key":"key","value":[97,98,99]}]}',
+          },
+        ],
+      },
+    ],
+  });
+});
+
+test("Session.run renders non-finite doubles as text with matching field types", async () => {
+  const runtime = await session();
+  const result = await runtime.run(`run: duckdb.sql("""
+    SELECT v::DOUBLE AS value FROM (VALUES ('Infinity'), ('-Infinity'), ('NaN'), ('1.5')) AS t(v)
+  """) -> {select: value}`);
+  expect(result.rows).toEqual([
+    { value: Infinity },
+    { value: -Infinity },
+    { value: NaN },
+    { value: 1.5 },
+  ]);
+  expect(result.malloy.schema.fields).toMatchObject([
+    { name: "value", type: { kind: "string_type" } },
+  ]);
+  expect(JSON.parse(JSON.stringify(result.malloy)).data).toEqual({
+    kind: "array_cell",
+    array_value: ["Infinity", "-Infinity", "NaN", "1.5"].map((value) => ({
+      kind: "record_cell",
+      record_value: [{ kind: "string_cell", string_value: value }],
+    })),
+  });
+});
+
+test("Session.run exposes the Node driver's millisecond timestamp boundary", async () => {
+  const runtime = await session();
+  const result = await runtime.run(`run: duckdb.sql("""
+    SELECT DATE '2026-09-10' AS day,
+      TIMESTAMP '2024-02-03 04:05:06.123456' AS stamp,
+      TIMESTAMPTZ '2024-02-03 04:05:06.123456+00' AS zoned
+  """) -> {select: *}`);
+  expect(result.rows).toEqual([
+    {
+      day: new Date("2026-09-10T00:00:00.000Z"),
+      stamp: new Date("2024-02-03T04:05:06.123Z"),
+      zoned: new Date("2024-02-03T04:05:06.123Z"),
+    },
+  ]);
+  expect(result.malloy.data).toEqual({
+    kind: "array_cell",
+    array_value: [
+      {
+        kind: "record_cell",
+        record_value: [
+          { kind: "date_cell", date_value: "2026-09-10T00:00:00.000Z" },
+          { kind: "timestamp_cell", timestamp_value: "2024-02-03T04:05:06.123Z" },
+          { kind: "timestamp_cell", timestamp_value: "2024-02-03T04:05:06.123Z" },
+        ],
+      },
+    ],
+  });
+});
+
 test("close interrupts an executing query and drains accepted queued work", async () => {
   const runtime = await session();
   await runtime.connection.run(

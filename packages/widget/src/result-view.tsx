@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef } from "react";
 import * as stylex from "@stylexjs/stylex";
 import { MalloyRenderer } from "@malloydata/render";
-import type { Cell, Result } from "@malloydata/malloy-interfaces";
+import type { Result } from "@malloydata/malloy-interfaces";
 import { colors, tokens } from "./tokens.stylex";
 
 export default memo(function ResultView({ result }: { result: Result }) {
@@ -52,8 +52,7 @@ function mountResult(host: HTMLDivElement, result: Result) {
   try {
     styles.observe(document.head, { childList: true });
     tables.observe(body, { childList: true, subtree: true });
-    const data = result.data && restoreNumbers(result.data);
-    viz.setResult(data === result.data ? result : { ...result, data });
+    viz.setResult(result);
     const metadata = viz.getMetadata();
     const fill =
       metadata && viz.getActivePlugin(metadata.getRootField().key)?.sizingStrategy === "fill";
@@ -83,26 +82,3 @@ const stylesForResult = stylex.create({
   table: { minWidth: 0 },
   fill: { height: 360, minWidth: 0 },
 });
-
-function restoreNumbers<T extends Cell>(cell: T): T {
-  if (
-    cell.kind === "number_cell" &&
-    cell.string_value &&
-    ["NaN", "Infinity", "-Infinity"].includes(cell.string_value)
-  )
-    return { ...cell, number_value: Number(cell.string_value) };
-  if (cell.kind !== "array_cell" && cell.kind !== "record_cell") return cell;
-  const children = cell.kind === "array_cell" ? cell.array_value : cell.record_value;
-  let changed: Cell[] | undefined;
-  for (let i = 0; i < children.length; i++) {
-    const value = restoreNumbers(children[i]);
-    if (value !== children[i]) {
-      changed ??= children.slice();
-      changed[i] = value;
-    }
-  }
-  if (!changed) return cell;
-  return cell.kind === "array_cell"
-    ? { ...cell, array_value: changed }
-    : { ...cell, record_value: changed };
-}
