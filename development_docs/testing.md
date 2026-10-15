@@ -75,10 +75,10 @@ Playwright starts and stops four servers defined in
 
 | Host               | Port  | Boundary exercised                                                                                  |
 | ------------------ | ----- | --------------------------------------------------------------------------------------------------- |
-| marimo             | 28441 | Handwritten notebook: rendering, reactive Python readback, and input updates                       |
+| marimo             | 28441 | Handwritten notebook: rendering, reactive Python readback, and input updates                        |
 | JupyterLab         | 28442 | Kernel communication, several views of one widget, recovery, and close                              |
 | Standalone Pyodide | 28443 | Base-package installation in browser Python, binary inputs, precise readback, and browser execution |
-| Exported marimo    | 28444 | Widget notebook produced by `pymalloy export --format marimo --profile widget`                     |
+| Exported marimo    | 28444 | Widget notebook produced by `pymalloy export --format marimo --profile widget`                      |
 
 Pyodide supplies an anywidget-model adapter to test the packaged frontend against
 browser Python. Its bootstrap loads `micropip` and the unvendored standard-library
