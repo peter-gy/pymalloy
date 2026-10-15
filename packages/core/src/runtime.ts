@@ -1,4 +1,6 @@
 import { isMalloyText, selectQuery } from "./selection";
+import { drive, type Host } from "./drive";
+import type { OperationOptions } from "./types";
 import type { CompiledModel } from "./model";
 import type { Job } from "./job";
 import type { SourcePosition } from "./metadata";
@@ -16,8 +18,7 @@ interface InspectOptions {
 }
 type Prepared = ReturnType<CompiledModel["prepare"]> extends Job<infer T> ? T : never;
 
-/** @title ModelDriver */
-export interface ModelDriver {
+interface ModelDriver {
   assertAvailable(): void;
   compile<T>(job: Job<T>): Promise<T>;
   run(sql: string, malloy?: Result["malloy"]): Promise<Result>;
@@ -25,13 +26,24 @@ export interface ModelDriver {
   release(): void;
 }
 
+let createModel: (compiled: CompiledModel, driver: ModelDriver) => Model;
+let createQuery: (
+  info: QueryDescriptor,
+  compile: (options: QueryOptions) => Promise<string>,
+  execute: (options: QueryOptions) => Promise<Result>,
+) => Query;
+
 export class Model {
   readonly queries: readonly Readonly<QueryDescriptor>[];
-  constructor(
-    private compiled: CompiledModel | undefined,
-    private driver: ModelDriver | undefined,
-  ) {
-    this.queries = compiled!.queries;
+  private compiled?: CompiledModel;
+  private driver?: ModelDriver;
+  private constructor(compiled: CompiledModel, driver: ModelDriver) {
+    this.compiled = compiled;
+    this.driver = driver;
+    this.queries = compiled.queries;
+  }
+  static {
+    createModel = (compiled, driver) => new Model(compiled, driver);
   }
   private current() {
     if (!this.compiled || !this.driver) throw new Error("Model is closed");
@@ -70,7 +82,7 @@ export class Model {
         return finish(prepared, driver);
       }, options);
     };
-    return new Query(
+    return createQuery(
       info,
       (options) => execute(options, (prepared) => prepared.sql),
       (options) =>
@@ -96,7 +108,7 @@ export class Query implements QueryDescriptor {
   readonly name: string;
   readonly kind: QueryDescriptor["kind"];
   readonly location: QueryDescriptor["location"];
-  constructor(
+  private constructor(
     info: QueryDescriptor,
     private readonly compile: (options: QueryOptions) => Promise<string>,
     private readonly execute: (options: QueryOptions) => Promise<Result>,
@@ -105,10 +117,138 @@ export class Query implements QueryDescriptor {
     this.kind = info.kind;
     this.location = info.location;
   }
+  static {
+    createQuery = (info, compile, execute) => new Query(info, compile, execute);
+  }
   async sql(options: QueryOptions = {}): Promise<string> {
     return this.compile(options);
   }
   async run(options: QueryOptions = {}): Promise<Result> {
     return this.execute(options);
+  }
+}
+
+interface Execution {
+  host(): Host;
+  run(sql: string, malloy?: Result["malloy"]): Promise<Result>;
+  submit?<T>(task: () => Promise<T>, options?: QueryOptions): Promise<T>;
+  assertAvailable?(): void;
+  release?(): void;
+}
+
+export class Runtime {
+  private pending: Promise<void> = Promise.resolve();
+  private accepting = true;
+  private active?: AbortController;
+  private failure?: Error;
+
+  private readonly models = new Set<Model>();
+  constructor(private readonly interrupt: () => void | Promise<void>) {}
+
+  get closed(): boolean {
+    return !this.accepting;
+  }
+
+  get signal(): AbortSignal | undefined {
+    return this.active?.signal;
+  }
+
+  assertHealthy(): void {
+    if (this.failure) throw this.failure;
+  }
+
+  assertActive(): void {
+    this.assertHealthy();
+    this.active?.signal.throwIfAborted();
+  }
+
+  run<T>(task: () => Promise<T>, options: OperationOptions = {}): Promise<T> {
+    if (!this.accepting) return Promise.reject(new Error("Session is closed"));
+    try {
+      options.signal?.throwIfAborted();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    const signal = options.signal;
+    return new Promise<T>((resolve, reject) => {
+      let controller: AbortController | undefined;
+      let interrupted: Promise<void> | undefined;
+      let settled = false;
+      const aborted = () => {
+        if (settled) return;
+        settled = true;
+        const reason =
+          signal?.reason ??
+          new DOMException("Operation was aborted", "AbortError");
+        reject(reason);
+        if (controller) {
+          controller.abort(reason);
+          interrupted = Promise.resolve().then(() => this.interrupt());
+          // The queue observes this promise after the active task settles.
+          void interrupted.catch(() => undefined);
+        }
+      };
+      signal?.addEventListener("abort", aborted, { once: true });
+      this.pending = this.pending.then(async () => {
+        if (settled) {
+          signal?.removeEventListener("abort", aborted);
+          return;
+        }
+        controller = new AbortController();
+        this.active = controller;
+        try {
+          this.assertActive();
+          const result = await task();
+          if (!settled) resolve(result);
+        } catch (error) {
+          if (!settled) reject(error);
+        } finally {
+          settled = true;
+          signal?.removeEventListener("abort", aborted);
+          try {
+            await interrupted;
+          } finally {
+            this.active = undefined;
+          }
+        }
+      });
+      // A failed interrupt is terminal. Ordinary operation errors leave the queue healthy.
+      this.pending = this.pending.catch((error) => {
+        this.failure = error instanceof Error ? error : new Error(String(error));
+        this.accepting = false;
+      });
+    });
+  }
+
+  close(): Promise<void> {
+    this.accepting = false;
+    return this.pending;
+  }
+  compile<T>(job: Job<T>, host: Host): Promise<T> {
+    return drive(job, host);
+  }
+  model(compiled: CompiledModel, execution: Execution): Model {
+    const model = createModel(compiled, {
+      assertAvailable: () => {
+        execution.assertAvailable?.();
+        this.assertHealthy();
+      },
+      compile: (job) => drive(job, execution.host()),
+      run: (sql, template) => {
+        this.assertActive();
+        return execution.run(sql, template);
+      },
+      submit: (task, options) =>
+        execution.submit ? execution.submit(task, options) : this.run(task, options),
+      release: () => {
+        this.models.delete(model);
+        execution.release?.();
+      },
+    });
+    this.models.add(model);
+    return model;
+  }
+  release(): void {
+    for (const model of this.models) model.close();
   }
 }

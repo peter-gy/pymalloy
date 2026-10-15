@@ -7,15 +7,14 @@ import {
   routeOf,
   payloadOf,
   type SourceDef,
-  MalloyTranslator,
-  Parse,
+  type MalloyTranslator,
   type ModelDef,
   type FieldDef,
   type AtomicTypeDef,
 } from "@malloydata/malloy";
 import { prettify, type MalloyParserListener } from "@malloydata/malloy/internal";
 
-/** Pinned generated listener types; grammar changes fail type checking here. */
+/** Generated Malloy listener types make grammar drift fail typechecking. */
 export type NativeListener = MalloyParserListener;
 export type NativeContext<Event extends keyof NativeListener> = Parameters<
   NonNullable<NativeListener[Event]>
@@ -25,18 +24,6 @@ export function parseTree(
   translator: MalloyTranslator,
 ): ReturnType<MalloyTranslator["parseStep"]["step"]>["parse"] {
   return translator.parseStep.step(translator).parse;
-}
-
-export function createTranslator(...args: ConstructorParameters<typeof MalloyTranslator>) {
-  return new MalloyTranslator(...args);
-}
-
-export function createModel(...args: ConstructorParameters<typeof Model>) {
-  return new Model(...args);
-}
-
-export function createParse(...args: ConstructorParameters<typeof Parse>) {
-  return new Parse(...args);
 }
 
 export function exportedViews(model: Model): Array<{ source: string; view: string }> {
@@ -159,7 +146,7 @@ export function importedModel(translator: MalloyTranslator, url: string): Model 
   const dependency = translator.translatorForDependency(url);
   if (!dependency) return undefined;
   const definition = dependency.translate().modelDef;
-  return definition ? createModel(definition, dependency.problems(), [url]) : undefined;
+  return definition ? new Model(definition, dependency.problems(), [url]) : undefined;
 }
 
 /** Malloy replaces unavailable table-connection details with this fallback diagnostic. */

@@ -1,11 +1,4 @@
-export {
-  CompiledModel,
-  type DocumentCell,
-  type MarkdownCell,
-  type QueryCell,
-  type CheckOptions,
-  type CheckReport,
-} from "./model";
+export type { DocumentCell, MarkdownCell, QueryCell, CheckOptions, CheckReport } from "./model";
 export type {
   Column,
   Value,
@@ -13,21 +6,12 @@ export type {
   Result,
   QueryDescriptor,
   QuerySelection,
+  MalloyQuery,
   QueryOptions,
   DocumentOptions,
   OperationOptions,
   ModelSource,
 } from "./types";
-export {
-  Job,
-  type Needs,
-  type SchemaNeed,
-  type TableSchemaNeed,
-  type SQLSchemaNeed,
-  type Fulfilled,
-  type Step,
-  type Task,
-} from "./job";
 export type { GivenValue } from "@malloydata/malloy";
 export type {
   SourcePosition,
@@ -38,7 +22,6 @@ export type {
   SourceSpan,
 } from "./tools";
 export { ToolingError, type Diagnostic } from "./diagnostics";
-export type { LoadOptions } from "./compile";
 export type { Inspection, ReferenceInfo } from "./inspect";
 export type {
   AnnotationInfo,
@@ -48,7 +31,6 @@ export type {
   SourceRange,
 } from "./metadata";
 export type { NativeMetadata, AnnotatedObject, RoutedAnnotation } from "./upstream";
-export { Model, Query, type ModelDriver } from "./runtime";
-export { Operations } from "./operations";
+export { Model, Query } from "./runtime";
 
 export { defaultSourceURL, defaultSourceFilename, documentKind, type DocumentKind } from "./source";

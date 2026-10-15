@@ -3,10 +3,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import type * as CompilerAPI from "@malloy-runtime/compiler";
+import type * as CompilerAPI from "@malloy-runtime/compiler/jobs";
 import type * as ToolingAPI from "@malloy-runtime/compiler/tooling";
-import type { Job } from "@malloy-runtime/compiler";
-import { connection, drive } from "@malloy-runtime/duckdb";
+import type { Job } from "@malloy-runtime/compiler/jobs";
+import { Runtime } from "@malloy-runtime/compiler/adapters";
+import { connection, fields } from "@malloy-runtime/duckdb";
 
 const root = resolve(import.meta.dirname, "..");
 
@@ -21,7 +22,7 @@ if (!values.output) throw new Error("Pass --output timings.json");
 const samples = Number(values.samples);
 if (!Number.isSafeInteger(samples) || samples < 1) throw new Error("samples must be positive");
 const { CompiledModel }: typeof CompilerAPI = await import(
-  pathToFileURL(resolve(root, values.compiler, "index.mjs")).href
+  pathToFileURL(resolve(root, values.compiler, "jobs.mjs")).href
 );
 const { checkSource, compilerVersion }: typeof ToolingAPI = await import(
   pathToFileURL(resolve(root, values.compiler, "tooling.mjs")).href
@@ -35,7 +36,12 @@ const host = {
     throw new Error("Fixture imports must be closed");
   },
 };
-const execute = <T>(job: Job<T>) => drive(job, host);
+const runtime = new Runtime(() => undefined);
+const execute = <T>(job: Job<T>) =>
+  runtime.compile(job, {
+    readURL: host.readURL,
+    schema: async () => fields(await host.describe()),
+  });
 async function measure<T>(name: string, operation: () => T | Promise<T>): Promise<T> {
   const begin = performance.now();
   const result = await operation();

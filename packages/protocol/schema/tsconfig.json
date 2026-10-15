@@ -3,7 +3,8 @@
   "compilerOptions": {
     "paths": {
       "@malloy-runtime/compiler": ["../../core/src/index.ts"],
-      "@malloy-runtime/compiler/tooling": ["../../core/src/tooling.ts"]
+      "@malloy-runtime/compiler/tooling": ["../../core/src/tooling.ts"],
+      "@malloy-runtime/compiler/jobs": ["../../core/src/jobs.ts"]
     }
   },
   "include": ["../src/records.ts"]

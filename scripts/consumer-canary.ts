@@ -46,7 +46,6 @@ try {
     `
     export * as compiler from '@malloy-runtime/compiler';
     export * as tooling from '@malloy-runtime/compiler/tooling';
-    export * as types from '@malloy-runtime/compiler/types';
     export * as duckdb from '@malloy-runtime/duckdb';
     export * as arrow from '@malloy-runtime/duckdb/arrow';
     export * as native from '@malloy-runtime/node';

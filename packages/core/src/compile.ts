@@ -1,8 +1,9 @@
 import type { DocumentKind } from "./source";
-import { createTranslator, createModel, createParse, connectionProblems } from "./upstream";
+import { connectionProblems } from "./upstream";
 import {
-  type MalloyTranslator,
-  type Model,
+  Parse,
+  MalloyTranslator,
+  Model,
   sqlKey,
   type ModelDef,
   type DocumentLocation,
@@ -63,7 +64,7 @@ export function* loadSource({
       root && inputSource === undefined ? url.href : `memory://pymalloy/compile-${sequence}.malloy`;
     const origin = root ? url.href : (input.location?.url ?? "memory://pymalloy/query.malloy");
     locations.set(identity, origin);
-    const translator = createTranslator(identity, url.href, {
+    const translator = new MalloyTranslator(identity, url.href, {
       urls: { ...Object.fromEntries(imports), [identity]: input.source },
     });
     const missingConnections = new Set<string>();
@@ -84,7 +85,7 @@ export function* loadSource({
           );
         }
         return {
-          model: createModel(
+          model: new Model(
             response.modelDef,
             response.problems ?? [],
             [...(input.base?.model.fromSources ?? []), ...(response.fromSources ?? [])],
@@ -203,7 +204,7 @@ export function* loadSource({
     document,
     documentKind,
     imports,
-    parse: createParse(translation.translator),
+    parse: new Parse(translation.translator),
     connection,
   };
 }

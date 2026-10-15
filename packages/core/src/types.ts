@@ -68,16 +68,4 @@ export interface DocumentOptions extends QueryOptions {
   queries?: string[];
   all?: boolean;
 }
-export type { GivenValue } from "@malloydata/malloy";
 export type { ModelSource } from "./model";
-export type { Diagnostic } from "./diagnostics";
-export type {
-  SourceLocation,
-  SourcePosition,
-  SourceRange,
-  AnnotationInfo,
-  GivenInfo,
-  ImportInfo,
-} from "./metadata";
-
-export type { DocumentKind } from "./source";

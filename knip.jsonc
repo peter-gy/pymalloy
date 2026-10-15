@@ -4,14 +4,16 @@
   "workspaces": {
     "scripts": { "entry": ["*.ts"] },
     "packages/duckdb": { "entry": ["src/index.ts", "src/arrow.ts"] },
-    "packages/core": { "entry": ["src/index.ts", "src/tooling.ts", "src/types.ts"] },
+    "packages/core": {
+      "entry": ["src/index.ts", "src/tooling.ts", "src/jobs.ts", "src/adapters.ts"],
+    },
     "packages/widget": { "ignoreDependencies": ["process"] },
     "packages/protocol": { "entry": ["src/records.ts"] },
     "apps/e2e": {
       "vite": { "config": "standalone/vite.config.ts" },
     },
     "packages/browser": {
-      // process is injected by the bundler; DuckDB-WASM declarations reference Emscripten globals.
+      // process is injected by the bundler. DuckDB-WASM declarations reference Emscripten globals.
       "ignoreDependencies": ["process", "@types/emscripten"],
     },
     "packages/python": {

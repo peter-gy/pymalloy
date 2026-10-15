@@ -1,14 +1,8 @@
 import { defaultSourceURL, type DocumentKind } from "./source";
 import { tableReferences } from "./tables";
-import { Malloy } from "@malloydata/malloy";
+import { Malloy, Parse, MalloyTranslator } from "@malloydata/malloy";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
-import {
-  formatMalloy,
-  createTranslator,
-  createParse,
-  parseTree,
-  type NativeListener,
-} from "./upstream";
+import { formatMalloy, parseTree, type NativeListener } from "./upstream";
 import type { SourcePosition, SourceRange, ImportInfo } from "./metadata";
 import { diagnostics, ToolingError, offsetDiagnostics, type Diagnostic } from "./diagnostics";
 
@@ -88,10 +82,10 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
       help: null,
     };
   }
-  const translator = createTranslator(url.href, url.href, {
+  const translator = new MalloyTranslator(url.href, url.href, {
     urls: { [url.href]: document.source },
   });
-  const parsed = createParse(translator);
+  const parsed = new Parse(translator);
   const symbol = (value: (typeof parsed.symbols)[number]): SymbolInfo => ({
     name: value.name,
     type: value.type,
@@ -149,10 +143,10 @@ export function parseSource(source: string, options: ParseOptions = {}): ParseRe
   for (const statement of document.statements ?? []) {
     if (statement.type !== "sql") continue;
     for (const embedded of statement.embeddedMalloyQueries) {
-      const child = createTranslator(url.href, url.href, {
+      const child = new MalloyTranslator(url.href, url.href, {
         urls: { [url.href]: `${RUN_PREFIX}${embedded.query}` },
       });
-      const query = createParse(child);
+      const query = new Parse(child);
       void query.symbols;
       problems.push(
         ...offsetDiagnostics(
