@@ -107,10 +107,8 @@ including transitive dependencies. Respect that [release-age policy](https://pnp
 during upgrades. Wait for the release to age or review a narrowly scoped exception
 before recording it in workspace configuration.
 
-Published Python lower bounds need a separate environment. Build a wheel, resolve
-its direct dependencies with `--resolution lowest-direct`, install the test
-producers and hosts, then run the normal Python suite against that wheel.
-Use `uv run --isolated --no-project` to keep the root development group's higher
-bounds out of that resolution. Repeat for base and headless installations and
-record the actual resolved versions. The locked development suite proves the
-locked combination. A lower-bound claim needs the isolated result too.
+Published Python lower bounds need a separate environment.
+`scripts/test-python-floors.sh` builds the wheel, installs it with every runtime
+and `headless` dependency pinned to its declared lower bound, and runs the Python
+suite against that installation. CI runs it on every change. Lower a bound only
+when that script passes with the new floor.
