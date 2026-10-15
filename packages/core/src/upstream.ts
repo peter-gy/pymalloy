@@ -89,15 +89,20 @@ function objectAnnotations(sources: SourceInfo[]): AnnotatedObject[] {
 
 export function nativeMetadata(model: Model, definition: ModelDef): NativeMetadata {
   const { named, unnamed } = model.queries();
-  const queries = [
-    ...named.map((name) => model.getPreparedQueryByName(name)),
-    ...Array.from({ length: unnamed }, (_, index) => model.getPreparedQueryByIndex(index)),
-  ];
-  const required = queries.some((query) =>
-    [...query.givens.values()].some((given) => given.default === undefined),
+  const required = (query: ReturnType<Model["getPreparedQueryByName"]>) =>
+    [...query.givens.values()].some((given) => given.default === undefined);
+  const unbound = new Set(named.filter((name) => required(model.getPreparedQueryByName(name))));
+  const unboundRuns = new Set(
+    Array.from({ length: unnamed }, (_, index) => index).filter((index) =>
+      required(model.getPreparedQueryByIndex(index)),
+    ),
   );
-  const stable = required ? null : modelDefToModelInfo(definition);
-  const entries = new Map(stable?.entries.map((entry) => [entry.name, entry]));
+  const stable = modelDefToModelInfo({
+    ...definition,
+    exports: definition.exports.filter((name) => !unbound.has(name)),
+    queryList: definition.queryList.filter((_, index) => !unboundRuns.has(index)),
+  });
+  const entries = new Map(stable.entries.map((entry) => [entry.name, entry]));
   const sources = model.exportedExplores.map((explore) => {
     const entry = entries.get(explore.name);
     if (entry?.kind === "source") {

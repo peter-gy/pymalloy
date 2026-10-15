@@ -656,6 +656,38 @@ test("Session.run preserves TIME, INTERVAL and bigint MAP values through renderi
   expect(() => JSON.stringify(result.malloy)).not.toThrow();
 });
 
+test("inspection retains independent query outputs when a query requires givens", async () => {
+  const runtime = await session();
+  const model = await runtime.model({
+    text: `
+    ##! experimental.givens
+    given: cutoff :: number
+    source: numbers is duckdb.sql('SELECT 42 AS value')
+    query: filtered is numbers -> {select: value where: value > $cutoff}
+    query: ready is numbers -> {select: doubled is value * 2}
+    run: numbers -> {select: value where: value > $cutoff}
+    run: numbers -> {select: value}
+  `,
+  });
+  const inspection = model.inspect();
+  expect(inspection.queries.map((query) => query.name)).toEqual([
+    "run:0",
+    "run:1",
+    "filtered",
+    "ready",
+  ]);
+  expect(inspection.model.model).toMatchObject({
+    entries: [
+      { name: "numbers", schema: { fields: [{ name: "value", type: { kind: "number_type" } }] } },
+      { name: "ready", schema: { fields: [{ name: "doubled", type: { kind: "number_type" } }] } },
+    ],
+    anonymous_queries: [{ schema: { fields: [{ name: "value", type: { kind: "number_type" } }] } }],
+  });
+  expect((await model.query("filtered").run({ givens: { cutoff: 0 } })).rows).toEqual([
+    { value: 42 },
+  ]);
+});
+
 test("close interrupts an executing query and drains accepted queued work", async () => {
   const runtime = await session();
   await runtime.connection.run(

@@ -79,7 +79,10 @@ test("valid models expose schemas and required givens before runtime binding", a
       ],
     },
   });
-  expect(inspection.model.model).toBeNull();
+  expect(inspection.model.model).toMatchObject({
+    entries: [{ name: "values" }],
+    anonymous_queries: [],
+  });
   expect(inspection.givens).toMatchObject([
     { name: "threshold", type: "number", required: true, defaultText: null },
   ]);
