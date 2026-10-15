@@ -1,5 +1,7 @@
 # Modeling practices
 
+[Malloy](https://docs.malloydata.dev/) defines sources, measures, and relationships.
+
 Build definitions that answer the user's question and preserve the assumptions
 needed to interpret the result.
 
@@ -16,7 +18,7 @@ join can still encode the wrong relationship. Missing a declared key is not by
 itself proof of incorrect aggregation: Malloy can synthesize distinct keys.
 
 Validate assumptions through Malloy queries against the model being authored.
-Use `.validate()` counterexamples for machine checks. Keep the query and the
+Use `connection.validate(draft, checks)` counterexamples for machine checks. Keep the query and the
 finding together so the agent can explain what was tested.
 
 ## Define business meaning

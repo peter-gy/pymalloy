@@ -30,21 +30,15 @@ candidate = (
         )
     )
 )
-accepted = (
-    pm.connect()
-    .validate(
+with pm.connect() as con:
+    accepted = con.validate(
         candidate,
         {
             "unique_id": pm.source("orders").pipe(
-                pm.view()
-                .group_by(pm.col("id"))
-                .aggregate(n=pm.count())
-                .having(pm.col("n") > 1)
+                pm.view().group_by("id").aggregate(n=pm.count()).having(pm.col("n") > 1)
             )
         },
-    )
-    .require_valid()
-)
+    ).require_valid()
 
 with TemporaryDirectory() as directory:
     artifact = bundle(accepted, Path(directory) / "sales", query="by_region")

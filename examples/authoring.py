@@ -21,7 +21,8 @@ orders = (
     .doc("One row per order, with amounts in USD.")
 )
 candidate = pm.draft().sources(orders=orders)
-report = pm.connect().validate(
+connection = pm.connect()
+report = connection.validate(
     candidate,
     {
         "unique_order_id": pm.source("orders").pipe(
@@ -38,6 +39,7 @@ report = pm.connect().validate(
         ),
     },
 )
+connection.close()
 with TemporaryDirectory() as directory:
     path = report.save(Path(directory) / "orders.malloy", warnings_as_errors=True)
     loaded = pm.read_model(path)
@@ -51,12 +53,13 @@ with TemporaryDirectory() as directory:
             average_order=pm.col("amount").avg().doc("Mean order USD.")
         )
     )
-    assert "average_order" not in loaded["orders"].names
-    model = pm.connect().model(updated)
+    assert updated["orders"]["average_order"].equals(pm.col("amount").avg())
+    connection = pm.connect()
+    model = connection.model(updated)
     try:
         assert model.query("orders.by_region").preview().to_pylist() == [
             {"region": "North", "revenue": 42}
         ]
         print(model.query("orders.by_region").preview().to_pylist())
     finally:
-        model.close()
+        connection.close()
