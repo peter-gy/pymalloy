@@ -9,10 +9,10 @@ from typing import Any, Self
 import duckdb as native_duckdb
 
 from pymalloy._authoring.draft import Draft
-from pymalloy._authoring.syntax import Fragment
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.source import DocumentKind, ModelSource
 from pymalloy.analysis import CheckReport, SourcePosition
+from pymalloy.authoring import Source
 from pymalloy.errors import ClosedError
 from pymalloy.validation import DocumentationPolicy, Validation, _checked
 
@@ -222,7 +222,7 @@ class Connection:
     def validate(
         self,
         draft: Draft,
-        checks: Mapping[str, Fragment] | None = None,
+        checks: Mapping[str, Source] | None = None,
         *,
         givens: Mapping[str, Any] | None = None,
         documentation: DocumentationPolicy | None = None,

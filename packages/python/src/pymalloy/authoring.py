@@ -1,19 +1,25 @@
-"""Compose Malloy model syntax from symbolic scalar expressions and query clauses."""
+r"""Build immutable Malloy sources, reusable views, and editable model drafts.
+
+Source methods declare fields, joins, and saved views. View methods describe a
+query stage. Malloy resolves their names, types, and execution semantics.
+"""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Self
 
 from pymalloy._authoring.identifiers import identifier
 from pymalloy._authoring.syntax import (
-    Fragment,
+    Syntax as _Syntax,
+)
+from pymalloy._authoring.syntax import (
+    _notes,
     binding,
     block,
     construct,
     named_clause,
-    syntax,
 )
 from pymalloy._authoring.syntax import (
     scalar_expression as _scalar,
@@ -22,35 +28,614 @@ from pymalloy._authoring.tables import TableReference, table_path
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.inputs import Input, snapshot_data
 from pymalloy._protocol.records import SyntaxOperationKind
-from pymalloy.expressions import Expr, Sort
+from pymalloy.expressions import Expr, Sort, col
 
 __all__ = [
-    "Fragment",
+    "Draft",
     "Input",
-    "aggregate",
+    "Source",
+    "View",
     "data",
-    "dimension",
-    "group_by",
-    "having",
-    "join",
-    "limit",
-    "measure",
-    "nest",
-    "order_by",
-    "primary_key",
-    "query",
-    "ref",
-    "select",
+    "draft",
+    "read_model",
+    "source",
     "sql",
-    "syntax",
     "table",
     "view",
-    "where",
 ]
 
 
-def table(path: str | Path, *, connection: str = DEFAULT_CONNECTION) -> Fragment:
-    """Reference a database table or a file readable by the connection.
+def _append_clause(node: _Syntax, clause: _Syntax) -> _Syntax:
+    if node._layout:
+        return block((*node._fragments, clause))
+    parts = list(node.parts)
+    if not parts or not isinstance(parts[-1], str) or "}" not in parts[-1]:
+        raise ValueError("A query block requires a closing brace")
+    closing = parts.pop()
+    assert isinstance(closing, str)
+    before, brace, after = closing.rpartition("}")
+    return _Syntax(
+        (*parts, before, "\n  ", clause, "\n" + brace + after),
+        _operation=node._operation,
+    )
+
+
+class _Builder(_Syntax):
+    @classmethod
+    def raw(cls, *parts: str | Source | View | Expr) -> Self:
+        r"""Concatenate trusted Malloy text and authored values verbatim.
+
+        Parameters
+        ----------
+        *parts : str, Source, View, or Expr
+            Syntax pieces, including required spaces and punctuation. Malloy checks
+            the resulting text when a model compiles.
+
+        Returns
+        -------
+        Source or View
+            An immutable expression retaining captured inputs from its parts.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.Source.raw("orders").text
+        'orders'
+        >>> pm.View.raw("{ select: * }").text
+        '{ select: * }'
+        """
+        if not all(isinstance(part, (str, Source, View, Expr)) for part in parts):
+            raise TypeError("Raw parts require text, Source, View, or Expr values")
+        return cls(tuple(parts))
+
+    def pipe(self, *stages: View | str) -> Self:
+        r"""Apply successive query stages.
+
+        Parameters
+        ----------
+        *stages : View or str
+            Views in pipeline order. A string names a saved view. With no stages,
+            return this value unchanged.
+
+        Returns
+        -------
+        Source or View
+            A new pipeline of the receiver's type.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.source("orders").pipe("by_region", pm.view().limit(3)).text
+        'orders -> by_region -> {\n  limit: 3\n}'
+        """
+        if not stages:
+            return self
+        notes, value = _notes(self)
+        parts: list[str | _Syntax] = []
+        for stage in stages:
+            parts.extend((" -> ", _view(stage)))
+        result = construct("pipe", value, *parts)
+        return self._from_syntax(
+            _Syntax((*notes, result), _layout=True) if notes else result
+        )
+
+
+class Source(_Builder):
+    r"""An immutable relation expression with source declarations and pipelines.
+
+    Construct with table, sql, data, source, or Source.raw. Declaration methods
+    append to one trailing ``extend`` block. Each method returns a new Source.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> orders = pm.table("orders.parquet").measure(revenue=pm.col("amount").sum())
+    >>> orders.names
+    ('revenue',)
+    """
+
+    def _add(self, clause: _Syntax) -> Source:
+        notes, value = _notes(self)
+        assert isinstance(value, _Syntax)
+        children = value._fragments
+        if (
+            value._operation
+            and value._operation.kind == "extend"
+            and children
+            and children[-1]._operation
+            and children[-1]._operation.kind == "block"
+        ):
+            trailing = children[-1]
+            result = _Syntax(
+                tuple(
+                    _append_clause(trailing, clause) if part is trailing else part
+                    for part in value.parts
+                ),
+                _operation=value._operation,
+                _layout=value._layout,
+            )
+        else:
+            result = construct("extend", value, " extend ", block((clause,)))
+        return Source._from_syntax(
+            _Syntax((*notes, result), _layout=True) if notes else result
+        )
+
+    def dimension(self, /, **fields: Expr) -> Source:
+        r"""Declare row-level fields.
+
+        Parameters
+        ----------
+        **fields : Expr
+            Names mapped to scalar expressions.
+
+        Returns
+        -------
+        Source
+            A new source with the declarations appended.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.table("orders").dimension(net=pm.col("amount") - pm.col("refund")).names
+        ('net',)
+        """
+        return self._add(named_clause("dimension", fields))
+
+    def measure(self, /, **fields: Expr) -> Source:
+        r"""Declare reusable aggregate fields.
+
+        Parameters
+        ----------
+        **fields : Expr
+            Names mapped to aggregate expressions. Attach units with Expr.doc.
+
+        Returns
+        -------
+        Source
+            A new source with the declarations appended.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.table("orders").measure(revenue=pm.col("amount").sum()).names
+        ('revenue',)
+        """
+        return self._add(named_clause("measure", fields))
+
+    def view(self, /, **views: View) -> Source:
+        r"""Declare reusable source-relative views.
+
+        Parameters
+        ----------
+        **views : View
+            Names mapped to views created with view or View.raw.
+
+        Returns
+        -------
+        Source
+            A new source retaining each view's editing scope.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.table("orders").view(totals=pm.view().aggregate(n=pm.count())).names
+        ('totals',)
+        """
+        if not all(isinstance(value, View) for value in views.values()):
+            raise TypeError("Source.view requires View values")
+        return self._add(named_clause("view", views, kind="query"))
+
+    def primary_key(self, field: str) -> Source:
+        r"""Declare the field identifying one source row.
+
+        Parameters
+        ----------
+        field : str
+            One field identifier. Validate uniqueness and nulls in the data before
+            relying on this declaration for aggregate locality.
+
+        Returns
+        -------
+        Source
+            A new source with the key declaration appended.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.table("orders").primary_key("order_id").text.splitlines()[1]
+        '  primary_key: order_id'
+        """
+        return self._add(
+            construct(
+                "primary_key", "primary_key: ", identifier(field), arguments=(field,)
+            )
+        )
+
+    def _join(self, kind: str, name: str, source: Source, on: Expr | None) -> Source:
+        if not isinstance(source, Source):
+            raise TypeError("Joins require a Source")
+        if on is None and kind != "cross":
+            raise TypeError("A join predicate requires an Expr")
+        value = binding("source", name, source)
+        if on is not None:
+            value = _Syntax(
+                (*value.parts, " on ", _Syntax((_scalar(on),), kind="clause")),
+                kind="source",
+                name=name,
+                _layout=True,
+            )
+        return self._add(_Syntax((f"join_{kind}: ", value), _layout=True))
+
+    def join_one(self, name: str, source: Source, *, on: Expr) -> Source:
+        r"""Declare a relationship with one related row.
+
+        Parameters
+        ----------
+        name : str
+            Joined source name for field paths.
+        source : Source
+            Related relation expression.
+        on : Expr
+            Join predicate. Qualify joined fields with col(name, field).
+
+        Returns
+        -------
+        Source
+            A new source. Malloy resolves the relationship and aggregate locality.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.table("orders").join_one("labels", pm.source("labels"), on=pm.lit(True)).names
+        ('labels',)
+        """
+        return self._join("one", name, source, on)
+
+    def join_many(self, name: str, source: Source, *, on: Expr) -> Source:
+        r"""Declare a relationship with multiple related rows.
+
+        Parameters
+        ----------
+        name : str
+            Joined source name for field paths.
+        source : Source
+            Related relation expression.
+        on : Expr
+            Join predicate. Qualify joined fields with col(name, field).
+
+        Returns
+        -------
+        Source
+            A new source. Malloy resolves the relationship and aggregate locality.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.table("orders").join_many("labels", pm.source("labels"), on=pm.lit(True)).names
+        ('labels',)
+        """
+        return self._join("many", name, source, on)
+
+    def join_cross(
+        self, name: str, source: Source, *, on: Expr | None = None
+    ) -> Source:
+        r"""Declare a relationship with a cross product.
+
+        Parameters
+        ----------
+        name : str
+            Joined source name for field paths.
+        source : Source
+            Related relation expression.
+        on : Expr, optional
+            Join predicate. Qualify joined fields with col(name, field). An omitted predicate includes every pair.
+
+        Returns
+        -------
+        Source
+            A new source. Malloy resolves the relationship and aggregate locality.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.table("orders").join_cross("labels", pm.source("labels"), on=pm.lit(True)).names
+        ('labels',)
+        """
+        return self._join("cross", name, source, on)
+
+    def where(self, predicate: Expr) -> Source:
+        r"""Filter source rows before query stages.
+
+        Parameters
+        ----------
+        predicate : Expr
+            Boolean condition. Strings are literal values beside expressions.
+
+        Returns
+        -------
+        Source
+            A new source with a filter appended to its extension.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.table("orders").where(pm.col("amount") > 0).text.splitlines()[1]
+        '  where: (amount > 0)'
+        """
+        return self._add(construct("where", "where: ", _scalar(predicate)))
+
+
+class View(_Builder):
+    r"""An immutable source-relative query stage.
+
+    Construct with view or View.raw. Clauses append to the final stage. Calling
+    pipe starts a new stage. Positional strings in group_by, aggregate, select,
+    and order_by name field paths split on dots. Keyword values require Expr.
+    col(*path) preserves explicit components, including literal dots.
+
+    Examples
+    --------
+    >>> import pymalloy as pm
+    >>> pm.view().group_by("customer.name").aggregate(n=pm.count()).text
+    '{\n  group_by: customer.name\n  aggregate: n is count()\n}'
+    """
+
+    def _add(self, clause: _Syntax) -> View:
+        notes, value = _notes(self)
+        assert isinstance(value, _Syntax)
+        if value._operation and value._operation.kind == "pipe":
+            parts = list(value.parts)
+            index = next(
+                i
+                for i in range(len(parts) - 1, -1, -1)
+                if isinstance(parts[i], _Syntax)
+            )
+            stage = parts[index]
+            assert isinstance(stage, _Syntax)
+            parts[index] = View._from_syntax(stage)._add(clause)
+            result = _Syntax(
+                tuple(parts), _operation=value._operation, _layout=value._layout
+            )
+        elif value._operation and value._operation.kind == "block":
+            result = _append_clause(value, clause)
+        else:
+            result = _Syntax((value, " + ", block((clause,))), _layout=True)
+        return View._from_syntax(
+            _Syntax((*notes, result), _layout=True) if notes else result
+        )
+
+    def group_by(self, /, *fields: Expr | str, **named: Expr) -> View:
+        r"""Choose the dimensions defining the output grain.
+
+        Parameters
+        ----------
+        *fields : Expr or str
+            Expressions or field paths. Strings split on dots, so "customer.name"
+            means col("customer", "name"). Use col("customer.name") for a literal dot.
+        **named : Expr
+            Output names mapped to expressions. At least one field is required.
+
+        Returns
+        -------
+        View
+            A new view with the clause appended to its final stage.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.view().group_by("region").text
+        '{\n  group_by: region\n}'
+        """
+        return self._add(_fields("group_by", fields, named))
+
+    def aggregate(self, /, *fields: Expr | str, **named: Expr) -> View:
+        r"""Choose aggregate values for each output group.
+
+        Parameters
+        ----------
+        *fields : Expr or str
+            Expressions or field paths. Strings split on dots, so "customer.name"
+            means col("customer", "name"). Use col("customer.name") for a literal dot.
+        **named : Expr
+            Output names mapped to expressions. At least one field is required.
+
+        Returns
+        -------
+        View
+            A new view with the clause appended to its final stage.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.view().aggregate("region").text
+        '{\n  aggregate: region\n}'
+        """
+        return self._add(_fields("aggregate", fields, named))
+
+    def select(self, /, *fields: Expr | str, **named: Expr) -> View:
+        r"""Project row-level fields.
+
+        Parameters
+        ----------
+        *fields : Expr or str
+            Expressions or field paths. Strings split on dots, so "customer.name"
+            means col("customer", "name"). Use col("customer.name") for a literal dot.
+        **named : Expr
+            Output names mapped to expressions. At least one field is required.
+
+        Returns
+        -------
+        View
+            A new view with the clause appended to its final stage.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.view().select("region").text
+        '{\n  select: region\n}'
+        """
+        return self._add(_fields("select", fields, named))
+
+    def where(self, predicate: Expr) -> View:
+        r"""Filter rows before aggregation.
+
+        Parameters
+        ----------
+        predicate : Expr
+            Symbolic boolean condition. Combine comparisons with &, |, and ~.
+
+        Returns
+        -------
+        View
+            A new view with the filter appended to its final stage.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.view().where(pm.col("amount") > 0).text
+        '{\n  where: (amount > 0)\n}'
+        """
+        return self._add(construct("where", "where: ", _scalar(predicate)))
+
+    def having(self, predicate: Expr) -> View:
+        r"""Filter groups using aggregate values.
+
+        Parameters
+        ----------
+        predicate : Expr
+            Symbolic boolean condition. Combine comparisons with &, |, and ~.
+
+        Returns
+        -------
+        View
+            A new view with the filter appended to its final stage.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.view().having(pm.col("amount") > 0).text
+        '{\n  having: (amount > 0)\n}'
+        """
+        return self._add(construct("having", "having: ", _scalar(predicate)))
+
+    def nest(self, /, **views: View | str) -> View:
+        r"""Add named nested query results.
+
+        Parameters
+        ----------
+        **views : View or str
+            Output names mapped to views. A string names a saved view.
+
+        Returns
+        -------
+        View
+            A new view retaining each nested view's scope.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.view().nest(details="detail").names
+        ('details',)
+        """
+        return self._add(
+            named_clause(
+                "nest",
+                {name: _view(value) for name, value in views.items()},
+                kind="query",
+            )
+        )
+
+    def order_by(self, *fields: Expr | Sort | str) -> View:
+        r"""Order output fields, with optional explicit directions.
+
+        Parameters
+        ----------
+        *fields : Expr, Sort, or str
+            Expressions, asc/desc values, or field paths split on dots. At least
+            one field is required. A bare field uses Malloy's default direction.
+
+        Returns
+        -------
+        View
+            A new view with ordering appended to its final stage.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.view().order_by(pm.col("revenue").desc(), "region").text
+        '{\n  order_by: revenue desc, region\n}'
+        """
+        if not fields:
+            raise ValueError("order_by requires fields")
+        parts: list[str | _Syntax | Expr] = ["order_by: "]
+        for index, field in enumerate(fields):
+            if index:
+                parts.append(", ")
+            if isinstance(field, Sort):
+                direction = "desc" if field.descending else "asc"
+                parts.append(
+                    construct(direction, _scalar(field.expression), " " + direction)
+                )
+            else:
+                parts.append(_field(field))
+        return self._add(construct("order_by", *parts))
+
+    def limit(self, rows: int) -> View:
+        r"""Bound the output row count of the final stage.
+
+        Parameters
+        ----------
+        rows : int
+            Nonnegative count. Booleans are rejected. Pair with order_by when
+            selecting a deterministic top-N result.
+
+        Returns
+        -------
+        View
+            A new view. The limit bounds output, not input scanning cost.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> pm.view().limit(3).text
+        '{\n  limit: 3\n}'
+        """
+        if type(rows) is not int or rows < 0:
+            raise ValueError("Limit must be a nonnegative integer")
+        return self._add(construct("limit", f"limit: {rows}", arguments=(str(rows),)))
+
+
+def _view(value: View | str) -> View:
+    if isinstance(value, str):
+        return View._from_syntax(
+            construct("ref", identifier(value), arguments=(value,))
+        )
+    if not isinstance(value, View):
+        raise TypeError("Query stages require a View or saved view name")
+    return value
+
+
+def _field(value: Expr | str) -> Expr:
+    return col(*value.split(".")) if isinstance(value, str) else _scalar(value)
+
+
+def _fields(
+    keyword: SyntaxOperationKind, fields: tuple[Expr | str, ...], named: dict[str, Expr]
+) -> _Syntax:
+    values: list[_Syntax | Expr] = [_field(field) for field in fields]
+    values.extend(binding("field", name, value) for name, value in named.items())
+    if not values:
+        raise ValueError(f"{keyword} requires fields")
+    parts: list[str | _Syntax | Expr] = [keyword + ": "]
+    for index, value in enumerate(values):
+        if index:
+            parts.append(", ")
+        parts.append(value)
+    return construct(keyword, *parts)
+
+
+def table(path: str | Path, *, connection: str = DEFAULT_CONNECTION) -> Source:
+    r"""Reference a database table or a file readable by the connection.
 
     Parameters
     ----------
@@ -59,12 +644,12 @@ def table(path: str | Path, *, connection: str = DEFAULT_CONNECTION) -> Fragment
         supplied that way. A Path becomes an absolute file reference. Strings
         can also name HTTP(S) files when the runtime supports remote access.
     connection : str, default "duckdb"
-        Malloy connection name. Match the runtime's ``connection_name``.
+        Malloy connection name. Match the connection's ``name``.
 
     Returns
     -------
-    Fragment
-        An unnamed source expression. Bind it with ``draft().define(...)``.
+    Source
+        An unnamed source expression. Bind it with ``draft().sources(...)``.
 
     Notes
     -----
@@ -80,23 +665,21 @@ def table(path: str | Path, *, connection: str = DEFAULT_CONNECTION) -> Fragment
     Examples
     --------
     >>> import pymalloy as pm
-    >>> source = pm.table("orders.parquet").extend(
-    ...     pm.measure(revenue=pm.col("amount").sum())
-    ... )
-    >>> candidate = pm.draft().define(orders=source)
+    >>> source = pm.table("orders.parquet").measure(revenue=pm.col("amount").sum())
+    >>> candidate = pm.draft().sources(orders=source)
     >>> candidate.names
     ('orders',)
     """
-    return syntax(TableReference(connection, table_path(path)))
+    return Source((TableReference(connection, table_path(path)),))
 
 
 def data(
     frame: Any, *, name: str | None = None, connection: str = DEFAULT_CONNECTION
-) -> Fragment:
-    """Capture Python dataframe values as a portable Malloy source.
+) -> Source:
+    r"""Capture Python dataframe values as a portable Malloy source.
 
     Use this when Python prepares the input and Malloy supplies the semantic
-    model. Capture once, then reuse the returned fragment in several drafts.
+    model. Capture once, then reuse the returned source in several drafts.
 
     Parameters
     ----------
@@ -108,11 +691,11 @@ def data(
         Logical input name used by Python reconstruction. An omitted name is
         generated. Distinct captures in one model must have distinct names.
     connection : str, default "duckdb"
-        Malloy connection name. Match the runtime's ``connection_name``.
+        Malloy connection name. Match the connection's ``name``.
 
     Returns
     -------
-    Fragment
+    Source
         Source backed by an immutable Arrow snapshot. Later changes to the
         producer do not change this source.
 
@@ -136,11 +719,11 @@ def data(
     True
     """
     captured = snapshot_data(frame, name=name)
-    return syntax(TableReference(connection, captured.reference, data=captured))
+    return Source((TableReference(connection, captured.reference, data=captured),))
 
 
-def sql(text: str, *, connection: str = DEFAULT_CONNECTION) -> Fragment:
-    """Define an unnamed source using a SQL query.
+def sql(text: str, *, connection: str = DEFAULT_CONNECTION) -> Source:
+    r"""Define an unnamed source using a SQL query.
 
     Parameters
     ----------
@@ -152,7 +735,7 @@ def sql(text: str, *, connection: str = DEFAULT_CONNECTION) -> Fragment:
 
     Returns
     -------
-    Fragment
+    Source
         Source expression whose schema is discovered when the model compiles.
 
     See Also
@@ -163,22 +746,24 @@ def sql(text: str, *, connection: str = DEFAULT_CONNECTION) -> Fragment:
     Examples
     --------
     >>> import pymalloy as pm
-    >>> candidate = pm.draft().define(values=pm.sql("SELECT 42 AS answer"))
-    >>> candidate = candidate.queries(answer=pm.ref("values").pipe(
-    ...     pm.query(pm.select(pm.col("answer")))
+    >>> candidate = pm.draft().sources(values=pm.sql("SELECT 42 AS answer"))
+    >>> candidate = candidate.queries(answer=pm.source("values").pipe(
+    ...     pm.view().select(pm.col("answer"))
     ... ))
     >>> pm.connect().model(candidate).query().run().to_pylist()
     [{'answer': 42}]
     """
-    return construct(
-        "sql",
-        f"{identifier(connection)}.sql({json.dumps(text, ensure_ascii=False)})",
-        arguments=(text, connection),
+    return Source._from_syntax(
+        construct(
+            "sql",
+            f"{identifier(connection)}.sql({json.dumps(text, ensure_ascii=False)})",
+            arguments=(text, connection),
+        )
     )
 
 
-def ref(name: str) -> Fragment:
-    """Reference a named source, query, or view for source/query composition.
+def source(name: str) -> Source:
+    r"""Reference a named source or query in a model.
 
     Parameters
     ----------
@@ -188,454 +773,34 @@ def ref(name: str) -> Fragment:
 
     Returns
     -------
-    Fragment
+    Source
         A reference resolved by Malloy during compilation.
 
     Examples
     --------
     >>> import pymalloy as pm
-    >>> regional = pm.ref("orders").pipe(pm.ref("by_region"))
+    >>> regional = pm.source("orders").pipe("by_region")
     >>> regional.text
     'orders -> by_region'
     """
-    return construct("ref", identifier(name), arguments=(name,))
+    return Source._from_syntax(construct("ref", identifier(name), arguments=(name,)))
 
 
-def dimension(**fields: Expr) -> Fragment:
-    """Define named row-level fields on a source.
-
-    Parameters
-    ----------
-    **fields
-        Field names mapped to scalar expressions. Values remain symbolic until Malloy resolves them.
+def view() -> View:
+    r"""Create an empty source-relative query stage.
 
     Returns
     -------
-    Fragment
-        A clause for source.extend(...).
+    View
+        An immutable view. Chain clauses, then pass it to Source.pipe or Source.view.
 
     Examples
     --------
     >>> import pymalloy as pm
-    >>> clause = pm.dimension(net=pm.col("amount") - pm.col("refund"))
-    >>> expression = pm.table("orders.parquet").extend(clause)
-    >>> expression.names
-    ('net',)
+    >>> pm.view().select("amount").text
+    '{\n  select: amount\n}'
     """
-    return named_clause("dimension", fields)
+    return View._from_syntax(block(()))
 
 
-def measure(**fields: Expr) -> Fragment:
-    """Define reusable aggregate expressions on a source.
-
-    Parameters
-    ----------
-    **fields
-        Measure names mapped to aggregate expressions. Define units and denominators with .doc() on each expression.
-
-    Returns
-    -------
-    Fragment
-        A clause for source.extend(...).
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> clause = pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD."))
-    >>> expression = pm.table("orders.parquet").extend(clause)
-    >>> expression.names
-    ('revenue',)
-    """
-    return named_clause("measure", fields)
-
-
-def view(**queries: Fragment) -> Fragment:
-    """Define reusable named query views on a source.
-
-    Parameters
-    ----------
-    **queries
-        View names mapped to query fragments. Apply a view with ref("source").pipe(ref("view")).
-
-    Returns
-    -------
-    Fragment
-        A clause for source.extend(...).
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> clause = pm.view(totals=pm.query(pm.aggregate(total=pm.col("amount").sum())))
-    >>> expression = pm.table("orders.parquet").extend(clause)
-    >>> expression.names
-    ('totals',)
-    """
-    return named_clause("view", queries, kind="query")
-
-
-def query(*clauses: Fragment) -> Fragment:
-    """Compose clauses into a reusable query block.
-
-    Parameters
-    ----------
-    *clauses : Fragment
-        Query clauses in authored order, such as group_by, aggregate, select,
-        where, having, nest, order_by, and limit.
-
-    Returns
-    -------
-    Fragment
-        Query syntax. Pipe a source into it or bind it as a named view.
-
-    Notes
-    -----
-    This builds syntax. ``Model.query`` instead selects a runnable query from
-    an already compiled model.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> regional = pm.query(
-    ...     pm.group_by(pm.col("region")),
-    ...     pm.aggregate(revenue=pm.col("amount").sum()),
-    ...     pm.order_by(pm.col("revenue").desc()),
-    ... )
-    >>> candidate = pm.draft().define(orders=pm.table("orders.parquet"))
-    >>> candidate = candidate.queries(by_region=pm.ref("orders").pipe(regional))
-    >>> candidate.names
-    ('orders', 'by_region')
-    """
-    return block(clauses)
-
-
-def _fields(
-    keyword: SyntaxOperationKind, fields: tuple[Expr, ...], named: dict[str, Expr]
-) -> Fragment:
-    values: list[Fragment | Expr] = [_scalar(field) for field in fields]
-    values.extend(binding("field", name, value) for name, value in named.items())
-    if not values:
-        raise ValueError(f"{keyword} requires fields")
-    parts: list[str | Fragment | Expr] = [keyword + ": "]
-    for index, value in enumerate(values):
-        if index:
-            parts.append(", ")
-        parts.append(value)
-    return construct(keyword, *parts)
-
-
-def group_by(*fields: Expr, **named: Expr) -> Fragment:
-    """Choose dimensions that define the output grain.
-
-    Each distinct combination of grouping values produces a group. Combine with aggregate to compute measures at that grain.
-
-    Parameters
-    ----------
-    *fields : Expr
-        Expressions retaining Malloy's inferred output names.
-    **named : Expr
-        Output names mapped to expressions. At least one field is required.
-        Strings are not column references. Write ``pm.col("field")``.
-
-    Returns
-    -------
-    Fragment
-        A clause accepted by ``pm.query``.
-
-    See Also
-    --------
-    query, col
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> clause = pm.group_by(pm.col("region"), month=pm.col("created_at").dt.truncate("month"))
-    >>> clause.text.startswith("group_by: ")
-    True
-    """
-    return _fields("group_by", fields, named)
-
-
-def aggregate(*fields: Expr, **named: Expr) -> Fragment:
-    """Choose aggregate values for each output group.
-
-    Reference source measures or supply aggregate expressions directly. Without group_by, the query aggregates across its input.
-
-    Parameters
-    ----------
-    *fields : Expr
-        Expressions retaining Malloy's inferred output names.
-    **named : Expr
-        Output names mapped to expressions. At least one field is required.
-        Strings are not column references. Write ``pm.col("field")``.
-
-    Returns
-    -------
-    Fragment
-        A clause accepted by ``pm.query``.
-
-    See Also
-    --------
-    query, col
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> clause = pm.aggregate(pm.col("revenue"), orders=pm.count())
-    >>> clause.text.startswith("aggregate: ")
-    True
-    """
-    return _fields("aggregate", fields, named)
-
-
-def select(*fields: Expr, **named: Expr) -> Fragment:
-    """Project row-level fields from a source.
-
-    Use select for detail rows. Use group_by and aggregate when the question requires grouped summaries.
-
-    Parameters
-    ----------
-    *fields : Expr
-        Expressions retaining Malloy's inferred output names.
-    **named : Expr
-        Output names mapped to expressions. At least one field is required.
-        Strings are not column references. Write ``pm.col("field")``.
-
-    Returns
-    -------
-    Fragment
-        A clause accepted by ``pm.query``.
-
-    See Also
-    --------
-    query, col
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> clause = pm.select(pm.col("order_id"), net=pm.col("amount") - pm.col("refund"))
-    >>> clause.text.startswith("select: ")
-    True
-    """
-    return _fields("select", fields, named)
-
-
-def nest(**queries: Fragment) -> Fragment:
-    """Add named nested query results to a query.
-
-    Parameters
-    ----------
-    **queries
-        Output names mapped to query fragments. Each nested query keeps its own grouping and ordering.
-
-    Returns
-    -------
-    Fragment
-        A clause for a query block.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> clause = pm.nest(detail=pm.query(pm.select(pm.col("order_id"))))
-    >>> expression = pm.query(clause)
-    >>> expression.names
-    ('detail',)
-    """
-    return named_clause("nest", queries, kind="query")
-
-
-def where(predicate: Expr) -> Fragment:
-    """Filter source rows before aggregation.
-
-    Parameters
-    ----------
-    predicate : Expr
-        Symbolic boolean condition. Combine conditions with &, |, and ~, parenthesizing each comparison. Null predicates do not select a row.
-
-    Returns
-    -------
-    Fragment
-        A filter clause for a source extension or query, as allowed by Malloy.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> clause = pm.where((pm.col("amount") > 0) & (pm.col("region") == "North"))
-    >>> clause.text.startswith("where: ")
-    True
-    """
-    return construct("where", "where: ", _scalar(predicate))
-
-
-def having(predicate: Expr) -> Fragment:
-    """Filter groups using aggregate output values.
-
-    Parameters
-    ----------
-    predicate : Expr
-        Symbolic boolean condition. Use where to filter input rows and having to filter grouped results. Reference a named aggregate with col.
-
-    Returns
-    -------
-    Fragment
-        A filter clause for a source extension or query, as allowed by Malloy.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> clause = pm.having(pm.col("revenue") > 100)
-    >>> clause.text.startswith("having: ")
-    True
-    """
-    return construct("having", "having: ", _scalar(predicate))
-
-
-def order_by(*fields: Expr | Sort) -> Fragment:
-    """Order query output using expressions and explicit sort directions.
-
-    Parameters
-    ----------
-    *fields : Expr or Sort
-        At least one expression or ``expr.asc()`` / ``expr.desc()`` value.
-        A bare expression leaves direction to Malloy's defaults, which depend
-        on whether the output is a dimension or measure. Use an explicit
-        direction when ordering is part of the result contract.
-
-    Returns
-    -------
-    Fragment
-        An order_by clause. Include a tie-breaker for deterministic ranking.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> ordering = pm.order_by(pm.col("revenue").desc(), pm.col("region").asc())
-    >>> ordering.text
-    'order_by: revenue desc, region asc'
-    """
-    if not fields:
-        raise ValueError("order_by requires fields")
-    parts: list[str | Fragment | Expr] = ["order_by: "]
-    for index, field in enumerate(fields):
-        if index:
-            parts.append(", ")
-        if isinstance(field, Sort):
-            direction = "desc" if field.descending else "asc"
-            parts.append(
-                construct(direction, _scalar(field.expression), " " + direction)
-            )
-        else:
-            parts.append(_scalar(field))
-    return construct("order_by", *parts)
-
-
-def limit(rows: int) -> Fragment:
-    """Limit the number of rows in a query stage.
-
-    Parameters
-    ----------
-    rows : int
-        Nonnegative row count. Zero selects no output rows. Booleans are rejected.
-
-    Returns
-    -------
-    Fragment
-        A limit clause. Pair it with order_by for a defined top-N result.
-
-    Notes
-    -----
-    This limits output, not necessarily input scanning or aggregation cost.
-    Use ``Query.preview`` to bound an exploratory execution without editing
-    an authored query.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> pm.limit(5).text
-    'limit: 5'
-    """
-    if type(rows) is not int or rows < 0:
-        raise ValueError("Limit must be a nonnegative integer")
-    return construct("limit", f"limit: {rows}", arguments=(str(rows),))
-
-
-def primary_key(field: str) -> Fragment:
-    """Declare the field that identifies one source row.
-
-    Parameters
-    ----------
-    field : str
-        One field identifier, such as ``"order_id"``.
-
-    Returns
-    -------
-    Fragment
-        A primary_key clause for a source extension.
-
-    Notes
-    -----
-    This is a semantic declaration, not a uniqueness constraint enforced on the
-    input. Validate uniqueness and non-nullness before relying on the key for
-    join and aggregate semantics.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> source = pm.table("orders.parquet").extend(pm.primary_key("order_id"))
-    >>> source.text.splitlines()[1].strip()
-    'primary_key: order_id'
-    """
-    return construct(
-        "primary_key", "primary_key: ", identifier(field), arguments=(field,)
-    )
-
-
-def join(
-    name: str, source: Fragment, *, on: Expr, kind: Literal["one", "many", "cross"]
-) -> Fragment:
-    """Attach a related source with an explicit relationship and condition.
-
-    Parameters
-    ----------
-    name : str
-        Joined source name used in field paths, for example ``"customer"``.
-    source : Fragment
-        Source expression or reference to an existing source.
-    on : Expr
-        Symbolic join condition. Qualify joined fields with separate ``col``
-        path components, such as ``col("customer", "id")``.
-    kind : {"one", "many", "cross"}
-        Malloy relationship from the current source to the joined source.
-        Required even when the relationship seems obvious. A cross join still
-        requires an explicit condition, such as ``lit(True)``.
-
-    Returns
-    -------
-    Fragment
-        A join clause for a source extension.
-
-    Notes
-    -----
-    Relationship declarations affect aggregate locality. They do not verify
-    cardinality in your data. Test keys and join coverage separately.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> orders = pm.table("orders.parquet").extend(pm.join(
-    ...     "customer", pm.ref("customers"), kind="one",
-    ...     on=pm.col("customer_id") == pm.col("customer", "id"),
-    ... ))
-    >>> orders.names
-    ('customer',)
-    """
-    if kind not in {"one", "many", "cross"}:
-        raise ValueError("Join kind must be one, many, or cross")
-    value = binding("source", name, source)
-    # The condition is syntax owned by the join, not a second named RHS slot.
-    value = Fragment(
-        (*value.parts, " on ", syntax(_scalar(on), kind="clause")),
-        kind="source",
-        name=name,
-        _layout=True,
-    )
-    return Fragment((f"join_{kind}: ", value), _layout=True)
+from pymalloy._authoring.draft import Draft, draft, read_model

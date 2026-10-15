@@ -12,7 +12,6 @@ import duckdb
 import msgspec
 
 from pymalloy._authoring.draft import Draft
-from pymalloy._authoring.syntax import Fragment
 from pymalloy._model.inputs import Input
 from pymalloy._model.selection import query_names
 from pymalloy._model.source import (
@@ -49,6 +48,7 @@ from pymalloy.analysis import (
     QueryDescriptor,
     SourcePosition,
 )
+from pymalloy.authoring import Source
 from pymalloy.errors import ClosedError, CompilerError, ExecutionContext, ExecutionError
 from pymalloy.result import Result
 
@@ -295,13 +295,13 @@ class Model(NotebookDisplay):
             )
 
     def query(
-        self, selection: str | Fragment | None = None, *, malloy: str | None = None
+        self, selection: str | Source | None = None, *, malloy: str | None = None
     ) -> Query:
         """Select a named query or extend this model with an ad hoc query.
 
         Parameters
         ----------
-        selection : str or Fragment, optional
+        selection : str or Source, optional
             A query inventory name, or a composed source/query expression. A string
             selects a name and is not interpreted as Malloy text. With None, choose
             the last run or the sole query. Otherwise an explicit selection is needed.
@@ -319,20 +319,20 @@ class Model(NotebookDisplay):
         --------
         >>> import pymalloy as pm
         >>> model = pm.connect().model("source: values is duckdb.sql('SELECT 42 AS n')")
-        >>> query = model.query(pm.ref("values").pipe(pm.query(pm.select(pm.col("n")))))
+        >>> query = model.query(pm.source("values").pipe(pm.view().select(pm.col("n"))))
         >>> query.run().to_pylist()
         [{'n': 42}]
         >>> model.close()
         """
         self._owner._check_open()
-        if selection is not None and not isinstance(selection, (str, Fragment)):
-            raise TypeError("Query selection must be a name or source/query fragment")
+        if selection is not None and not isinstance(selection, (str, Source)):
+            raise TypeError("Query selection must be a name or Source")
         if malloy is not None and not isinstance(malloy, str):
             raise TypeError("malloy must be query text")
         if selection is not None and malloy is not None:
             raise ValueError("Choose a query selection or Malloy text")
-        inputs = selection.inputs if isinstance(selection, Fragment) else ()
-        if isinstance(selection, Fragment):
+        inputs = selection.inputs if isinstance(selection, Source) else ()
+        if isinstance(selection, Source):
             if selection.kind != "expression":
                 raise TypeError("Query selection requires a source/query expression")
             malloy = "run: " + selection.render(materialize=True)

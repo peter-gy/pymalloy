@@ -92,10 +92,10 @@ def test_captured_input_snapshot_rebinds_after_collection(snapshot_kind):
     captured = pm.data(pa.table({"amount": [12, 20]}), name="orders")
     candidate = (
         pm.draft()
-        .define(orders=captured)
+        .sources(orders=captured)
         .queries(
-            total=pm.ref("orders").pipe(
-                pm.query(pm.aggregate(amount=pm.col("amount").sum()))
+            total=pm.source("orders").pipe(
+                pm.view().aggregate(amount=pm.col("amount").sum())
             )
         )
     )
@@ -114,7 +114,7 @@ def test_captured_input_snapshot_rebinds_after_collection(snapshot_kind):
     assert snapshot.text == candidate.text
     del connection, captured, candidate
     gc.collect()
-    rebound = pm.read_model(snapshot).define(orders=pm.data(frame, name="orders"))
+    rebound = pm.read_model(snapshot).sources(orders=pm.data(frame, name="orders"))
     with pm.connect() as connection:
         assert connection.model(rebound).query("total").run().to_pylist() == [
             {"amount": 32}
@@ -131,12 +131,9 @@ def test_validation_captures_changing_bindings_once_for_all_checks():
 
     candidate = pm.draft(
         "##! experimental.givens\ngiven: minimum :: number is 0\n"
-    ).define(values=pm.sql("SELECT 42 AS amount"))
-    bad = pm.ref("values").pipe(
-        pm.query(
-            pm.where(pm.col("amount") < pm.given("minimum")),
-            pm.select(pm.col("amount")),
-        )
+    ).sources(values=pm.sql("SELECT 42 AS amount"))
+    bad = pm.source("values").pipe(
+        pm.view().where(pm.col("amount") < pm.given("minimum")).select(pm.col("amount"))
     )
     bindings = ChangingBindings(minimum=0)
     with pm.connect() as connection:
@@ -312,7 +309,7 @@ for source in (text, path, pm.ModelSource(path.as_uri(), text), pm.draft(text, u
 def test_validation_preserves_diagnostics_from_metadata_failure(monkeypatch):
     with pm.connect() as connection:
         diagnostics = connection.check("run: missing").diagnostics
-        candidate = pm.draft().define(values=pm.sql("SELECT 42 AS value"))
+        candidate = pm.draft().sources(values=pm.sql("SELECT 42 AS value"))
         failure = pm.errors.CompilationError("Metadata failed", diagnostics=diagnostics)
 
         def inspect(_self, **_options):

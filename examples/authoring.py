@@ -9,37 +9,32 @@ orders = (
     pm.sql(
         "SELECT * FROM (VALUES (1, 40, 'North'), (2, 2, 'North')) t(id, amount, region)"
     )
-    .extend(
-        pm.primary_key("id"),
-        pm.measure(revenue=pm.col("amount").sum().doc("Gross order revenue in USD.")),
-        pm.view(
-            by_region=pm.query(
-                pm.group_by(pm.col("region")),
-                pm.aggregate(pm.col("revenue")),
-                pm.order_by(pm.col("revenue").desc(), pm.col("region")),
-            ).doc("Revenue by region with stable ranking.")
-        ),
+    .primary_key("id")
+    .measure(revenue=pm.col("amount").sum().doc("Gross order revenue in USD."))
+    .view(
+        by_region=pm.view()
+        .group_by(pm.col("region"))
+        .aggregate(pm.col("revenue"))
+        .order_by(pm.col("revenue").desc(), pm.col("region"))
+        .doc("Revenue by region with stable ranking.")
     )
     .doc("One row per order, with amounts in USD.")
 )
-candidate = pm.draft().define(orders=orders)
+candidate = pm.draft().sources(orders=orders)
 report = pm.connect().validate(
     candidate,
     {
-        "unique_order_id": pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("id")),
-                pm.aggregate(n=pm.count()),
-                pm.having(pm.col("n") > 1),
-            )
+        "unique_order_id": pm.source("orders").pipe(
+            pm.view()
+            .group_by(pm.col("id"))
+            .aggregate(n=pm.count())
+            .having(pm.col("n") > 1)
         ),
-        "non_null_order_id": pm.ref("orders").pipe(
-            pm.query(pm.where(pm.col("id").is_null()), pm.select(pm.col("id")))
+        "non_null_order_id": pm.source("orders").pipe(
+            pm.view().where(pm.col("id").is_null()).select(pm.col("id"))
         ),
-        "known_total": pm.ref("orders").pipe(
-            pm.query(
-                pm.aggregate(pm.col("revenue")), pm.having(pm.col("revenue") != 42)
-            )
+        "known_total": pm.source("orders").pipe(
+            pm.view().aggregate(pm.col("revenue")).having(pm.col("revenue") != 42)
         ),
     },
 )
@@ -51,9 +46,9 @@ with TemporaryDirectory() as directory:
     exec(loaded.to_python(name="restored"), namespace)  # noqa: S102
     restored = namespace["restored"]
     assert restored["orders"]["revenue"].equals(loaded["orders"]["revenue"])
-    updated = restored.define(
-        orders=restored["orders"].extend(
-            pm.measure(average_order=pm.col("amount").avg().doc("Mean order USD."))
+    updated = restored.sources(
+        orders=restored["orders"].measure(
+            average_order=pm.col("amount").avg().doc("Mean order USD.")
         )
     )
     assert "average_order" not in loaded["orders"].names

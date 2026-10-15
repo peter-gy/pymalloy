@@ -125,17 +125,9 @@ def main() -> None:
         nbformat.write(notebook, notebooks / "sales.ipynb")
         dataframe = nbformat.v4.new_notebook(
             cells=[
-                nbformat.v4.new_code_cell("""import pyarrow as pa
-import pymalloy as pm
-from pymalloy.analysis import to_dict
-from IPython.display import display
-
-prepared = pa.table({"region": ["North", "North"], "amount": [12, 20]})
-candidate = pm.draft().define(orders=pm.data(prepared)).queries(
-    total=pm.ref("orders").pipe(pm.query(pm.aggregate(total=pm.col("amount").sum())))
-)
-widget = pm.MalloyWidget(candidate, query="total")
-display(widget)"""),
+                nbformat.v4.new_code_cell(
+                    'import pyarrow as pa\nimport pymalloy as pm\nfrom pymalloy.analysis import to_dict\nfrom IPython.display import display\n\nprepared = pa.table({"region": ["North", "North"], "amount": [12, 20]})\ncandidate = pm.draft().sources(orders=pm.data(prepared)).queries(\n    total=pm.source("orders").pipe(pm.view().aggregate(total=pm.col("amount").sum()))\n)\nwidget = pm.MalloyWidget(candidate, query="total")\ndisplay(widget)'
+                ),
                 nbformat.v4.new_code_cell(
                     'print("Dataframe rows:", to_dict(widget.state["rows"]))'
                 ),
@@ -149,7 +141,7 @@ display(widget)"""),
                     'import pymalloy as pm\npm.col("amount").sum().doc("Booked amount in USD.")'
                 ),
                 nbformat.v4.new_code_cell(
-                    'import pyarrow as pa\norders = pm.data(pa.table({"amount": [20, 22]}), name="orders")\ncandidate = pm.draft().define(orders=orders).queries(total=pm.ref("orders").pipe(pm.query(pm.aggregate(total=pm.col("amount").sum()))))\ncandidate'
+                    'import pyarrow as pa\norders = pm.data(pa.table({"amount": [20, 22]}), name="orders")\ncandidate = pm.draft().sources(orders=orders).queries(total=pm.source("orders").pipe(pm.view().aggregate(total=pm.col("amount").sum())))\ncandidate'
                 ),
                 nbformat.v4.new_code_cell("orders"),
             ],

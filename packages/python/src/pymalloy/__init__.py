@@ -11,8 +11,8 @@ col, lit, given
     Reference a field, encode a scalar value, or reference a parameter.
 draft, read_model
     Compose a new model or parse existing Malloy for scoped edits.
-query, group_by, aggregate, select
-    Build reusable query syntax. These constructors do not execute it.
+source, view
+    Reference a relation and build reusable query stages with method chains.
 connect
     Own native execution and compile models through Connection.model.
 parse, format
@@ -30,9 +30,9 @@ Polars directly for ``Result.to_polars()``. The headless extra already includes 
 Examples
 --------
 >>> import pymalloy as pm
->>> candidate = pm.draft().define(values=pm.sql("SELECT 42 AS amount"))
->>> candidate = candidate.queries(answer=pm.ref("values").pipe(
-...     pm.query(pm.select(pm.col("amount")))
+>>> candidate = pm.draft().sources(values=pm.sql("SELECT 42 AS amount"))
+>>> candidate = candidate.queries(answer=pm.source("values").pipe(
+...     pm.view().select(pm.col("amount"))
 ... ))
 >>> pm.connect().model(candidate).query().run().to_pylist()
 [{'amount': 42}]
@@ -44,41 +44,9 @@ from typing import TYPE_CHECKING
 
 from pymalloy._authoring.draft import Draft, draft, read_model
 from pymalloy._model.source import ModelSource
-from pymalloy.authoring import (
-    Fragment,
-    aggregate,
-    data,
-    dimension,
-    group_by,
-    having,
-    join,
-    limit,
-    measure,
-    nest,
-    order_by,
-    primary_key,
-    query,
-    ref,
-    select,
-    sql,
-    syntax,
-    table,
-    view,
-    where,
-)
+from pymalloy.authoring import Source, View, data, source, sql, table, view
 from pymalloy.errors import PyMalloyError
-from pymalloy.expressions import (
-    Expr,
-    Sort,
-    call,
-    case,
-    col,
-    count,
-    given,
-    lit,
-    number,
-    raw_expr,
-)
+from pymalloy.expressions import Expr, Sort, case, col, count, given, lit
 from pymalloy.result import Result
 
 if TYPE_CHECKING:
@@ -90,7 +58,6 @@ __all__ = [
     "Connection",
     "Draft",
     "Expr",
-    "Fragment",
     "MalloyWidget",
     "Model",
     "ModelSource",
@@ -98,38 +65,23 @@ __all__ = [
     "Query",
     "Result",
     "Sort",
-    "aggregate",
-    "call",
+    "Source",
+    "View",
     "case",
     "col",
     "connect",
     "count",
     "data",
-    "dimension",
     "draft",
     "format",
     "given",
-    "group_by",
-    "having",
-    "join",
-    "limit",
     "lit",
-    "measure",
-    "nest",
-    "number",
-    "order_by",
     "parse",
-    "primary_key",
-    "query",
-    "raw_expr",
     "read_model",
-    "ref",
-    "select",
+    "source",
     "sql",
-    "syntax",
     "table",
     "view",
-    "where",
 ]
 
 

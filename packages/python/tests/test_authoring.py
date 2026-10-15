@@ -14,52 +14,47 @@ def orders(
     return (
         pm.sql(sql)
         .doc("One row per order.")
-        .extend(
-            pm.primary_key("id"),
-            pm.dimension(doubled=(pm.col("amount") * 2).doc("Twice the amount.")),
-            pm.measure(revenue=pm.col("amount").sum().doc("Revenue in USD.")),
-            pm.view(
-                by_region=pm.query(
-                    pm.group_by(pm.col("region")),
-                    pm.aggregate(pm.col("revenue")),
-                    pm.order_by(pm.col("region")),
-                ).doc("Regional revenue.")
-            ),
+        .primary_key("id")
+        .dimension(doubled=(pm.col("amount") * 2).doc("Twice the amount."))
+        .measure(revenue=pm.col("amount").sum().doc("Revenue in USD."))
+        .view(
+            by_region=pm.view()
+            .group_by(pm.col("region"))
+            .aggregate(pm.col("revenue"))
+            .order_by(pm.col("region"))
+            .doc("Regional revenue.")
         )
     )
 
 
 def test_composable_model_joins_parameters_and_reusable_query_clauses():
-    grouped = pm.query(pm.group_by(pm.col("region")), pm.aggregate(pm.col("revenue")))
+    grouped = pm.view().group_by(pm.col("region")).aggregate(pm.col("revenue"))
     model = (
         pm.draft("##! experimental.givens\ngiven: minimum :: number is 0\n")
-        .define(
+        .sources(
             regions=pm.sql("SELECT 'N' region, 'North' region_name").doc(
                 "Region labels."
             ),
             orders=orders(),
         )
-        .define(
-            selected=pm.ref("orders").extend(
-                pm.join(
-                    "labels",
-                    pm.ref("regions"),
-                    on=pm.col("region") == pm.col("labels", "region"),
-                    kind="one",
-                ),
-                pm.where(pm.col("amount") > pm.given("minimum")),
+        .sources(
+            selected=pm.source("orders")
+            .join_one(
+                "labels",
+                pm.source("regions"),
+                on=pm.col("region") == pm.col("labels", "region"),
             )
+            .where(pm.col("amount") > pm.given("minimum"))
         )
         .queries(
-            report=pm.ref("selected").pipe(
-                pm.query(
-                    pm.select(
-                        pm.col("id"), pm.col("doubled"), pm.col("labels", "region_name")
-                    ),
-                    pm.order_by(pm.col("id")),
+            report=pm.source("selected").pipe(
+                pm.view()
+                .select(
+                    pm.col("id"), pm.col("doubled"), pm.col("labels", "region_name")
                 )
+                .order_by(pm.col("id"))
             ),
-            totals=pm.ref("orders").pipe(grouped),
+            totals=pm.source("orders").pipe(grouped),
         )
     )
     assert pm.connect().check(model).ok
@@ -72,7 +67,7 @@ def test_composable_model_joins_parameters_and_reusable_query_clauses():
             {"id": 2, "doubled": 40, "region_name": None}
         ]
         assert (
-            runtime.query(pm.ref("orders").pipe(grouped)).run().to_pylist()
+            runtime.query(pm.source("orders").pipe(grouped)).run().to_pylist()
             == runtime.query("totals").run().to_pylist()
         )
         assert runtime.query("totals").run().to_pylist() == [
@@ -86,14 +81,14 @@ def test_composable_model_joins_parameters_and_reusable_query_clauses():
 def test_generated_and_parsed_models_share_scoped_edits_and_preserve_annotations():
     original = (
         pm.draft()
-        .define(orders=orders())
+        .sources(orders=orders())
         .queries(
-            report=pm.ref("orders").pipe(pm.query(pm.aggregate(pm.col("revenue"))))
+            report=pm.source("orders").pipe(pm.view().aggregate(pm.col("revenue")))
         )
     )
     loaded = pm.read_model(original.text)
     for candidate in [original, loaded]:
-        revised = candidate.define(
+        revised = candidate.sources(
             orders=candidate["orders"].replace(revenue=pm.col("amount").avg())
         )
         assert revised.text == original.text.replace(
@@ -101,7 +96,7 @@ def test_generated_and_parsed_models_share_scoped_edits_and_preserve_annotations
         )
         assert original["orders"]["revenue"].equals(pm.col("amount").sum())
         assert '#" Revenue in USD.' in revised.text
-        documented = candidate.define(
+        documented = candidate.sources(
             orders=candidate["orders"].replace(
                 revenue=pm.col("amount").avg().doc("Mean amount in USD.")
             )
@@ -124,18 +119,19 @@ def test_generated_and_parsed_models_share_scoped_edits_and_preserve_annotations
 
 
 def test_nested_queries_keep_their_own_field_scope_after_import():
-    view = pm.query(
-        pm.aggregate(x=pm.count()),
-        pm.nest(details=pm.query(pm.aggregate(x=pm.count()))),
+    view = (
+        pm.view()
+        .aggregate(x=pm.count())
+        .nest(details=pm.view().aggregate(x=pm.count()))
     )
-    original = pm.draft().define(orders=orders().extend(pm.view(summary=view)))
+    original = pm.draft().sources(orders=orders().view(summary=view))
     for candidate in [original, pm.read_model(original.text)]:
         summary = candidate["orders"]["summary"]
         assert summary.names == ("x", "details")
         assert summary["details"].names == ("x",)
         edited = summary.replace(details=summary["details"].replace(x=pm.count() + 1))
         result = pm.connect().model(
-            candidate.define(orders=candidate["orders"].replace(summary=edited))
+            candidate.sources(orders=candidate["orders"].replace(summary=edited))
         )
         try:
             assert result.query("orders.summary").run().to_pylist() == [
@@ -147,7 +143,7 @@ def test_nested_queries_keep_their_own_field_scope_after_import():
         "run: duckdb.sql('SELECT 42 AS value') -> {aggregate: n is count()}"
     )
     assert anonymous.names == ()
-    assert anonymous.define(n=pm.sql("SELECT 1 AS value")).names == ("n",)
+    assert anonymous.sources(n=pm.sql("SELECT 1 AS value")).names == ("n",)
 
 
 def test_python_roundtrip_retains_semantics_unicode_imports_and_parameters(
@@ -199,7 +195,7 @@ def test_python_roundtrip_retains_semantics_unicode_imports_and_parameters(
         finally:
             model.close()
     assert sql[0] == sql[1]
-    edited = restored.define(
+    edited = restored.sources(
         **{"a`b": restored["a`b"].replace(**{"path\\name": pm.col("value") * 2})}
     )
     model = pm.connect().model(edited)
@@ -215,24 +211,23 @@ def test_python_roundtrip_retains_semantics_unicode_imports_and_parameters(
 
 
 def test_validation_counterexamples_refuse_writes_of_failed_models(tmp_path):
-    candidate = pm.draft().define(orders=orders())
+    candidate = pm.draft().sources(orders=orders())
     checks = {
-        "unique": pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("id")),
-                pm.aggregate(n=pm.count()),
-                pm.having(pm.col("n") > 1),
-            )
+        "unique": pm.source("orders").pipe(
+            pm.view()
+            .group_by(pm.col("id"))
+            .aggregate(n=pm.count())
+            .having(pm.col("n") > 1)
         ),
-        "nonnegative": pm.ref("orders").pipe(
-            pm.query(pm.where(pm.col("amount") < 0), pm.select(pm.col("id")))
+        "nonnegative": pm.source("orders").pipe(
+            pm.view().where(pm.col("amount") < 0).select(pm.col("id"))
         ),
     }
     report = pm.connect().validate(candidate, checks)
     assert report.ok and report.require_valid(warnings_as_errors=True) is report
     saved = report.save(tmp_path / "orders.malloy")
     assert pm.connect().check(pm.read_model(saved)).ok
-    broken = candidate.define(
+    broken = candidate.sources(
         orders=orders(
             "SELECT * FROM (VALUES (1,10,'N'), (1,-20,'S')) t(id,amount,region)"
         )
@@ -250,11 +245,10 @@ def test_validation_counterexamples_refuse_writes_of_failed_models(tmp_path):
 def test_compiler_and_opt_in_documentation_findings_share_one_report(tmp_path):
     from pymalloy.validation import DocumentationPolicy
 
-    candidate = pm.draft().define(
-        orders=pm.sql("SELECT '#\" not documentation' note, 1 amount").extend(
-            pm.measure(revenue=pm.col("amount").sum()),
-            pm.view(summary=pm.query(pm.aggregate(pm.col("revenue")))),
-        )
+    candidate = pm.draft().sources(
+        orders=pm.sql("SELECT '#\" not documentation' note, 1 amount")
+        .measure(revenue=pm.col("amount").sum())
+        .view(summary=pm.view().aggregate(pm.col("revenue")))
     )
     assert pm.connect().check(candidate).diagnostics == ()
     assert pm.connect().validate(candidate).diagnostics == ()
@@ -271,12 +265,12 @@ def test_compiler_and_opt_in_documentation_findings_share_one_report(tmp_path):
     with pytest.raises(pm.errors.ValidationError, match="Document"):
         validated.save(tmp_path / "model.malloy", warnings_as_errors=True)
     assert not (tmp_path / "model.malloy").exists()
-    invalid = candidate.define(
+    invalid = candidate.sources(
         orders=candidate["orders"].replace(revenue=pm.col("missing").sum())
     )
     assert not pm.connect().check(invalid).ok
     failed = pm.connect().validate(
-        invalid, {"probe": pm.ref("orders").pipe(pm.query(pm.select(pm.col("id"))))}
+        invalid, {"probe": pm.source("orders").pipe(pm.view().select(pm.col("id")))}
     )
     assert not failed.ok and failed.error
     assert failed.checks[0].status == "skipped"
@@ -287,20 +281,18 @@ def test_compiler_and_opt_in_documentation_findings_share_one_report(tmp_path):
 def test_import_snapshots_preserve_crlf_and_reject_changed_files(tmp_path):
     dependency = tmp_path / "base.malloy"
     dependency.write_bytes(
-        pm.draft().define(orders=orders()).text.replace("\n", "\r\n").encode()
+        pm.draft().sources(orders=orders()).text.replace("\n", "\r\n").encode()
     )
     path = tmp_path / "domain.malloy"
     path.write_bytes(b'import "base.malloy"\r\n')
     original = pm.read_model(path)
-    candidate = original.define(
-        expanded=pm.ref("orders").extend(pm.measure(rows=pm.count()))
-    )
+    candidate = original.sources(expanded=pm.source("orders").measure(rows=pm.count()))
     assert "+source:" in candidate.diff()
     report = pm.connect().validate(
         candidate,
         {
-            "count": pm.ref("expanded").pipe(
-                pm.query(pm.aggregate(pm.col("rows")), pm.having(pm.col("rows") != 2))
+            "count": pm.source("expanded").pipe(
+                pm.view().aggregate(pm.col("rows")).having(pm.col("rows") != 2)
             )
         },
     )
@@ -335,9 +327,9 @@ def test_import_snapshots_preserve_crlf_and_reject_changed_files(tmp_path):
 
 
 def test_loaded_edits_keep_source_file_ownership(tmp_path):
-    path = pm.draft().define(orders=orders()).save(tmp_path / "orders.malloy")
+    path = pm.draft().sources(orders=orders()).save(tmp_path / "orders.malloy")
     loaded = pm.read_model(path)
-    updated = loaded.define(
+    updated = loaded.sources(
         orders=loaded["orders"].replace(revenue=pm.col("doubled").sum())
     )
     assert pm.connect().check(updated.format()).ok
@@ -352,20 +344,19 @@ def test_validation_bounds_counterexamples_and_preserves_borrowed_connections():
     with duckdb.connect() as connection:
         connection.execute("CREATE TABLE numbers AS SELECT i FROM range(1000) t(i)")
         connection.execute("BEGIN")
-        candidate = pm.draft().define(numbers=pm.table("numbers"))
+        candidate = pm.draft().sources(numbers=pm.table("numbers"))
         report = pm.connect(database=connection).validate(
             candidate,
             {
-                "small": pm.ref("numbers").pipe(
-                    pm.query(
-                        pm.where(pm.col("i") > 10),
-                        pm.select(pm.col("i")),
-                        pm.order_by(pm.col("i")),
-                    )
+                "small": pm.source("numbers").pipe(
+                    pm.view()
+                    .where(pm.col("i") > 10)
+                    .select(pm.col("i"))
+                    .order_by(pm.col("i"))
                 ),
-                "invalid": pm.ref("missing"),
+                "invalid": pm.source("missing"),
                 "engine": pm.sql("SELECT error('bad value') value").pipe(
-                    pm.query(pm.select(pm.col("value")))
+                    pm.view().select(pm.col("value"))
                 ),
             },
         )
@@ -409,10 +400,10 @@ def test_file_paths_names_and_empty_expressions_are_unambiguous(tmp_path):
     file.write_text("id,amount\n1,42\n")
     model = (
         pm.draft()
-        .define(**{"order facts": pm.table(Path(file.name))})
+        .sources(**{"order facts": pm.table(Path(file.name))})
         .queries(
-            summary=pm.ref("order facts").pipe(
-                pm.query(pm.aggregate(total=pm.col("amount").sum()))
+            summary=pm.source("order facts").pipe(
+                pm.view().aggregate(total=pm.col("amount").sum())
             )
         )
     )
@@ -422,7 +413,7 @@ def test_file_paths_names_and_empty_expressions_are_unambiguous(tmp_path):
     finally:
         runtime.close()
     with pytest.raises(ValueError, match="Limit"):
-        pm.limit(True)
+        pm.view().limit(True)
     for suffix in ["malloynb", "malloysql"]:
         with pytest.raises(ValueError, match=".malloy document"):
             pm.read_model("", url=f"memory://test/model.{suffix}")
@@ -430,18 +421,18 @@ def test_file_paths_names_and_empty_expressions_are_unambiguous(tmp_path):
         pm.read_model("source: x is y, x is z")["x"]
 
 
-def test_composed_document_fragments_share_the_named_editing_scope():
-    original = pm.draft().define(orders=pm.sql("SELECT 1 amount"))
-    nested = pm.draft(original.syntax)
-    updated = nested.define(orders=pm.sql("SELECT 2 amount"))
+def test_parsed_document_preserves_the_named_editing_scope():
+    original = pm.draft().sources(orders=pm.sql("SELECT 1 amount"))
+    nested = pm.read_model(original.text)
+    updated = nested.sources(orders=pm.sql("SELECT 2 amount"))
     assert updated.names == ("orders",)
     assert updated["orders"].text == pm.sql("SELECT 2 amount").text
     assert original["orders"].text == pm.sql("SELECT 1 amount").text
-    assert updated.text == pm.draft().define(orders=pm.sql("SELECT 2 amount")).text
+    assert updated.text == pm.draft().sources(orders=pm.sql("SELECT 2 amount")).text
 
 
 def test_batch_edits_preserve_warmed_text_and_scopes():
-    original = pm.draft().define(
+    original = pm.draft().sources(
         first=pm.sql("SELECT 1 amount"), second=pm.sql("SELECT 2 amount")
     )
     original_text = original.text
@@ -449,7 +440,7 @@ def test_batch_edits_preserve_warmed_text_and_scopes():
     restored = pickle.loads(pickle.dumps(original))
     assert restored.text == original_text
     assert restored["second"].text == original["second"].text
-    updated = original.define(
+    updated = original.sources(
         third=pm.sql("SELECT 3 amount"), second=pm.sql("SELECT 42 amount")
     )
     assert updated.names == ("first", "second", "third")
@@ -457,14 +448,14 @@ def test_batch_edits_preserve_warmed_text_and_scopes():
     assert "SELECT 42 amount" in updated.text
     model = pm.connect().model(
         updated.queries(
-            result=pm.ref("second").pipe(pm.query(pm.select(pm.col("amount"))))
+            result=pm.source("second").pipe(pm.view().select(pm.col("amount")))
         )
     )
     try:
         assert model.query("result").run().to_pylist() == [{"amount": 42}]
     finally:
         model.close()
-    ambiguous = pm.draft(original.syntax, updated.syntax)
+    ambiguous = pm.read_model(original.text + updated.text)
     with pytest.raises(ValueError, match="ambiguous"):
         ambiguous["second"]
 
@@ -503,7 +494,7 @@ source: orders is duckdb.sql('SELECT 1 id, 12 amount') extend {
     strict = DocumentationPolicy(routes=("business",), severity="error")
     assert not pm.connect().check(candidate, documentation=strict).ok
     assert not pm.connect().validate(candidate, documentation=strict).ok
-    revised = candidate.define(
+    revised = candidate.sources(
         orders=candidate["orders"].replace(
             revenue=pm.col("amount").avg().doc("Mean line amount in USD.")
         )
@@ -522,23 +513,23 @@ source: orders is duckdb.sql('SELECT 1 id, 12 amount') extend {
 
 
 def test_python_emission_uses_composable_constructors_and_keeps_opaque_trivia(tmp_path):
-    reusable = pm.query(pm.group_by(pm.col("region")), pm.aggregate(pm.col("revenue")))
+    reusable = pm.view().group_by(pm.col("region")).aggregate(pm.col("revenue"))
     candidate = (
         pm.draft()
-        .define(orders=orders())
-        .define(north=pm.ref("orders").extend(pm.where(pm.col("region") == "N")))
-        .queries(summary=pm.ref("north").pipe(reusable))
+        .sources(orders=orders())
+        .sources(north=pm.source("orders").where(pm.col("region") == "N"))
+        .queries(summary=pm.source("north").pipe(reusable))
     )
     generated = candidate.to_python()
-    assert ".define(" in generated and ".queries(" in generated
-    assert "pm.measure(" in generated and "pm.query(" in generated
+    assert ".sources(" in generated and ".queries(" in generated
+    assert ".measure(" in generated and "pm.view(" in generated
     draft = pm.read_model("// authored trivia\r\n" + candidate.text)
     emitted = tmp_path / "model.py"
     emitted.write_text(draft.to_python())
     restored = runpy.run_path(str(emitted))["model"]
     assert "// authored trivia" in restored.text
-    restored = restored.define(
-        north=pm.ref("orders").extend(pm.where(pm.col("region") == "S"))
+    restored = restored.sources(
+        north=pm.source("orders").where(pm.col("region") == "S")
     )
     with pm.connect().model(restored) as runtime:
         assert runtime.query("summary").run().to_pylist() == [
@@ -582,10 +573,10 @@ def test_handwritten_models_emit_editable_constructors_independent_of_layout(tmp
     """
     candidate = pm.read_model(source)
     generated = candidate.to_python()
-    assert "pm.dimension(" in generated and "pm.measure(" in generated
+    assert ".dimension(" in generated and ".measure(" in generated
     assert "pm.view(" in generated and ".queries(" in generated
-    assert "pm.order_by(" in generated and ".desc()" in generated
-    assert "pm.nest(" in generated and "pm.limit(1)" in generated
+    assert ".order_by(" in generated and ".desc()" in generated
+    assert ".nest(" in generated and ".limit(1)" in generated
     path = tmp_path / "model.py"
     path.write_text(generated)
     restored = runpy.run_path(str(path))["model"]
@@ -598,7 +589,7 @@ def test_handwritten_models_emit_editable_constructors_independent_of_layout(tmp
         right = rebuilt.query("result").run()
         assert left.columns == right.columns
         assert left.to_pylist() == right.to_pylist()
-    revised = restored.define(
+    revised = restored.sources(
         sales=restored["sales"].replace(revenue=pm.col("amount").sum() * 2)
     )
     with pm.connect().model(revised) as model:
@@ -610,26 +601,21 @@ def test_handwritten_models_emit_editable_constructors_independent_of_layout(tmp
 def test_annotations_preserve_other_routes_when_replaced_and_reconstructed(tmp_path):
     candidate = (
         pm.draft()
-        .define(
-            sales=pm.sql("SELECT 2 amount").extend(
-                pm.measure(
-                    revenue=pm.col("amount")
-                    .sum()
-                    .doc("Revenue")
-                    .annotate("unit=USD", route="research")
-                    .annotate("currency=USD")
-                ),
-                pm.view(
-                    totals=pm.query(pm.aggregate(pm.col("revenue"))).annotate(
-                        "bar_chart"
-                    )
-                ),
+        .sources(
+            sales=pm.sql("SELECT 2 amount")
+            .measure(
+                revenue=pm.col("amount")
+                .sum()
+                .doc("Revenue")
+                .annotate("unit=USD", route="research")
+                .annotate("currency=USD")
             )
+            .view(totals=pm.view().aggregate(pm.col("revenue")).annotate("bar_chart"))
         )
-        .queries(result=pm.ref("sales").pipe(pm.ref("totals")))
+        .queries(result=pm.source("sales").pipe("totals"))
     )
     loaded = pm.read_model(candidate.text)
-    revised = loaded.define(
+    revised = loaded.sources(
         sales=loaded["sales"].replace(
             revenue=pm.col("amount").sum().annotate("unit=EUR", route="research")
         )
@@ -683,10 +669,10 @@ def test_python_reconstruction_retains_a_captured_inputs_connection(tmp_path):
     frame = pa.table({"value": [1, 2]})
     candidate = (
         pm.draft()
-        .define(values=pm.data(frame, name="values", connection="warehouse"))
+        .sources(values=pm.data(frame, name="values", connection="warehouse"))
         .queries(
-            result=pm.ref("values").pipe(
-                pm.query(pm.aggregate(total=pm.col("value").sum()))
+            result=pm.source("values").pipe(
+                pm.view().aggregate(total=pm.col("value").sum())
             )
         )
     )
@@ -701,20 +687,17 @@ def test_constructor_text_is_readable_without_reformatting_raw_literals():
     inline = 'duckdb.sql("""SELECT \'first\nsecond\' AS label""")'
     candidate = (
         pm.draft()
-        .define(
-            orders=pm.sql("SELECT 1 AS value").extend(
-                pm.dimension(day=pm.col("value"), days=pm.col("value")),
-                pm.join("labels", pm.syntax(inline), kind="one", on=pm.lit(True)),
-                pm.view(
-                    details=pm.query(
-                        pm.select(
-                            pm.col("day"), pm.col("days"), pm.col("labels", "label")
-                        )
-                    )
-                ),
+        .sources(
+            orders=pm.sql("SELECT 1 AS value")
+            .dimension(day=pm.col("value"), days=pm.col("value"))
+            .join_one("labels", pm.Source.raw(inline), on=pm.lit(True))
+            .view(
+                details=pm.view().select(
+                    pm.col("day"), pm.col("days"), pm.col("labels", "label")
+                )
             )
         )
-        .queries(result=pm.ref("orders").pipe(pm.ref("details")))
+        .queries(result=pm.source("orders").pipe("details"))
     )
     assert candidate.text.startswith("source: orders is duckdb.sql(")
     assert "  dimension: `day` is value, `days` is value" in candidate.text
@@ -724,7 +707,7 @@ def test_constructor_text_is_readable_without_reformatting_raw_literals():
     )
     assert inline in candidate.text
     assert pm.read_model(candidate.text).text == candidate.text
-    assert pm.ref("orders").extend().pipe().text == "orders"
+    assert pm.source("orders").pipe().text == "orders"
     with pm.connect().model(candidate) as model:
         assert model.query("result").run().to_pylist() == [
             {"day": 1, "days": 1, "label": "first\nsecond"}
@@ -735,16 +718,16 @@ def test_generated_blocks_leave_raw_block_annotations_at_their_authored_columns(
     raw = "#|(research)\n  body\n|#\nselect: amount"
     candidate = (
         pm.draft()
-        .define(
-            values=pm.sql("SELECT 1 amount").extend(
-                pm.view(
-                    detail=pm.query(
-                        pm.syntax(raw).doc("Details").annotate("currency=USD")
-                    )
+        .sources(
+            values=pm.sql("SELECT 1 amount").view(
+                detail=pm.View.raw(
+                    "{\n",
+                    pm.Source.raw(raw).doc("Details").annotate("currency=USD"),
+                    "\n}",
                 )
             )
         )
-        .queries(result=pm.ref("values").pipe(pm.ref("detail")))
+        .queries(result=pm.source("values").pipe("detail"))
     )
     assert "\n" + raw + "\n" in candidate.text
     with pm.connect().model(candidate) as model:
