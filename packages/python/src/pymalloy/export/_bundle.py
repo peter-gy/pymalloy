@@ -20,7 +20,6 @@ from pymalloy._authoring.draft import Draft
 from pymalloy._authoring.syntax import Fragment, from_wire
 from pymalloy._authoring.tables import table_path
 from pymalloy._model import DEFAULT_CONNECTION
-from pymalloy.errors import CompilationError
 from pymalloy._model.source import ModelSource
 from pymalloy._protocol.givens import encode_givens, given_values
 from pymalloy._protocol.records import (
@@ -30,6 +29,7 @@ from pymalloy._protocol.records import (
     SyntaxRequest,
 )
 from pymalloy.authoring import table
+from pymalloy.errors import CompilationError
 from pymalloy.export._python import file_guard
 from pymalloy.validation import Validation
 
@@ -82,6 +82,9 @@ def bundle(
         if accepted is not None
         else connection_name or DEFAULT_CONNECTION
     )
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("Bundle timeout must be finite and positive")
+    deadline = time.monotonic() + timeout
     managed = []
     declared_files = dict(files or {})
     explicit_references = {table_path(key) for key in declared_files}
@@ -98,7 +101,7 @@ def bundle(
         givens = accepted.givens
         source = accepted.source
         for captured in accepted.draft.inputs:
-            artifact = captured.materialize()
+            artifact = captured._materialize()
             if _hash(artifact.path) != artifact.sha256:
                 raise ValueError(
                     f"Captured input {captured.name!r} changed after materialization"
@@ -107,14 +110,12 @@ def bundle(
                 raise ValueError(
                     "Explicit files cannot replace captured dataframe inputs"
                 )
-            declared_files[artifact.path] = artifact.path
+            declared_files[captured.reference] = artifact.path
             managed.append((captured, artifact))
     if not isinstance(source, ModelSource):
         raise TypeError("bundle requires a Validation or closed ModelSource snapshot")
     if type(format) is not bool:
         raise TypeError("format must be a boolean")
-    if not math.isfinite(timeout) or timeout <= 0:
-        raise ValueError("Bundle timeout must be finite and positive")
     if query is not None and (not isinstance(query, str) or not query):
         raise ValueError("query must be a nonempty name")
     parameters = given_values(encode_givens(givens))
@@ -135,7 +136,7 @@ def bundle(
     inputs = []
     bindings: dict[str, str] = {}
     managed_hashes = {
-        table_path(artifact.path): artifact.sha256 for _, artifact in managed
+        captured.reference: artifact.sha256 for captured, artifact in managed
     }
     aliases: dict[str, str | None] = {}
     for key, value in declared_files.items():
@@ -173,7 +174,6 @@ def bundle(
         inputs.append((path, alias, reference))
     inputs.sort(key=lambda entry: entry[2])
 
-    deadline = time.monotonic() + timeout
     documents = []
     compiler_version = None
     originals = [(source.url, source.text, PurePosixPath("model.malloy"))]
@@ -308,7 +308,7 @@ def bundle(
             files_by_reference[reference] = record
         input_records = []
         for captured, artifact in managed:
-            reference = table_path(artifact.path)
+            reference = captured.reference
             copied = files_by_reference[reference]
             if copied["sha256"] != artifact.sha256:
                 raise ValueError(f"Input {captured.name!r} changed during export")
@@ -358,10 +358,10 @@ def bundle(
             'data_root = root / manifest["data_root"]\n'
             + file_guard('(entry["alias"] for entry in manifest["files"])')
             + "\ncheck_files()\n"
-            'model = pm.model(root / manifest["model"], data_root=data_root, connection_name=manifest["connection_name"])\n'
+            'connection = pm.connect(data_root=data_root, name=manifest["connection_name"])\nmodel = connection.model(root / manifest["model"])\n'
             "try:\n"
             '    result = model.query(manifest["query"]).run(givens=manifest["givens"])\n'
-            "finally:\n    model.close()\n",
+            "finally:\n    connection.close()\n",
             encoding="utf-8",
             newline="\n",
         )

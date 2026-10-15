@@ -399,13 +399,13 @@ class HeadlessImports(importlib.abc.MetaPathFinder):
             raise AssertionError(f'Headless dependency imported: {fullname}')
 sys.meta_path.insert(0, HeadlessImports())
 import pymalloy as pm
-assert {'MalloyWidget', 'model', 'run', 'check', 'format'} <= set(dir(pm))
+assert {'MalloyWidget', 'connect', 'Connection', 'parse', 'format'} <= set(dir(pm))
 from pymalloy import MalloyWidget
 with_widget = MalloyWidget("run: example")
 assert with_widget.state["status"] == "idle"
 with_widget.close()
-from pymalloy.export import Document, QueryCell, jupyter
-query = QueryCell('answer', 'SELECT 42 AS answer', 'select')
+from pymalloy.export import Document, NotebookQuery, jupyter
+query = NotebookQuery('answer', 'SELECT 42 AS answer', 'select')
 document = Document('Answer', (query,), Path.cwd())
 notebook = __import__('json').loads(jupyter.render(document, output_path='answer.ipynb'))
 assert notebook['nbformat'] == 4

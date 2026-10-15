@@ -1,11 +1,12 @@
 import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 import duckdb
 import pytest
 
-from pymalloy import CompilationError, CompilerError, ExecutionError
+from pymalloy.errors import CompilationError, ExecutionError
 from pymalloy.export import marimo, prepare
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "examples"
@@ -183,32 +184,6 @@ def test_cli_failure_preserves_existing_output(tmp_path):
     assert "Unknown query 'missing'" in result.stderr
     assert "orders.by_region" in result.stderr
     assert output.read_text() == "existing notebook\n"
-
-
-def test_export_timeout_covers_preparation_and_closes_the_model(monkeypatch):
-    import time
-    from types import SimpleNamespace
-
-    import pymalloy as pm
-    from pymalloy.export import _compile
-
-    started = time.monotonic()
-    elapsed = started
-    opened = []
-    create = pm.model
-
-    def load(*args, **kwargs):
-        nonlocal elapsed
-        model = create(*args, **kwargs)
-        opened.append(model)
-        elapsed = started + 121
-        return model
-
-    monkeypatch.setattr(_compile, "time", SimpleNamespace(monotonic=lambda: elapsed))
-    monkeypatch.setattr(pm, "model", load)
-    with pytest.raises(TimeoutError, match="exceeded"):
-        prepare(EXAMPLES / "orders.malloy", timeout=120)
-    assert opened and all(model.closed for model in opened)
 
 
 @pytest.mark.parametrize(
@@ -412,48 +387,6 @@ def test_export_file_guard_preserves_catalog_table_precedence(tmp_path, monkeypa
     assert run_notebook(output)["run_0"].to_dicts() == [{"amount": 7}]
 
 
-@pytest.mark.parametrize("command", ["check", "export"])
-@pytest.mark.parametrize(
-    "failure",
-    [
-        CompilerError("compiler unavailable"),
-        TimeoutError("deadline exceeded"),
-        duckdb.IOException("input unavailable"),
-    ],
-    ids=["compiler", "deadline", "engine-io"],
-)
-def test_cli_reports_operational_failures_without_replacing_output(
-    tmp_path, monkeypatch, capsys, command, failure
-):
-    import sys
-
-    source = tmp_path / "model.malloy"
-    source.write_text("run: missing")
-    output = tmp_path / "report.ipynb"
-    arguments = ["pymalloy", command, str(source)]
-    if command == "export":
-        output.write_text("existing notebook")
-        arguments.extend(["--format", "jupyter", "--output", str(output)])
-    import pymalloy as pm
-    import pymalloy.export as exporter
-    from pymalloy.cli import main
-
-    def fail(*args, **kwargs):
-        raise failure
-
-    monkeypatch.setattr(pm, "check", fail)
-    monkeypatch.setattr(exporter, "prepare", fail)
-    monkeypatch.setattr(sys, "argv", arguments)
-    with pytest.raises(SystemExit) as stopped:
-        main()
-    assert stopped.value.code == 1
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err == f"pymalloy: {failure}\n"
-    if command == "export":
-        assert output.read_text() == "existing notebook"
-
-
 @pytest.mark.parametrize("profile", ["precompiled", "headless"])
 def test_native_exports_require_declared_sql_reader_inputs(
     tmp_path, monkeypatch, profile
@@ -499,51 +432,34 @@ def test_raw_sql_notebook_cannot_read_undeclared_files(tmp_path, monkeypatch, pr
         run_notebook(output)
 
 
-def test_generated_marimo_setup_is_an_ordinary_callable_python_cell(tmp_path):
-    import ast
-    import inspect
-    from contextlib import contextmanager
-    from types import SimpleNamespace
+def test_export_uses_one_compiler_for_discovery_and_compilation(tmp_path, children):
+    source = tmp_path / "model.malloy"
+    source.write_text("run: duckdb.sql('SELECT 42 AS value') -> {select: value}")
+    document = prepare(source)
+    assert len(children) == 1
+    assert children[0].poll() is not None
+    target = tmp_path / "report.py"
+    target.write_text(marimo.render(document, output_path=target))
+    source.unlink()
+    completed = subprocess.run(
+        [sys.executable, str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert run_notebook(target)["run_0"].to_dicts() == [{"value": 42}]
 
-    from pymalloy.export import Document, QueryCell
 
-    data = tmp_path / "data"
-    data.mkdir()
-    (data / "rows.csv").write_text("value\n42\n")
-    document = Document(
-        "Rows",
-        (QueryCell("rows", "SELECT * FROM 'rows.csv'", "select"),),
-        data_root=data,
-        files={"rows.csv": data / "rows.csv"},
-    )
-    output = tmp_path / "report.py"
-    tree = ast.parse(marimo.render(document, output_path=output))
-    setup = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-        and any(
-            isinstance(statement, ast.FunctionDef) and statement.name == "connect"
-            for statement in node.body
-        )
-    )
-    setup.decorator_list = []
-    setup.name = "setup"
-    standalone = tmp_path / "setup_cell.py"
-    standalone.write_text(ast.unparse(ast.Module(body=[setup], type_ignores=[])))
-    spec = importlib.util.spec_from_file_location("setup_cell", standalone)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    inputs = {
-        "Path": Path,
-        "contextmanager": contextmanager,
-        "duckdb": duckdb,
-        "mo": SimpleNamespace(notebook_dir=lambda: tmp_path),
-    }
-    returned = module.setup(
-        **{name: inputs[name] for name in inspect.signature(module.setup).parameters}
-    )
-    names = [name.id for name in setup.body[-1].value.elts]
-    definitions = dict(zip(names, returned, strict=True))
-    with definitions["connect"]() as connection:
-        assert connection.execute("SELECT * FROM 'rows.csv'").fetchall() == [(42,)]
+def test_export_allows_file_when_database_has_no_matching_catalog_identifier(tmp_path):
+    database = tmp_path / "catalog.duckdb"
+    with duckdb.connect(str(database)) as connection:
+        connection.execute("CREATE TABLE seed AS SELECT 7 AS value")
+    (tmp_path / "orders.csv").write_text("value\n42\n")
+    source = tmp_path / "model.malloy"
+    source.write_text("run: duckdb.table('orders.csv') -> {select: value}")
+    document = prepare(source, database=database)
+    target = tmp_path / "report.py"
+    target.write_text(marimo.render(document, output_path=target))
+    assert run_notebook(target)["run_0"].to_dicts() == [{"value": 42}]

@@ -4,7 +4,7 @@ from functools import cached_property, partial
 from importlib.metadata import version
 from pathlib import Path
 
-from pymalloy.export._document import Document, Markdown, Profile, QueryCell
+from pymalloy.export._document import Document, MarkdownCell, NotebookQuery, Profile
 from pymalloy.export._python import (
     connection_setup,
     data_setup,
@@ -39,11 +39,11 @@ class SQL:
 @dataclass(frozen=True)
 class Notebook:
     dependencies: tuple[str, ...]
-    cells: tuple[Markdown | Code | SQL, ...]
+    cells: tuple[MarkdownCell | Code | SQL, ...]
     variables: tuple[str, ...]
 
 
-def _precompiled(query: QueryCell, name: str, after: str | None) -> Code | SQL:
+def _precompiled(query: NotebookQuery, name: str, after: str | None) -> Code | SQL:
     if query.kind == "select":
         return SQL(name, query.sql, after)
     return Code(
@@ -54,16 +54,18 @@ def _precompiled(query: QueryCell, name: str, after: str | None) -> Code | SQL:
     )
 
 
-def _headless(query: QueryCell, name: str, after: str | None) -> Code:
+def _headless(query: NotebookQuery, name: str, after: str | None) -> Code:
     if query.kind == "copy":
-        source = f"_ = model.connection.execute({query.sql!r})\n{name} = pl.DataFrame()"
+        source = (
+            f"_ = connection.duckdb.execute({query.sql!r})\n{name} = pl.DataFrame()"
+        )
     else:
-        source = f"{name} = model.query({query.name!r}).run(givens=givens).polars()"
+        source = f"{name} = model.query({query.name!r}).run(givens=givens).to_polars()"
     return Code(f"{source}\n{name}", after)
 
 
 def _widget(
-    query: QueryCell, name: str, after: str | None, *, connection_name: str
+    query: NotebookQuery, name: str, after: str | None, *, connection_name: str
 ) -> Code:
     return Code(widget_setup(name, query.name, connection_name=connection_name), after)
 
@@ -72,7 +74,7 @@ def plan(
     document: Document, output_path: str | Path, *, base: str, imports: str
 ) -> Notebook:
     """Resolve execution policy once; serializers supply notebook syntax only."""
-    queries: Callable[[QueryCell, str, str | None], Code | SQL]
+    queries: Callable[[NotebookQuery, str, str | None], Code | SQL]
     match document.profile:
         case Profile.PRECOMPILED:
             requirements = ("duckdb>=1.5", "polars>=1.44")
@@ -138,14 +140,14 @@ def plan(
         + "`."
     )
     contents = list(document.cells)
-    intro = Markdown("# " + document.title)
-    if contents and isinstance(contents[0], Markdown):
+    intro = MarkdownCell(text="# " + document.title)
+    if contents and isinstance(contents[0], MarkdownCell):
         intro = contents[0]
         del contents[0]
-    cells: list[Markdown | Code | SQL] = [
+    cells: list[MarkdownCell | Code | SQL] = [
         intro,
         Code(imports + "\n\n" + runtime_imports),
-        Markdown(description),
+        MarkdownCell(text=description),
         *(Code(source) for source in setup),
     ]
     # Reserve both notebook host namespaces so names agree across serializers.
@@ -158,14 +160,14 @@ def plan(
     names = iter(variables)
     writer = None
     for cell in contents:
-        if isinstance(cell, Markdown):
+        if isinstance(cell, MarkdownCell):
             if cell.text.strip():
                 cells.append(cell)
             continue
-        if not isinstance(cells[-1], Markdown) or not cell.name.startswith(
+        if not isinstance(cells[-1], MarkdownCell) or not cell.name.startswith(
             ("run:", "sql:")
         ):
-            cells.append(Markdown("## " + query_title(cell.name)))
+            cells.append(MarkdownCell(text="## " + query_title(cell.name)))
         name = next(names)
         query = queries(cell, name, writer)
         if document.files and document.profile == Profile.HEADLESS:

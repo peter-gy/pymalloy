@@ -36,7 +36,7 @@ query: total is items -> {where: amount > $cutoff aggregate: revenue}
 """,
         {base_url: base.text},
     )
-    report = pm.read_model(source).validate(givens={"cutoff": 15})
+    report = pm.connect().validate(pm.read_model(source), givens={"cutoff": 15})
     report.require_valid()
     written = bundle(
         report,
@@ -59,13 +59,13 @@ query: total is items -> {where: amount > $cutoff aggregate: revenue}
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
-    model = pm.model(
-        relocated / manifest["model"], data_root=relocated / manifest["data_root"]
+    model = pm.connect(data_root=relocated / manifest["data_root"]).model(
+        relocated / manifest["model"]
     )
     try:
-        assert model.query(manifest["query"]).run(givens=manifest["givens"]).rows() == [
-            {"revenue": 20}
-        ]
+        assert model.query(manifest["query"]).run(
+            givens=manifest["givens"]
+        ).to_pylist() == [{"revenue": 20}]
         assert set(model.source().imports) == {
             (relocated / record["path"]).as_uri()
             for record in manifest["sources"]
@@ -74,9 +74,9 @@ query: total is items -> {where: amount > $cutoff aggregate: revenue}
     finally:
         model.close()
     restored = runpy.run_path(str(relocated / "model.py"))["model"]
-    model = restored.compile(data_root=relocated / manifest["data_root"])
+    model = pm.connect(data_root=relocated / manifest["data_root"]).model(restored)
     try:
-        assert model.query("total").run(givens=manifest["givens"]).rows() == [
+        assert model.query("total").run(givens=manifest["givens"]).to_pylist() == [
             {"revenue": 20}
         ]
     finally:
@@ -91,9 +91,9 @@ def test_bundle_distinguishes_inline_root_identity_from_imported_file(tmp_path):
         {url: "source: values is duckdb.sql('SELECT 42 AS value')"},
     )
     artifact = bundle(original, tmp_path / "bundle")
-    assert pm.run(artifact.model, data_root=artifact.data_root).rows() == [
-        {"value": 42}
-    ]
+    assert pm.connect(data_root=artifact.data_root).model(
+        artifact.model
+    ).query().run().to_pylist() == [{"value": 42}]
 
 
 def test_explicit_reader_files_use_native_search_path_without_rewriting_sql(
@@ -114,7 +114,7 @@ def test_explicit_reader_files_use_native_search_path_without_rewriting_sql(
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
     replay = relocated / "replay.py"
-    assert runpy.run_path(str(replay))["result"].rows() == [{"value": 42}]
+    assert runpy.run_path(str(replay))["result"].to_pylist() == [{"value": 42}]
     (elsewhere / "rows.csv").write_text("value\n99\n")
     with pytest.raises(ValueError, match="shadowed by the current directory"):
         runpy.run_path(str(replay))
@@ -177,9 +177,9 @@ def test_explicit_file_binding_keeps_spaces_and_quotes_literal(tmp_path):
     # A string binding can name the exact quoted table path from native Malloy.
     native_path = "'" + data.as_posix().replace("'", "''") + "'"
     artifact = bundle(source, tmp_path / "bundle", files={native_path: data})
-    assert pm.run(artifact.model, data_root=artifact.data_root).rows() == [
-        {"value": 42}
-    ]
+    assert pm.connect(data_root=artifact.data_root).model(
+        artifact.model
+    ).query().run().to_pylist() == [{"value": 42}]
 
 
 @pytest.mark.parametrize("validated", [False, True])
@@ -196,7 +196,7 @@ def test_bundle_replay_preserves_connection_alias(tmp_path, validated):
         )
     )
     source = (
-        candidate.validate(connection_name="warehouse")
+        pm.connect(name="warehouse").validate(candidate)
         if validated
         else pm.ModelSource(candidate.url, candidate.text)
     )
@@ -208,7 +208,7 @@ def test_bundle_replay_preserves_connection_alias(tmp_path, validated):
     assert manifest["connection_name"] == "warehouse"
     assert runpy.run_path(str(artifact.model.parent / "replay.py"))[
         "result"
-    ].rows() == [{"total": 42}]
+    ].to_pylist() == [{"total": 42}]
     if validated:
         with pytest.raises(ValueError, match="connection differs from validation"):
             bundle(source, tmp_path / "conflicting", connection_name="other")
@@ -222,11 +222,11 @@ def test_model_imports_keep_their_language_independent_of_url_suffix(tmp_path):
     (tmp_path / "base.malloynb").write_text(imported)
     entry = tmp_path / "model.malloy"
     entry.write_text(root)
-    with pm.model(entry) as model:
+    with pm.connect().model(entry) as model:
         source = model.source()
-        assert model.run().rows() == [{"value": 42}]
+        assert model.query().run().to_pylist() == [{"value": 42}]
     artifact = bundle(source, tmp_path / "bundle")
-    assert pm.run(artifact.model, data_root=artifact.data_root).rows() == [
-        {"value": 42}
-    ]
+    assert pm.connect(data_root=artifact.data_root).model(
+        artifact.model
+    ).query().run().to_pylist() == [{"value": 42}]
     assert prepare(entry).queries[0].name == "run:0"
