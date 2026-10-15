@@ -19,6 +19,8 @@ try {
 
 `Session.open({bundles?,signal?,connectionName?})` configures worker assets and session lifetime.
 Models accept text, a URL, or `ModelSource` plus virtual files. URL descriptors
-require CORS. Models share the compiler's Model/Query/Result contract with Node.
+require CORS. Models share the compiler's Model/Query/Result contract with Node, including
+class identity. The application bundler resolves the browser package's runtime
+dependencies.
 
 [Browser API](https://peter-gy.github.io/pymalloy/reference/browser)

@@ -9,7 +9,6 @@ export default defineConfig({
     platform: "browser",
     target: "es2023",
     minify: true,
-    deps: { alwaysBundle: [/.*/], onlyBundle: false, dts: { neverBundle: true, alwaysBundle: [] } },
     inputOptions: {
       transform: { inject: { process: "process/browser" }, define: { global: "globalThis" } },
     },

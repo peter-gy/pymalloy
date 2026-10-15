@@ -1,6 +1,10 @@
 import { createReadStream, readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { isAbsolute, dirname, join } from "node:path";
 import { defineConfig } from "vite-plus";
+
+if (process.env.PYMALLOY_BROWSER_BUNDLE && !isAbsolute(process.env.PYMALLOY_BROWSER_BUNDLE))
+  throw new Error("PYMALLOY_BROWSER_BUNDLE must be an absolute path");
 
 const distribution = fileURLToPath(new URL("../../../dist/", import.meta.url));
 const widgetRoot = new URL("../../../packages/widget/dist/", import.meta.url);
@@ -9,15 +13,9 @@ const runtimeFiles = new Map<string, URL>([
   ...manifest.modules.map(
     (path: string) => [`/widget/${path}`, new URL(path, widgetRoot)] as const,
   ),
-  [
-    "/runtime.mjs",
-    new URL(
-      process.env.PYMALLOY_CONSUMER_CANARY
-        ? "../../../nogit/consumer-canary/browser.mjs"
-        : "../../../packages/browser/dist/index.mjs",
-      import.meta.url,
-    ),
-  ],
+  ...(process.env.PYMALLOY_BROWSER_BUNDLE
+    ? [["/runtime.mjs", pathToFileURL(process.env.PYMALLOY_BROWSER_BUNDLE)] as const]
+    : []),
   ...[
     "duckdb-mvp.wasm",
     "duckdb-browser-mvp.worker.js",
@@ -36,6 +34,10 @@ const runtimeFiles = new Map<string, URL>([
 ]);
 
 export default defineConfig({
+  cacheDir: process.env.PYMALLOY_BROWSER_BUNDLE
+    ? join(dirname(process.env.PYMALLOY_BROWSER_BUNDLE), ".vite")
+    : undefined,
+  define: { "process.env": "{}", global: "globalThis" },
   root: fileURLToPath(new URL(".", import.meta.url)),
   server: { host: "127.0.0.1", port: 28443, strictPort: true },
   plugins: [
@@ -43,6 +45,13 @@ export default defineConfig({
       name: "python-package-index",
       configureServer(server) {
         server.middlewares.use((request, response, next) => {
+          if (request.url === "/runtime.mjs" && !process.env.PYMALLOY_BROWSER_BUNDLE) {
+            response.writeHead(302, {
+              Location: `/@fs/${fileURLToPath(new URL("../../../packages/browser/dist/index.mjs", import.meta.url))}`,
+            });
+            response.end();
+            return;
+          }
           const runtimeFile = runtimeFiles.get(request.url ?? "");
           if (runtimeFile) {
             response.setHeader(
