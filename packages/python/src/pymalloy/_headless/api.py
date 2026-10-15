@@ -202,7 +202,11 @@ class Connection:
         deadline = self._deadline(timeout)
         with compiler_lease(deadline, memory_mb=self._compiler_memory_mb) as compiler:
             runtime = _Runtime(
-                self, timeout=self._timeout, deadline=deadline, compiler=compiler
+                self,
+                timeout=self._timeout,
+                deadline=deadline,
+                compiler=compiler,
+                own_compiler=False,
             )
             try:
                 return _checked(
@@ -216,8 +220,7 @@ class Connection:
                     documentation,
                 )
             finally:
-                runtime._cleanup.detach()
-                runtime._closed = True
+                runtime.close()
 
     def validate(
         self,
@@ -306,6 +309,13 @@ def connect(
     ValueError
         Options conflict, or data_root, read_only=True, config, or extensions are
         supplied with a borrowed connection.
+
+    Notes
+    -----
+    A failed statement, including a timeout, can abort an open transaction on a
+    borrowed connection. Subsequent operations report the aborted transaction.
+    The caller must issue ROLLBACK before reusing that transaction. PyMalloy leaves
+    COMMIT and ROLLBACK to the caller.
 
     Examples
     --------

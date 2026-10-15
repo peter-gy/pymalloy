@@ -82,6 +82,7 @@ class _Runtime:
         timeout: float,
         deadline: float,
         compiler: Compiler | None = None,
+        own_compiler: bool = True,
     ) -> None:
         self._owner = owner
         self._connection = ConnectionRecord(name=owner.name, dialect="duckdb")
@@ -93,8 +94,11 @@ class _Runtime:
         self._root = owner._root
         self._lock = owner._lock
         self._closed = False
-        self._cleanup = weakref.finalize(self, self._compiler.close)
-        owner._runtimes.add(self)
+        self._cleanup = (
+            weakref.finalize(self, self._compiler.close) if own_compiler else None
+        )
+        if own_compiler:
+            owner._runtimes.add(self)
 
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
@@ -157,16 +161,19 @@ class _Runtime:
         deadline: float,
     ) -> Model:
         """Compile text, a Path, or a closed ModelSource snapshot."""
-        logical = source.text if isinstance(source, Draft) else None
-        inputs = source.inputs if isinstance(source, Draft) else ()
-        identity, text, imports, kind = open_source(
-            source,
-            url=url,
-            document_kind=document_kind,
-            root=self._root,
-            materialize=True,
-        )
+        logical = source.text if isinstance(source, (Draft, ModelSource)) else None
+        inputs = source.inputs if isinstance(source, (Draft, ModelSource)) else ()
         with self.operation(deadline=deadline):
+            identity, text, imports, kind = open_source(
+                source,
+                url=url,
+                document_kind=document_kind,
+                root=self._root,
+                materialize=True,
+                parse=lambda text, url, kind: self._compiler.parse(
+                    text, url=url, document_kind=kind, deadline=deadline
+                ),
+            )
             result = self.request(
                 BeginRequest(
                     url=identity,
@@ -185,8 +192,11 @@ class _Runtime:
                 ModelSource(
                     result.source.url,
                     logical if logical is not None else result.source.text,
-                    result.source.imports,
+                    source.imports
+                    if isinstance(source, ModelSource)
+                    else result.source.imports,
                     result.source.document_kind,
+                    inputs=inputs,
                 ),
                 result.compiler_version,
                 inputs,
@@ -203,21 +213,24 @@ class _Runtime:
     ) -> CheckReport:
         if position is not None and not isinstance(position, SourcePosition):
             raise TypeError("position must be a SourcePosition")
-        identity, text, imports, kind = open_source(
-            source,
-            url=url,
-            document_kind=document_kind,
-            root=self._root,
-            materialize=True,
-        )
-        request = CheckRequest(
-            source=text,
-            url=identity,
-            connection=self._connection,
-            document_kind=kind,
-            position=position if position is not None else msgspec.UNSET,
-        )
         with self.operation(deadline=deadline):
+            identity, text, imports, kind = open_source(
+                source,
+                url=url,
+                document_kind=document_kind,
+                root=self._root,
+                materialize=True,
+                parse=lambda text, url, kind: self._compiler.parse(
+                    text, url=url, document_kind=kind, deadline=deadline
+                ),
+            )
+            request = CheckRequest(
+                source=text,
+                url=identity,
+                connection=self._connection,
+                document_kind=kind,
+                position=position if position is not None else msgspec.UNSET,
+            )
             return self.request(
                 request, CheckReady, deadline=deadline, imports=imports
             ).report
@@ -226,7 +239,8 @@ class _Runtime:
         with self._lock:
             if not self._closed:
                 self._closed = True
-                self._cleanup()
+                if self._cleanup is not None:
+                    self._cleanup()
 
 
 class Model(NotebookDisplay):
@@ -648,8 +662,9 @@ class Query(NotebookDisplay):
                     source=ModelSource(
                         self._model._source.url,
                         self._model._source.text,
-                        {**self._model._source.imports, **runtime._compiler.sources},
+                        {**runtime._compiler.sources, **self._model._source.imports},
                         self._model._source.document_kind,
+                        inputs=self._inputs,
                     ),
                     query=self._info,
                     malloy=self._selection.malloy

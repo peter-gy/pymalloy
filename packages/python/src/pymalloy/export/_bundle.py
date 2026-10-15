@@ -100,20 +100,18 @@ def bundle(
             )
         givens = accepted.givens
         source = accepted.source
-        for captured in accepted.draft.inputs:
-            artifact = captured._materialize()
-            if _hash(artifact.path) != artifact.sha256:
-                raise ValueError(
-                    f"Captured input {captured.name!r} changed after materialization"
-                )
-            if table_path(artifact.path) in explicit_references:
-                raise ValueError(
-                    "Explicit files cannot replace captured dataframe inputs"
-                )
-            declared_files[captured.reference] = artifact.path
-            managed.append((captured, artifact))
     if not isinstance(source, ModelSource):
         raise TypeError("bundle requires a Validation or closed ModelSource snapshot")
+    for captured in source.inputs:
+        artifact = captured._materialize()
+        if _hash(artifact.path) != artifact.sha256:
+            raise ValueError(
+                f"Captured input {captured.name!r} changed after materialization"
+            )
+        if table_path(artifact.path) in explicit_references:
+            raise ValueError("Explicit files cannot replace captured dataframe inputs")
+        declared_files[captured.reference] = artifact.path
+        managed.append((captured, artifact))
     if type(format) is not bool:
         raise TypeError("format must be a boolean")
     if query is not None and (not isinstance(query, str) or not query):

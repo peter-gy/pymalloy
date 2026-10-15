@@ -10,6 +10,28 @@ import pymalloy as pm
 from pymalloy.export import bundle
 
 
+def test_captured_model_source_bundle_copies_data_after_runtime_collection(tmp_path):
+    import gc
+
+    import pyarrow as pa
+
+    draft = pm.draft().queries(
+        q=pm.data(pa.table({"amount": [12, 20]}), name="orders").pipe(
+            pm.view().aggregate(total=pm.col("amount").sum())
+        )
+    )
+    with pm.connect() as con:
+        model = con.model(draft)
+        snapshot = model.source()
+    del draft, model, con
+    gc.collect()
+    artifact = bundle(snapshot, tmp_path / "bundle", query="q")
+    manifest = json.loads(artifact.manifest.read_text())
+    assert len(manifest["inputs"]) == 1
+    with pm.connect(data_root=artifact.data_root) as con:
+        assert con.model(artifact.model).query("q").run().to_pylist() == [{"total": 32}]
+
+
 def test_validated_bundle_relocates_imports_and_data_and_replays_exact_parameters(
     tmp_path, monkeypatch
 ):

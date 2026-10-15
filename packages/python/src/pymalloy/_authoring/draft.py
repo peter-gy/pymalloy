@@ -502,7 +502,12 @@ def read_model(source: str | Path | ModelSource, *, url: str | None = None) -> D
     if kind != "model":
         raise ValueError("Structured authoring requires a .malloy document")
     path = source.resolve() if isinstance(source, Path) else None
-    parsed = from_wire(parse_syntax(text, url=identity))
+    parsed = from_wire(
+        parse_syntax(text, url=identity),
+        {value.reference: value for value in source.inputs}
+        if isinstance(source, ModelSource)
+        else None,
+    )
     if not isinstance(parsed, Syntax):
         raise TypeError("Compiler returned a scalar for a model document")
     return Draft(parsed, identity, imports, path, text if path is not None else None)

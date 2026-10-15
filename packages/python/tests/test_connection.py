@@ -16,6 +16,35 @@ from pymalloy.errors import ClosedError, ValidationError
 ONE = "run: duckdb.sql('SELECT 42 AS value') -> {select: value}"
 
 
+def test_public_namespace_discovery():
+    assert dir(pm) == sorted(pm.__all__)
+    assert pm.errors.__all__ == [
+        "ClosedError",
+        "CompilationError",
+        "CompilerError",
+        "ExecutionContext",
+        "ExecutionError",
+        "PyMalloyError",
+        "SchemaError",
+        "ValidationError",
+    ]
+
+
+def test_model_source_materializes_captured_inputs_in_imported_source():
+    source = pm.data(pa.table({"amount": [12, 20]}), name="orders")
+    snapshot = pm.ModelSource(
+        "memory://snapshot/report.malloy",
+        "import 'orders.malloy'\nrun: orders -> {aggregate: total is amount.sum()}",
+        {"memory://snapshot/orders.malloy": pm.draft().sources(orders=source).text},
+        inputs=source.inputs,
+    )
+    with pm.connect() as con:
+        model = con.model(snapshot)
+        assert model.query().run().to_pylist() == [{"total": 32}]
+        assert model.source().imports == snapshot.imports
+        assert model.source().inputs == snapshot.inputs
+
+
 def test_models_share_engine_and_keep_independent_compilers():
     with pm.connect(name="warehouse") as connection:
         native = connection.duckdb
@@ -88,10 +117,11 @@ def test_borrowed_connection_rejects_owned_settings(options):
 
 
 @pytest.mark.parametrize("snapshot_kind", ["model", "validation"])
-def test_captured_input_snapshot_rebinds_after_collection(snapshot_kind):
+@pytest.mark.parametrize("url", [None, "memory://snapshot/model.malloynb"])
+def test_captured_input_snapshot_rebinds_after_collection(snapshot_kind, url):
     captured = pm.data(pa.table({"amount": [12, 20]}), name="orders")
     candidate = (
-        pm.draft()
+        pm.draft(url=url)
         .sources(orders=captured)
         .queries(
             total=pm.source("orders").pipe(
@@ -100,7 +130,6 @@ def test_captured_input_snapshot_rebinds_after_collection(snapshot_kind):
         )
     )
     assert isinstance(captured.inputs[0], Input)
-    frame = captured.inputs[0].to_arrow()
     with pm.connect() as connection:
         if snapshot_kind == "model":
             model = connection.model(candidate)
@@ -114,11 +143,85 @@ def test_captured_input_snapshot_rebinds_after_collection(snapshot_kind):
     assert snapshot.text == candidate.text
     del connection, captured, candidate
     gc.collect()
-    rebound = pm.read_model(snapshot).sources(orders=pm.data(frame, name="orders"))
     with pm.connect() as connection:
-        assert connection.model(rebound).query("total").run().to_pylist() == [
+        assert connection.model(snapshot).query("total").run().to_pylist() == [
             {"amount": 32}
         ]
+
+
+@pytest.mark.parametrize("failure", ["statement", "timeout"])
+def test_borrowed_transaction_recovery_remains_with_caller(failure):
+    with duckdb.connect() as native:
+        with pm.connect(native) as connection:
+            sql = (
+                "SELECT CAST('nope' AS INTEGER) AS n"
+                if failure == "statement"
+                else "SELECT sum(i) AS n FROM range(1000000000000) t(i)"
+            )
+            model = connection.model(
+                pm.draft().queries(q=pm.sql(sql).pipe(pm.view().select("n")))
+            )
+            model.query().sql()
+            sibling = connection.model(ONE).query()
+            sibling.sql()
+            native.execute("BEGIN")
+            native.execute("CREATE TABLE kept AS SELECT 7 AS n")
+            expected = (
+                pm.errors.ExecutionError if failure == "statement" else TimeoutError
+            )
+            with pytest.raises(expected):
+                model.query().run(timeout=0.2)
+            with pytest.raises(
+                pm.errors.ExecutionError, match="transaction is aborted"
+            ):
+                sibling.run()
+            with pytest.raises(
+                duckdb.TransactionException, match="connection owner must ROLLBACK"
+            ):
+                connection.model(ONE)
+        with pytest.raises(duckdb.TransactionException, match="transaction is aborted"):
+            native.execute("SELECT 1")
+        native.execute("ROLLBACK")
+        assert native.execute("SHOW TABLES").fetchall() == []
+        with pm.connect(native) as connection:
+            assert connection.model(ONE).query().run().to_pylist() == [{"value": 42}]
+
+
+def test_connection_close_during_check_preserves_concurrent_tooling(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    entered = Event()
+    release = Event()
+    closing = Event()
+    execute = duckdb.DuckDBPyConnection.execute
+
+    def describe(native, statement, *args, **kwargs):
+        if getattr(statement, "query", "").startswith("DESCRIBE"):
+            entered.set()
+            assert release.wait(10), "Schema discovery must be released"
+        return execute(native, statement, *args, **kwargs)
+
+    connection = pm.connect()
+    monkeypatch.setattr(duckdb.DuckDBPyConnection, "execute", describe)
+    with ThreadPoolExecutor(max_workers=3) as threads:
+        checked = threads.submit(connection.check, ONE)
+        try:
+            assert entered.wait(10)
+
+            def close():
+                closing.set()
+                connection.close()
+
+            closed = threads.submit(close)
+            assert closing.wait(10)
+            parsed = threads.submit(pm.parse, ONE)
+        finally:
+            release.set()
+        assert checked.result(timeout=10).ok
+        closed.result(timeout=10)
+        assert parsed.result(timeout=10).ok
+    assert pm.parse(ONE).ok
 
 
 def test_validation_captures_changing_bindings_once_for_all_checks():

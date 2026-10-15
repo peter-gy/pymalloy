@@ -92,6 +92,10 @@ class Engine:
             if len(statements) != 1:
                 raise SchemaError("Schema discovery requires one statement", sql=sql)
             rows = self.connection.execute(statements[0]).fetchall()
+        except duckdb.TransactionException as error:
+            raise duckdb.TransactionException(
+                f"Schema discovery failed: {error}. The connection owner must ROLLBACK the aborted transaction."
+            ) from error
         except duckdb.Error as error:
             raise SchemaError(str(error), sql=sql) from error
         return [Column(name=row[0], type=row[1]) for row in rows]

@@ -27,8 +27,9 @@ connections remain owned by the caller.
 runtime. It is read-only for the widget's lifetime and must match the connection
 used by the source. Pass it explicitly for aliases such as `analytics`.
 
-`ModelSource(url, text, imports, document_kind=None)` captures source independently
-of data. Its kind is `"model"` or `"notebook"`, inferred from the URL when omitted.
+`ModelSource(url, text, imports, document_kind=None, *, inputs=())` captures a source
+graph and the data owners referenced by its logical input paths. Its kind is
+`"model"` or `"notebook"`, inferred from the URL when omitted.
 The widget respects that kind when compiling the source.
 `pymalloy.browser.Bundle(module, worker)` and
 `Runtime(mvp, eh=None)` configure explicit DuckDB runtime URLs.
@@ -43,7 +44,8 @@ Set `auto_run=False` to require an explicit **Check** or **Run**
 action. PyMalloy values displayed directly as cell outputs use this setting.
 Check resolves the model and schemas, which can read data for schema discovery.
 A native `Model` or `Query` offers **Preview** using its existing
-connection with a 30-second timeout. Materialized `Result` values show up to
+connection using the model's timeout, inherited from its connection unless
+overridden. Materialized `Result` values show up to
 20 retained rows. See [notebook editing](../guide/notebook-editing.md) for the
 behavior of each value type.
 

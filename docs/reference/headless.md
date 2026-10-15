@@ -24,6 +24,11 @@ DuckDB connection to borrow it. Borrowed connections preserve caller settings,
 registrations, and transactions. They reject `data_root`, `read_only=True`,
 `config`, and nonempty `extensions`.
 
+A failed statement, including a timeout, can abort an open borrowed transaction.
+Subsequent operations report the aborted transaction. The caller must
+issue `ROLLBACK` before reusing it. PyMalloy leaves `COMMIT` and `ROLLBACK` to
+the connection owner.
+
 `name` is the Malloy connection name. `data_root` sets the owned connection's
 file search path. `config` supplies native DuckDB settings. `extensions` are
 installed and loaded before file-access restrictions. `timeout` is the default
@@ -56,7 +61,9 @@ can still scan the full input, and nested
 results can contain additional rows.
 
 `model.inspect(*, position=None, url=None, timeout=None)` returns `Inspection`.
-`model.source()` returns `ModelSource`.
+`model.source()` returns a `ModelSource` retaining logical text, imported source,
+and captured input owners. Compile that snapshot after closing the original model
+to reuse its captured data.
 `model.document(*, queries=None, all=False, givens=None, timeout=None)` returns an
 ordered tuple of typed `MarkdownCell` and `QueryCell` records. `queries=None` uses
 the default selection. `queries=[]` selects no query cells. Authored Markdown or a

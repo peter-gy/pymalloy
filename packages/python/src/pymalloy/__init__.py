@@ -86,7 +86,7 @@ __all__ = [
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(__all__))
+    return __all__
 
 
 def __getattr__(name: str):

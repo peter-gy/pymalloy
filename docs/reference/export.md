@@ -64,8 +64,8 @@ replay workflow.
   and the exact givens used during validation. A supplied `query` must name a
   query in that model. Different explicit givens or a conflicting connection
   name are rejected.
-- `ModelSource` supplies source and imports only. The caller supplies any data
-  bindings and givens. `connection_name` defaults to `"duckdb"`. Bundling checks
+- `ModelSource` supplies source, imports, and captured input owners in `inputs`.
+  The caller supplies external file bindings and givens. `connection_name` defaults to `"duckdb"`. Bundling checks
   syntax and import closure, without semantic compilation or query execution.
 - `query=None` leaves replay to the model's default selection. A `ModelSource`
   query name is recorded without checking that it exists.

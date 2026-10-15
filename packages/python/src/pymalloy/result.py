@@ -101,8 +101,7 @@ class Result(NotebookDisplay):
 
         Notes
         -----
-        Requires Polars, installed directly with ``pip install polars``. The headless extra
-        alone supports rows and arrow but does not install Polars.
+        Requires Polars, installed directly with ``pip install polars``.
 
         Examples
         --------
