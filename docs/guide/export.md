@@ -1,69 +1,89 @@
 # Export notebooks
 
-Notebook export prepares ordered cells for marimo or Jupyter. To copy a semantic
-model and its inputs into a directory, use [source bundles](bundles.md).
-
-Prepare a Malloy file or document, then choose a notebook format:
-
-```sh
-pip install 'pymalloy[headless]'
-pymalloy export examples/orders.malloy --format marimo -o report.py
-pymalloy export examples/sales.malloynb --format jupyter -o report.ipynb
-```
+Prepare [Malloy](https://docs.malloydata.dev/) query cells, then render them as a
+[marimo](https://docs.marimo.io/) reactive Python notebook or
+[Jupyter](https://docs.jupyter.org/) notebook document.
+Install `pymalloy[headless]` for preparation. Run from the repository root to use
+its `examples/orders.malloy` fixture:
 
 ```python
-from pymalloy.export import prepare, marimo
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from pymalloy.export import jupyter, marimo, prepare
 
 book = prepare("examples/orders.malloy", queries=["orders.by_region"])
-text = marimo.render(book, output_path="report.py")
+with TemporaryDirectory() as directory:
+    output = Path(directory)
+    (output / "report.py").write_text(marimo.render(book, output_path=output / "report.py"))
+    (output / "report.ipynb").write_text(jupyter.render(book, output_path=output / "report.ipynb"))
+    print([query.name for query in book.queries])
 ```
 
-Choose an execution profile with `profile=` or `--profile`:
+Expected output is `['orders.by_region']`. Renderers return text.
+`output_path` determines relative data references. The example writes temporary
+notebooks. For sharing, choose a persistent output directory and keep the data
+at the referenced relative paths. Use [source bundles](bundles.md) to copy inputs.
 
-| Profile                 | Execution in the generated notebook                                       |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `precompiled` (default) | Embedded SQL executed by native DuckDB, without PyMalloy                  |
-| `headless`              | Captured `ModelSource` compiled and executed with `pymalloy[headless]`    |
-| `widget`                | Captured source and virtual files sent to browser widgets with `pymalloy` |
+The equivalent command for a persistent notebook is:
 
-Preparing any profile requires the headless compiler. Running an exported widget
-notebook requires no Deno. Renderers retain relative references to local data
-files, which must accompany the notebook. They do not copy a source bundle.
+```sh
+pymalloy export examples/orders.malloy --format marimo --query orders.by_region -o /tmp/report.py
+```
 
-Documents preserve Markdown and query order. Models default to run statements,
-then named queries, then public views. Explicit `queries` selects names in the
-requested order. Use `all=True` or `--all` to select every query.
+## Choose execution
 
-Data paths follow the exported data root. A conflicting file in the current
-directory raises an error so it cannot silently replace the exported input.
-Relative COPY destinations are anchored
-to that root. Marimo output includes dependencies between COPY and following
-cells. Jupyter runs in document order.
+| Profile                 | Generated notebook behavior                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `precompiled` (default) | Executes embedded SQL with native [DuckDB](https://duckdb.org/docs/stable/), an embedded database |
+| `headless`              | Compiles captured `ModelSource` and runs queries with `pymalloy[headless]`                        |
+| `widget`                | Sends captured source and virtual files to browser widgets with `pymalloy`                        |
 
-Exports discover table files from Malloy syntax. Declare files read inside SQL
-explicitly for every profile:
+Pass `profile=` or `--profile`. Preparation requires the headless compiler for
+every profile. Install the notebook host and dependencies declared in the
+artifact to run it. Widget execution uses browser assets. Run Jupyter kernels
+from the exported notebook's directory so relative references resolve correctly.
+
+Documents preserve Markdown, Malloy, and SQL cell order. Plain models select
+runs first, then named queries, then public views. `queries` selects names in the
+requested order. `all=True` or `--all` selects every query.
+
+## Declare reader inputs
+
+Malloy table files are discovered. Declare local files hidden inside SQL readers:
 
 ```python
-book = prepare(
-    "analysis.malloy", profile="widget", data_root="data",
-    files={"orders.csv": "data/orders.csv"},
-)
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from pymalloy.export import prepare
+
+with TemporaryDirectory() as directory:
+    root = Path(directory)
+    (root / "orders.csv").write_text("amount\n20\n22\n")
+    model = root / "orders.malloy"
+    model.write_text("run: duckdb.sql(\"SELECT * FROM read_csv('orders.csv')\") -> { select: amount }")
+    book = prepare(model, data_root=root, files={"orders.csv": root / "orders.csv"})
+    print(len(book.queries))
 ```
 
-`files` supplies source file names and local paths. Native profiles restrict
-DuckDB file access to discovered table files, declared reader files, and inferred
-COPY destinations during preparation and execution. File names must resolve to
-their declared paths through `data_root`. Widget profiles register the names as
-browser aliases, while native schema discovery must still resolve the inputs.
+Expected output is `1`. Native profiles restrict file access to discovered table
+files, declared reader files, and inferred COPY destinations during preparation
+and generated execution. Native aliases must resolve to their declared paths
+through `data_root`. A conflicting current-directory input raises an error.
+Relative COPY destinations are anchored to the exported data root.
+Marimo retains dependencies between COPY and subsequent cells. Jupyter executes
+in document order.
 
-HTTP(S) table sources are discovered automatically. Declare URLs inside native
-SQL readers with `remote_files=["https://example.org/orders.parquet"]` or repeat
-`--remote-file` on the CLI. Native notebooks with remote inputs install and load
-DuckDB's `httpfs` extension. They permit HTTP(S) access, including redirects, and
-require network access during preparation and execution. Remote response bytes
-are not captured. Use local files when the exported inputs must be fixed.
+HTTP(S) table URLs are discovered. Declare URLs hidden inside SQL with
+`remote_files=[url]` or repeat `--remote-file URL`. Remote native notebooks install
+and load DuckDB's `httpfs` extension and permit HTTP(S) access including redirects.
+Preparation and execution require network access. Remote responses stay live.
+Use local copies when inputs must be fixed.
 
-MalloyWidget exports require local files or HTTP(S) URLs and reject native database
-state and COPY. Local globs must be replaced with explicit file declarations.
+Widget exports require local files or HTTP(S) URLs. They reject native database
+state, COPY, and local globs. Declare explicit files for those globs before export.
+Remote widget inputs need cross-origin resource sharing permission from the server.
 The same inputs, schemas, options, output path, and dependency versions produce
-identical notebook bytes.
+identical notebook bytes. See [export reference](../reference/export.md) and
+[CLI flags](../reference/cli.md#export).

@@ -12,8 +12,8 @@ Use references/api.md for immutable Python composition and scoped source edits,
 references/artifacts.md for captured inputs and bundle replay, and
 references/triage.md for compiler and execution failures.
 
-Malloy owns language semantics. Draft.check() runs compiler checks and accepts
-optional documentation lint policies. Draft.validate() executes supplied counterexample queries against
+Malloy owns language semantics. Connection.check(source) runs compiler checks and accepts
+optional documentation lint policies. Connection.validate(draft, checks) executes supplied counterexample queries against
 the configured data. Keep analytical intent and review in the producing project.
 
 Syntax construction, widgets, and agent discovery use the base package. Parsing existing

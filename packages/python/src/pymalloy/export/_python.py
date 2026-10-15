@@ -1,10 +1,14 @@
+import ast
+import inspect
 import keyword
 import os
 import pprint
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._model.file_access import check_files, settings
 from pymalloy._protocol.givens import encode_givens, given_values
 from pymalloy.export._document import Document
 
@@ -35,11 +39,7 @@ def data_setup(document: Document, output_path: str | Path, base: str) -> str:
         database = Path(os.path.relpath(document.database, parent)).as_posix()
         setup.append(f"database = ({base} / {database!r}).resolve()")
     if document.profile != "widget":
-        setup.append(
-            file_configuration(
-                repr(sorted(document.files)), remote=bool(document.remote_files)
-            )
-        )
+        setup.append(file_configuration(document))
     aliases = [
         alias for alias in sorted(document.files) if not Path(alias).is_absolute()
     ]
@@ -48,26 +48,46 @@ def data_setup(document: Document, output_path: str | Path, base: str) -> str:
     return "\n".join(setup)
 
 
-def file_configuration(aliases: str, *, remote: bool = False) -> str:
-    """Emit native DuckDB settings for declared notebook inputs."""
-    return (
-        "connection_config = {\n"
-        + f"    'allowed_paths': sorted({{value for alias in {aliases} for value in (alias, str(data_root / alias))}}),\n"
-        + ("    'allowed_directories': ['http://', 'https://'],\n" if remote else "")
-        + "    'enable_external_access': False,\n}"
-    )
+def _standalone(function, name: str) -> str:
+    node = ast.parse(inspect.getsource(function)).body[0]
+    assert isinstance(node, ast.FunctionDef)
+    node.name = name
+    node.returns = None
+    for arg in node.args.args:
+        arg.annotation = None
+    for child in ast.walk(node):
+        if isinstance(child, ast.AnnAssign):
+            child.annotation = ast.Name(id="object", ctx=ast.Load())
+    return ast.unparse(node)
+
+
+@dataclass(frozen=True)
+class _PathExpression:
+    alias: str
+
+    def __repr__(self) -> str:
+        return f"str((data_root / {self.alias!r}).resolve())"
+
+
+def file_configuration(document: Document) -> str:
+    config = settings(document.data_root, document.files, document.remote_files)
+    paths = {
+        str(path.resolve()): _PathExpression(alias)
+        for alias, path in sorted(document.files.items())
+    }
+    config["file_search_path"] = _PathExpression(".")
+    config["allowed_paths"] = [
+        paths.get(value, value) for value in config["allowed_paths"]
+    ]
+    return "connection_config = " + pprint.pformat(config, sort_dicts=False)
 
 
 def file_guard(aliases: str) -> str:
-    """Emit a standalone guard for a trusted Python expression yielding file aliases."""
-    return "\n".join(
-        [
-            "def check_files():",
-            f"    for _alias in {aliases}:",
-            "        _shadow = Path(_alias)",
-            "        if _shadow.is_file() and _shadow.resolve() != (data_root / _alias).resolve():",
-            '            raise ValueError(f"Relative file {_alias!r} is shadowed by the current directory. Use an absolute file path or run from a directory without that file.")',
-        ]
+    return (
+        _standalone(check_files, "_check_files")
+        + "\ndef check_files():\n    _check_files({alias: data_root / alias for alias in "
+        + aliases
+        + "})"
     )
 
 
@@ -86,8 +106,6 @@ def connection_setup(document: Document, output_path: str | Path, base: str) -> 
             *(["    check_files()"] if document.files else []),
             f"    with duckdb.connect({database_argument}) as connection:",
             '        connection.execute("SET VARIABLE data_root = ?", [data_root.as_posix()])',
-            '        connection.execute("SET file_search_path = ?", [data_root.as_posix()])',
-            "        connection.execute(\"SET TimeZone = 'UTC'\")",
             *(
                 [
                     f"        for _extension in {document.extensions!r}:",
@@ -158,16 +176,14 @@ def widget_setup(
 
 
 def model_setup(document: Document) -> str:
-    arguments = f"data_root=data_root, connection_name={document.connection_name!r}, config=connection_config"
+    arguments = f"name={document.connection_name!r}, config=connection_config"
     if document.extensions:
         arguments += f", extensions={document.extensions!r}"
     if document.database is not None:
         arguments += ", database=database, read_only=True"
     return (
-        ("check_files()\n" if document.files else "")
-        + f"model = pm.model(model_source, {arguments})\n"
-        'model.connection.execute("SET VARIABLE data_root = ?", [str(data_root)])'
-    )
+        "check_files()\n" if document.files else ""
+    ) + f"connection = pm.connect({arguments})\nmodel = connection.model(model_source)"
 
 
 def query_title(name: str) -> str:

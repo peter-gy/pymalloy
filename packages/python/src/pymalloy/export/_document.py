@@ -12,22 +12,18 @@ from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.source import ModelSource
 from pymalloy._protocol.givens import encode_givens, given_values
 from pymalloy._protocol.snapshot import freeze
+from pymalloy.analysis import MarkdownCell
 
 
 @dataclass(frozen=True)
-class QueryCell:
+class NotebookQuery:
     name: str
     sql: str
     kind: Literal["select", "copy"]
 
     def __post_init__(self) -> None:
         if self.kind not in {"select", "copy"}:
-            raise ValueError("QueryCell kind must be 'select' or 'copy'")
-
-
-@dataclass(frozen=True)
-class Markdown:
-    text: str
+            raise ValueError("NotebookQuery kind must be 'select' or 'copy'")
 
 
 class Profile(StrEnum):
@@ -65,7 +61,7 @@ def native_extensions(
 @dataclass(frozen=True)
 class Document:
     title: str
-    cells: tuple[QueryCell | Markdown, ...]
+    cells: tuple[NotebookQuery | MarkdownCell, ...]
     data_root: Path
     database: Path | None = None
     source: ModelSource | None = None
@@ -104,5 +100,5 @@ class Document:
             )
 
     @property
-    def queries(self) -> tuple[QueryCell, ...]:
-        return tuple(cell for cell in self.cells if isinstance(cell, QueryCell))
+    def queries(self) -> tuple[NotebookQuery, ...]:
+        return tuple(cell for cell in self.cells if isinstance(cell, NotebookQuery))

@@ -14,4 +14,3 @@ playwright-report/
 test-results/
 
 **/.vitepress/cache/
-nogit/

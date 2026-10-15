@@ -1,0 +1,45 @@
+name: Set up workspace
+description: Install the locked Node.js, pnpm, and uv workspaces and build the packaged assets.
+
+inputs:
+  python-version:
+    description: Python version for the uv environment.
+    required: false
+    default: "3.12"
+  build:
+    description: Build JavaScript packages and install the Python workspace with its staged assets.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Vite+ and Node.js
+      uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+      with:
+        node-version-file: .node-version
+        cache: true
+        run-install: |
+          - args: ["--frozen-lockfile"]
+
+    - name: Enable pnpm
+      shell: bash
+      run: corepack enable pnpm
+
+    - name: Set up uv and Python
+      if: inputs.build == 'true'
+      uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      with:
+        enable-cache: true
+        cache-dependency-glob: uv.lock
+        python-version: ${{ inputs.python-version }}
+
+    - name: Build packages
+      if: inputs.build == 'true'
+      shell: bash
+      run: pnpm build
+
+    - name: Install Python workspace
+      if: inputs.build == 'true'
+      shell: bash
+      run: uv sync --all-packages --all-extras --frozen

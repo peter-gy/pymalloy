@@ -7,8 +7,9 @@ from typing import Any
 import duckdb
 import pyarrow as pa
 
-from pymalloy._model.errors import SchemaError
+from pymalloy._model.file_access import settings as connection_settings
 from pymalloy._protocol.records import SchemaNeed, TableSchemaNeed
+from pymalloy.errors import SchemaError
 from pymalloy.result import Column, Result
 
 from .deadline import interrupt_at
@@ -44,15 +45,7 @@ class Engine:
         if connection is not None:
             self.connection = connection
             return
-        settings = {name.lower(): value for name, value in (config or {}).items()}
-        if data_root is not None and "file_search_path" in settings:
-            raise ValueError("Choose data_root or config['file_search_path']")
-        if "file_search_path" not in settings:
-            root = Path(data_root or Path.cwd()).resolve()
-            if not root.is_dir():
-                raise ValueError(f"Data directory does not exist: {root}")
-            settings["file_search_path"] = str(root)
-        settings.setdefault("timezone", "UTC")
+        settings = connection_settings(data_root, config=config)
         # Timezone requires ICU, and allowlists require a started database. Lock last.
         deferred = {
             name: settings.pop(name)
@@ -74,6 +67,10 @@ class Engine:
             with interrupt_at(
                 self.connection, deadline, message="Model startup exceeded its deadline"
             ):
+                self.connection.execute(
+                    "SET VARIABLE data_root = ?",
+                    [str(Path(settings.get("file_search_path", Path.cwd())).resolve())],
+                )
                 for extension in extensions:
                     self.connection.install_extension(extension)
                     self.connection.load_extension(extension)
@@ -95,6 +92,10 @@ class Engine:
             if len(statements) != 1:
                 raise SchemaError("Schema discovery requires one statement", sql=sql)
             rows = self.connection.execute(statements[0]).fetchall()
+        except duckdb.TransactionException as error:
+            raise duckdb.TransactionException(
+                f"Schema discovery failed: {error}. The connection owner must ROLLBACK the aborted transaction."
+            ) from error
         except duckdb.Error as error:
             raise SchemaError(str(error), sql=sql) from error
         return [Column(name=row[0], type=row[1]) for row in rows]

@@ -11,16 +11,15 @@ import pyarrow as pa
 import pytest
 
 import pymalloy as pm
-from pymalloy import CompilationError, ModelError
+from pymalloy.errors import ClosedError, CompilationError
 
 ONE = "run: duckdb.sql('SELECT 1 AS value') -> { select: value }"
 
 
 def test_schema_discovery_rejects_additional_statements_before_execution():
     with duckdb.connect() as connection:
-        report = pm.check(
-            'source: numbers is duckdb.sql("SELECT 1 AS value; CREATE TABLE touched AS SELECT 2 AS value")',
-            connection=connection,
+        report = pm.connect(database=connection).check(
+            'source: numbers is duckdb.sql("SELECT 1 AS value; CREATE TABLE touched AS SELECT 2 AS value")'
         )
         assert not report.ok
         assert connection.execute(
@@ -29,12 +28,15 @@ def test_schema_discovery_rejects_additional_statements_before_execution():
 
 
 def test_rows_preserve_arrow_scalar_types_and_huge_integer_precision():
-    result = pm.run('''run: duckdb.sql("""
-SELECT 170141183460469231731687303715884105727::HUGEINT AS huge,
-       '00000000-0000-0000-0000-000000000001'::UUID AS id,
-       'abc'::BLOB AS payload, INTERVAL '2 days' AS duration
-""") -> {select:*}''')
-    assert result.rows() == [
+    result = (
+        pm.connect()
+        .model(
+            "run: duckdb.sql(\"\"\"\nSELECT 170141183460469231731687303715884105727::HUGEINT AS huge,\n       '00000000-0000-0000-0000-000000000001'::UUID AS id,\n       'abc'::BLOB AS payload, INTERVAL '2 days' AS duration\n\"\"\") -> {select:*}"
+        )
+        .query()
+        .run()
+    )
+    assert result.to_pylist() == [
         {
             "huge": Decimal(170141183460469231731687303715884105727),
             "id": "00000000-0000-0000-0000-000000000001",
@@ -50,20 +52,17 @@ def test_inline_model_and_captured_python_data():
     )
     draft = (
         pm.draft()
-        .define(
-            orders=pm.data(frame).extend(pm.measure(revenue=pm.col("amount").sum()))
-        )
+        .sources(orders=pm.data(frame).measure(revenue=pm.col("amount").sum()))
         .queries(
-            totals=pm.ref("orders").pipe(
-                pm.query(
-                    pm.group_by(pm.col("region")),
-                    pm.aggregate(pm.col("revenue")),
-                    pm.order_by(pm.col("region")),
-                )
+            totals=pm.source("orders").pipe(
+                pm.view()
+                .group_by(pm.col("region"))
+                .aggregate(pm.col("revenue"))
+                .order_by(pm.col("region"))
             )
         )
     )
-    assert pm.run(draft).polars().to_dicts() == [
+    assert pm.connect().model(draft).query().run().to_polars().to_dicts() == [
         {"region": "North", "revenue": 80},
         {"region": "South", "revenue": 20},
     ]
@@ -72,32 +71,28 @@ def test_inline_model_and_captured_python_data():
 def test_reusable_model_observes_data_updates_and_detaches_results():
     connection = duckdb.connect()
     connection.execute("CREATE TABLE orders AS SELECT 'North' AS region, 30 AS amount")
-    model = pm.model(
-        """
-source: orders is duckdb.table('orders') extend {
-  view: totals is { group_by: region aggregate: revenue is amount.sum() order_by: region }
-}
-query: summary is orders -> totals
-run: orders -> { aggregate: total is amount.sum() }
-run: summary
-""",
-        connection=connection,
+    native = pm.connect(database=connection)
+    model = native.model(
+        "\nsource: orders is duckdb.table('orders') extend {\n  view: totals is { group_by: region aggregate: revenue is amount.sum() order_by: region }\n}\nquery: summary is orders -> totals\nrun: orders -> { aggregate: total is amount.sum() }\nrun: summary\n"
     )
-    first = model.query().run().polars()
+    first = model.query().run().to_polars()
     assert first.to_dicts() == [{"region": "North", "revenue": 30}]
-    model.connection.execute("INSERT INTO orders VALUES ('North', 50), ('South', 20)")
-    assert model.query("summary").run().polars().to_dicts() == [
+    native.duckdb.execute("INSERT INTO orders VALUES ('North', 50), ('South', 20)")
+    assert model.query("summary").run().to_polars().to_dicts() == [
         {"region": "North", "revenue": 80},
         {"region": "South", "revenue": 20},
     ]
     assert (
-        model.query("orders.totals").run().polars().equals(model.query().run().polars())
+        model.query("orders.totals")
+        .run()
+        .to_polars()
+        .equals(model.query().run().to_polars())
     )
-    assert model.query("run:0").run().polars().item() == 100
+    assert model.query("run:0").run().to_polars().item() == 100
     assert (
         model.query(malloy="run: orders -> { aggregate: n is count() }")
         .run()
-        .polars()
+        .to_polars()
         .item()
         == 3
     )
@@ -105,45 +100,32 @@ run: summary
 
 
 def test_givens_are_typed_and_scoped_to_each_query():
-    model = pm.model(
-        """
-##! experimental.givens
-given: regions :: string[] is ['North']
-given: cutoff :: number is 10
-source: orders is duckdb.sql("SELECT * FROM (VALUES ('North', 30), ('South', 20)) t(region, amount)")
-run: orders -> { where: region in $regions and amount >= $cutoff select: region, amount order_by: region }
-"""
+    model = pm.connect().model(
+        "\n##! experimental.givens\ngiven: regions :: string[] is ['North']\ngiven: cutoff :: number is 10\nsource: orders is duckdb.sql(\"SELECT * FROM (VALUES ('North', 30), ('South', 20)) t(region, amount)\")\nrun: orders -> { where: region in $regions and amount >= $cutoff select: region, amount order_by: region }\n"
     )
-    assert model.query().run().polars().to_dicts() == [
+    assert model.query().run().to_polars().to_dicts() == [
         {"region": "North", "amount": 30}
     ]
     assert model.query().run(
         givens={"regions": ["South"], "cutoff": 15}
-    ).polars().to_dicts() == [{"region": "South", "amount": 20}]
+    ).to_polars().to_dicts() == [{"region": "South", "amount": 20}]
     assert (
         model.query()
         .run(givens={"regions": ["North", "South"], "cutoff": 99})
-        .polars()
+        .to_polars()
         .is_empty()
     )
-    assert model.query().run().polars().to_dicts() == [
+    assert model.query().run().to_polars().to_dicts() == [
         {"region": "North", "amount": 30}
     ]
     with pytest.raises(CompilationError, match="givens.cutoff"):
-        model.query().run(givens={"cutoff": "not a number"}).polars()
-    assert model.query().run().polars().height == 1
+        model.query().run(givens={"cutoff": "not a number"}).to_polars()
+    assert model.query().run().to_polars().height == 1
 
 
 def test_given_values_preserve_large_integers_dates_and_strings():
-    model = pm.model(
-        """
-##! experimental.givens
-given: n :: number is 1
-given: label :: string is 'default'
-given: day_value :: date is @2026-01-01
-source: one is duckdb.sql('SELECT 1 AS x')
-run: one -> { select: n is $n, label is $label, day_value is $day_value }
-"""
+    model = pm.connect().model(
+        "\n##! experimental.givens\ngiven: n :: number is 1\ngiven: label :: string is 'default'\ngiven: day_value :: date is @2026-01-01\nsource: one is duckdb.sql('SELECT 1 AS x')\nrun: one -> { select: n is $n, label is $label, day_value is $day_value }\n"
     )
     label = "a' ; DROP TABLE one; -- {text}"
     row = (
@@ -155,7 +137,7 @@ run: one -> { select: n is $n, label is $label, day_value is $day_value }
                 "day_value": date(2026, 9, 10),
             }
         )
-        .polars()
+        .to_polars()
         .to_dicts()[0]
     )
     assert row == {
@@ -164,25 +146,21 @@ run: one -> { select: n is $n, label is $label, day_value is $day_value }
         "day_value": date(2026, 9, 10),
     }
     assert (
-        model.query().run(givens={"label": None}).polars().to_dicts()[0]["label"]
+        model.query().run(givens={"label": None}).to_polars().to_dicts()[0]["label"]
         is None
     )
 
 
 def test_result_types_preserve_nested_data_nulls_and_precision():
-    result = pm.run(
-        """
-source: values is duckdb.sql(\"\"\"
- SELECT 9007199254740993::BIGINT AS big,
-        12345678901234567890.1234::DECIMAL(24,4) AS precise,
-        DATE '2026-09-10' AS day_value,
-        TIMESTAMPTZ '2026-09-10 12:34:56+00' AS instant,
-        NULL::VARCHAR AS missing,
-        [{'label': 'a', 'values': [1, NULL, 3]}] AS nested
-\"\"\")
-run: values -> { select: * }
-"""
-    ).polars()
+    result = (
+        pm.connect()
+        .model(
+            "\nsource: values is duckdb.sql(\"\"\"\n SELECT 9007199254740993::BIGINT AS big,\n        12345678901234567890.1234::DECIMAL(24,4) AS precise,\n        DATE '2026-09-10' AS day_value,\n        TIMESTAMPTZ '2026-09-10 12:34:56+00' AS instant,\n        NULL::VARCHAR AS missing,\n        [{'label': 'a', 'values': [1, NULL, 3]}] AS nested\n\"\"\")\nrun: values -> { select: * }\n"
+        )
+        .query()
+        .run()
+        .to_polars()
+    )
     assert result.to_dicts() == [
         {
             "big": 9007199254740993,
@@ -196,19 +174,13 @@ run: values -> { select: * }
 
 
 def test_record_and_aware_datetime_givens():
-    model = pm.model(
-        """
-##! experimental.givens
-given: cfg :: {label :: string, n :: number}
-given: instant :: timestamptz
-source: one is duckdb.sql('SELECT 1 AS x')
-run: one -> {select: cfg is $cfg, instant is $instant}
-"""
+    model = pm.connect().model(
+        "\n##! experimental.givens\ngiven: cfg :: {label :: string, n :: number}\ngiven: instant :: timestamptz\nsource: one is duckdb.sql('SELECT 1 AS x')\nrun: one -> {select: cfg is $cfg, instant is $instant}\n"
     )
     instant = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)
     assert model.query().run(
         givens={"cfg": {"label": "ok", "n": 9007199254740993}, "instant": instant}
-    ).polars().to_dicts() == [
+    ).to_polars().to_dicts() == [
         {"cfg": {"label": "ok", "n": 9007199254740993}, "instant": instant}
     ]
 
@@ -228,7 +200,7 @@ def test_interrupt_during_schema_discovery_preserves_the_caller_connection(
     monkeypatch.setattr(duckdb.DuckDBPyConnection, "execute", interrupted)
     with duckdb.connect() as connection:
         with pytest.raises(interrupt):
-            pm.run(ONE, connection=connection)
+            pm.connect(database=connection).model(ONE).query().run()
         assert connection.execute("SELECT 42").fetchone() == (42,)
 
 
@@ -236,17 +208,17 @@ def test_inline_imports_do_not_shadow_physical_files(tmp_path):
     (tmp_path / "inline.malloy").write_text(
         "source: numbers is duckdb.sql('SELECT 42 AS value')"
     )
-    model = pm.model(
+    model = pm.connect().model(
         'import "inline.malloy"\nrun: numbers -> { select: value }',
         url=(Path(tmp_path) / "inline.malloy").as_uri(),
     )
-    assert model.query().run().polars().item() == 42
+    assert model.query().run().to_polars().item() == 42
     (tmp_path / "inline.malloy").unlink()
     with pytest.raises(CompilationError, match="inline.malloy"):
-        pm.model(
+        pm.connect().model(
             'import "inline.malloy"', url=(Path(tmp_path) / "inline.malloy").as_uri()
         )
-    assert pm.run(ONE).polars().item() == 1
+    assert pm.connect().model(ONE).query().run().to_polars().item() == 1
 
 
 def test_model_reload_observes_new_schema_and_imports(tmp_path):
@@ -256,16 +228,16 @@ def test_model_reload_observes_new_schema_and_imports(tmp_path):
     imported.write_text("source: numbers is duckdb.table('data.csv')")
     path = tmp_path / "main.malloy"
     path.write_text('import "source.malloy"\nrun: numbers -> { select: * }')
-    first = pm.model(path, data_root=tmp_path)
-    assert first.query().run().polars().columns == ["value"]
+    first = pm.connect(data_root=tmp_path).model(path)
+    assert first.query().run().to_polars().columns == ["value"]
     data.write_text("value,other\n2,42\n")
-    assert first.query().run().polars().to_dicts() == [{"value": 2}]
-    with closing(pm.model(path, data_root=tmp_path)) as fresh:
-        assert fresh.query().run().polars().to_dicts() == [{"value": 2, "other": 42}]
+    assert first.query().run().to_polars().to_dicts() == [{"value": 2}]
+    with closing(pm.connect(data_root=tmp_path).model(path)) as fresh:
+        assert fresh.query().run().to_polars().to_dicts() == [{"value": 2, "other": 42}]
     imported.write_text("source: numbers is duckdb.sql('SELECT 99 AS replacement')")
-    assert pm.model(path, data_root=tmp_path).query().run().polars().to_dicts() == [
-        {"replacement": 99}
-    ]
+    assert pm.connect(data_root=tmp_path).model(
+        path
+    ).query().run().to_polars().to_dicts() == [{"replacement": 99}]
 
 
 def test_borrowed_connection_preserves_state_and_transactions():
@@ -276,11 +248,11 @@ def test_borrowed_connection_preserves_state_and_transactions():
         connection.begin()
         connection.execute("INSERT INTO values_table VALUES (2)")
         assert (
-            pm.run(
-                "run: duckdb.table('values_table') -> { aggregate: n is n.sum() }",
-                connection=connection,
-            )
-            .polars()
+            pm.connect(database=connection)
+            .model("run: duckdb.table('values_table') -> { aggregate: n is n.sum() }")
+            .query()
+            .run()
+            .to_polars()
             .item()
             == 3
         )
@@ -294,13 +266,16 @@ def test_borrowed_connection_preserves_state_and_transactions():
 @pytest.mark.parametrize("borrowed", [False, True])
 def test_model_connection_identity_and_ownership_are_fixed(borrowed):
     with duckdb.connect() as original, duckdb.connect() as replacement:
-        model = pm.model(ONE, connection=original if borrowed else None)
-        connection = model.connection
+        native = pm.connect(database=original if borrowed else ":memory:")
+        model = native.model(ONE)
+        connection = native.duckdb
         with pytest.raises(AttributeError):
-            model.connection = replacement
-        assert model.connection is connection
-        assert model.run().rows() == [{"value": 1}]
+            native.duckdb = replacement
+        assert native.duckdb is connection
+        assert model.query().run().to_pylist() == [{"value": 1}]
         model.close()
+        assert connection.execute("SELECT 42").fetchone() == (42,)
+        native.close()
         assert replacement.execute("SELECT 42").fetchone() == (42,)
         if borrowed:
             assert connection.execute("SELECT 42").fetchone() == (42,)
@@ -310,37 +285,40 @@ def test_model_connection_identity_and_ownership_are_fixed(borrowed):
 
 
 def test_query_errors_leave_the_model_reusable():
-    model = pm.model("source: bad_values is duckdb.sql(\"SELECT 'bad' AS text\")")
+    model = pm.connect().model(
+        "source: bad_values is duckdb.sql(\"SELECT 'bad' AS text\")"
+    )
     with pytest.raises(CompilationError):
         model.query(malloy="run: undefined_source -> {select:missing}").run()
-    with pytest.raises(pm.ExecutionError):
+    with pytest.raises(pm.errors.ExecutionError):
         model.query(
             malloy="run: bad_values -> { select: parsed_number is text::number }"
         ).run()
-    assert model.query(malloy="run: bad_values -> {select:text}").run().rows() == [
+    assert model.query(malloy="run: bad_values -> {select:text}").run().to_pylist() == [
         {"text": "bad"}
     ]
 
 
 def test_closed_model_invalidates_its_queries_and_preserves_other_models():
-    model = pm.model(ONE)
+    model = pm.connect().model(ONE)
     query = model.query()
-    other = pm.model(ONE)
+    other = pm.connect().model(ONE)
     model.close()
     model.close()
-    with pytest.raises(ModelError, match="Model is closed"):
+    with pytest.raises(ClosedError, match="Model is closed"):
         query.run()
     assert model.closed
-    assert other.run().rows() == [{"value": 1}]
+    assert other.query().run().to_pylist() == [{"value": 1}]
 
 
 def test_new_query_discovers_newly_registered_tables():
-    model = pm.model(ONE)
-    assert model.run().rows() == [{"value": 1}]
-    model.connection.register("values.csv", pl.DataFrame({"n": [40, 2]}))
+    native = pm.connect()
+    model = native.model(ONE)
+    assert model.query().run().to_pylist() == [{"value": 1}]
+    native.duckdb.register("values.csv", pl.DataFrame({"n": [40, 2]}))
     assert model.query(
         malloy="run: duckdb.table('\"values.csv\"') -> {aggregate:total is n.sum()}"
-    ).run().rows() == [{"total": 42}]
+    ).run().to_pylist() == [{"total": 42}]
 
 
 def test_models_isolate_data_roots(tmp_path):
@@ -350,27 +328,25 @@ def test_models_isolate_data_roots(tmp_path):
     (left / "data.csv").write_text("value\n10\n")
     (right / "data.csv").write_text("value\n20\n")
     source = "run: duckdb.table('data.csv') -> { select: value }"
-    am, bm = (pm.model(source, data_root=left), pm.model(source, data_root=right))
+    am, bm = (
+        pm.connect(data_root=left).model(source),
+        pm.connect(data_root=right).model(source),
+    )
     assert [
-        am.query().run().polars().item(),
-        bm.query().run().polars().item(),
-        am.query().run().polars().item(),
+        am.query().run().to_polars().item(),
+        bm.query().run().to_polars().item(),
+        am.query().run().to_polars().item(),
     ] == [10, 20, 10]
 
 
 def test_concurrent_queries_serialize_given_bindings():
-    model = pm.model(
-        """
-##! experimental.givens
-given: value :: number is 0
-source: one is duckdb.sql('SELECT 1 AS x')
-run: one -> { select: value is $value }
-"""
+    model = pm.connect().model(
+        "\n##! experimental.givens\ngiven: value :: number is 0\nsource: one is duckdb.sql('SELECT 1 AS x')\nrun: one -> { select: value is $value }\n"
     )
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(
             pool.map(
-                lambda n: model.query().run(givens={"value": n}).polars().item(),
+                lambda n: model.query().run(givens={"value": n}).to_polars().item(),
                 range(8),
             )
         )
@@ -379,40 +355,39 @@ run: one -> { select: value is $value }
 
 def test_query_timeout_preserves_model_and_borrowed_connection():
     with duckdb.connect() as connection:
-        model = pm.model(
-            """source: numbers is duckdb.sql('SELECT i FROM range(100000000000) t(i)')
-run: numbers -> {aggregate:total is i.sum()}""",
-            connection=connection,
+        model = pm.connect(database=connection).model(
+            "source: numbers is duckdb.sql('SELECT i FROM range(100000000000) t(i)')\nrun: numbers -> {aggregate:total is i.sum()}"
         )
         with pytest.raises(TimeoutError, match="exceeded"):
-            model.run(timeout=0.5)
+            model.query().run(timeout=0.5)
         assert not model.closed
-        assert model.query(malloy=ONE).run().rows() == [{"value": 1}]
+        assert model.query(malloy=ONE).run().to_pylist() == [{"value": 1}]
         model.close()
         assert connection.execute("SELECT 42").fetchone() == (42,)
 
 
 def test_one_shot_failure_preserves_the_borrowed_connection():
     with duckdb.connect() as connection:
-        with pytest.raises(pm.ExecutionError):
-            pm.run(
-                "run: duckdb.sql(\"SELECT 'bad' AS text\") -> { select: n is text::number }",
-                connection=connection,
-            )
+        with pytest.raises(pm.errors.ExecutionError):
+            pm.connect(database=connection).model(
+                "run: duckdb.sql(\"SELECT 'bad' AS text\") -> { select: n is text::number }"
+            ).query().run()
         assert connection.execute("SELECT 42").fetchone() == (42,)
 
 
 def test_model_rejects_ambiguous_query_selection():
-    model = pm.model(ONE)
+    model = pm.connect().model(ONE)
     with pytest.raises(ValueError, match="query selection or Malloy text"):
-        model.query("run:0", malloy=ONE).run().polars()
-    with pytest.raises(ValueError, match="Choose a query"):
-        model.query("missing").run().polars()
-    assert model.query().run().polars().item() == 1
+        model.query("run:0", malloy=ONE).run().to_polars()
+    with pytest.raises(
+        ValueError, match="Unknown query 'missing'. Choose one of: run:0"
+    ):
+        model.query("missing").run().to_polars()
+    assert model.query().run().to_polars().item() == 1
 
 
 def test_waiting_query_timeout_preserves_the_active_model(monkeypatch):
-    model = pm.model(ONE)
+    model = pm.connect().model(ONE)
     started, release = (threading.Event(), threading.Event())
     sql = duckdb.DuckDBPyConnection.execute
 
@@ -424,16 +399,16 @@ def test_waiting_query_timeout_preserves_the_active_model(monkeypatch):
 
     monkeypatch.setattr(duckdb.DuckDBPyConnection, "execute", execute)
     with ThreadPoolExecutor(max_workers=1) as pool:
-        active = pool.submit(lambda: model.query().run().polars())
+        active = pool.submit(lambda: model.query().run().to_polars())
         try:
             assert started.wait(timeout=5)
-            with pytest.raises(TimeoutError, match="Waiting for the model"):
-                model.query().run(timeout=0.05).polars()
+            with pytest.raises(TimeoutError, match="Waiting for the connection"):
+                model.query().run(timeout=0.05).to_polars()
             assert not model.closed
         finally:
             release.set()
         assert active.result(timeout=5).item() == 1
-        assert model.query().run().polars().item() == 1
+        assert model.query().run().to_polars().item() == 1
 
 
 def test_unsearched_schema_table_does_not_mask_relative_data_file(tmp_path):
@@ -443,9 +418,9 @@ def test_unsearched_schema_table_does_not_mask_relative_data_file(tmp_path):
             'CREATE SCHEMA secondary; CREATE TABLE secondary."orders.csv" AS SELECT 99 AS amount'
         )
         connection.execute("SET file_search_path = ?", [str(tmp_path)])
-        assert pm.run(
-            "run: duckdb.table('orders.csv') -> {select:amount}", connection=connection
-        ).rows() == [{"amount": 42}]
+        assert pm.connect(database=connection).model(
+            "run: duckdb.table('orders.csv') -> {select:amount}"
+        ).query().run().to_pylist() == [{"amount": 42}]
 
 
 def test_search_path_resolves_case_insensitive_filename_tables_in_borrowed_transaction(
@@ -459,11 +434,11 @@ def test_search_path_resolves_case_insensitive_filename_tables_in_borrowed_trans
         connection.execute("BEGIN")
         connection.execute("SET file_search_path = ?", [str(tmp_path)])
         assert (
-            pm.run(
-                "run: duckdb.table('\"orders.csv\"') -> { select: amount }",
-                connection=connection,
-            )
-            .polars()
+            pm.connect(database=connection)
+            .model("run: duckdb.table('\"orders.csv\"') -> { select: amount }")
+            .query()
+            .run()
+            .to_polars()
             .item()
             == 42
         )
@@ -480,10 +455,9 @@ def test_query_table_uses_quoted_database_identifiers_and_search_path():
             'CREATE SCHEMA secondary; CREATE TABLE secondary."ORDERS.CSV" AS SELECT 42 AS amount'
         )
         connection.execute("SET search_path='main,secondary'")
-        assert pm.run(
-            '''run: duckdb.sql("""SELECT * FROM query_table('"orders.csv"')""") -> { select:amount }''',
-            connection=connection,
-        ).rows() == [{"amount": 42}]
+        assert pm.connect(database=connection).model(
+            'run: duckdb.sql("""SELECT * FROM query_table(\'"orders.csv"\')""") -> { select:amount }'
+        ).query().run().to_pylist() == [{"amount": 42}]
 
 
 def test_missing_table_resolution_keeps_borrowed_transaction_available(tmp_path):
@@ -492,11 +466,11 @@ def test_missing_table_resolution_keeps_borrowed_transaction_available(tmp_path)
         connection.execute("BEGIN")
         connection.execute("SET file_search_path = ?", [str(tmp_path)])
         assert (
-            pm.run(
-                "run: duckdb.table('orders.csv') -> { select: amount }",
-                connection=connection,
-            )
-            .polars()
+            pm.connect(database=connection)
+            .model("run: duckdb.table('orders.csv') -> { select: amount }")
+            .query()
+            .run()
+            .to_polars()
             .item()
             == 42
         )
@@ -522,54 +496,27 @@ SELECT * FROM (WITH "orders.csv" AS (SELECT 1 AS value) SELECT * FROM "orders.cs
             [1, 42],
         ),
     ]
-    model = pm.model("", data_root=tmp_path)
+    model = pm.connect(data_root=tmp_path).model("")
     for sql, expected in cases:
         source = f'source: numbers is duckdb.sql("""\n{sql}\n""")\nrun: numbers -> {{ select: value order_by: value }}'
         assert (
-            model.query(malloy=source).run().polars()["value"].to_list() == expected
+            model.query(malloy=source).run().to_polars()["value"].to_list() == expected
         ), sql
 
 
 def test_compiler_memory_budget_releases_a_borrowed_connection():
     with duckdb.connect() as connection:
-        with pytest.raises(ModelError, match="Compiler process stopped"):
-            pm.model(ONE, connection=connection, compiler_memory_mb=1)
-        assert connection.execute("SELECT 42").fetchone() == (42,)
-
-
-@pytest.mark.parametrize("operation", [pm.model, pm.check])
-def test_startup_and_compilation_share_one_deadline(monkeypatch, operation):
-    from types import SimpleNamespace
-
-    from pymalloy._headless import api, runtime, tooling
-
-    tooling._tooling.close()
-    origin = runtime.time.monotonic()
-    elapsed = 0
-    clock = SimpleNamespace(monotonic=lambda: origin + elapsed)
-    start = runtime.Compiler.__init__
-
-    def initialize(self, **options):
-        nonlocal elapsed
-        start(self, **options)
-        elapsed = 3
-
-    monkeypatch.setattr(api, "time", clock)
-    monkeypatch.setattr(runtime, "time", clock)
-    monkeypatch.setattr(tooling, "time", clock)
-    monkeypatch.setattr(runtime.Compiler, "__init__", initialize)
-    with duckdb.connect() as connection:
-        with pytest.raises(TimeoutError, match="deadline"):
-            operation(ONE, connection=connection, timeout=2)
+        with pytest.raises(pm.errors.CompilerError, match="Compiler process stopped"):
+            pm.connect(database=connection, compiler_memory_mb=1).model(ONE)
         assert connection.execute("SELECT 42").fetchone() == (42,)
 
 
 def test_model_context_releases_owned_resources_and_preserves_borrowed_transaction():
-    with pm.model(ONE) as owned:
-        result = owned.run()
+    with pm.connect().model(ONE) as owned:
+        result = owned.query().run()
     assert owned.closed
-    assert result.rows() == [{"value": 1}]
-    with pytest.raises(ModelError, match="closed"), owned:
+    assert result.to_pylist() == [{"value": 1}]
+    with pytest.raises(ClosedError, match="closed"), owned:
         pass
 
     with duckdb.connect() as connection:
@@ -577,7 +524,7 @@ def test_model_context_releases_owned_resources_and_preserves_borrowed_transacti
         connection.execute("CREATE TABLE retained AS SELECT 42 AS value")
         with (
             pytest.raises(ValueError, match="caller failure"),
-            pm.model(ONE, connection=connection) as borrowed,
+            pm.connect(database=connection).model(ONE) as borrowed,
         ):
             raise ValueError("caller failure")
         assert borrowed.closed
@@ -589,18 +536,18 @@ def test_model_context_releases_owned_resources_and_preserves_borrowed_transacti
 def test_connection_name_is_shared_by_authoring_check_and_execution():
     draft = (
         pm.draft()
-        .define(values=pm.sql("SELECT 42 AS amount", connection="analytics"))
-        .queries(answer=pm.ref("values").pipe(pm.query(pm.select(pm.col("amount")))))
+        .sources(values=pm.sql("SELECT 42 AS amount", connection="analytics"))
+        .queries(answer=pm.source("values").pipe(pm.view().select(pm.col("amount"))))
     )
-    assert draft.check(connection_name="analytics").ok
+    assert pm.connect(name="analytics").check(draft).ok
     assert (
-        draft.validate(connection_name="analytics").require_valid().connection_name
+        pm.connect(name="analytics").validate(draft).require_valid().connection_name
         == "analytics"
     )
-    with draft.compile(connection_name="analytics") as model:
-        assert model.run().rows() == [{"amount": 42}]
-    with pytest.raises(ValueError, match="connection_name"):
-        draft.compile(connection_name="")
+    with pm.connect(name="analytics").model(draft) as model:
+        assert model.query().run().to_pylist() == [{"amount": 42}]
+    with pytest.raises(ValueError, match="name"):
+        pm.connect(name="").model(draft)
 
 
 def test_deadline_between_parsing_and_execution_interrupts_only_that_operation(
@@ -610,10 +557,11 @@ def test_deadline_between_parsing_and_execution_interrupts_only_that_operation(
     watchdog_fired = threading.Event()
     extract = duckdb.DuckDBPyConnection.extract_statements
     interrupt = duckdb.DuckDBPyConnection.interrupt
-    with pm.model(
+    native = pm.connect()
+    with native.model(
         "run: duckdb.sql('SELECT i FROM range(100000000000) t(i)') -> { aggregate: total is i.sum() }"
     ) as model:
-        connection = model.connection
+        connection = native.duckdb
 
         def wait_after_parsing(self, sql):
             statements = extract(self, sql)
@@ -636,13 +584,13 @@ def test_deadline_between_parsing_and_execution_interrupts_only_that_operation(
         watchdog.start()
         try:
             with pytest.raises(TimeoutError, match="exceeded"):
-                model.run(timeout=0.05)
+                model.query().run(timeout=0.05)
         finally:
             watchdog.cancel()
             watchdog.join()
         assert not watchdog_fired.is_set(), "Query escaped its operation deadline"
         monkeypatch.setattr(duckdb.DuckDBPyConnection, "extract_statements", extract)
-        assert model.query(malloy=ONE).run().rows() == [{"value": 1}]
+        assert model.query(malloy=ONE).run().to_pylist() == [{"value": 1}]
 
 
 def test_inline_source_identity_matches_drafts_and_preserves_import_base(
@@ -655,29 +603,33 @@ def test_inline_source_identity_matches_drafts_and_preserves_import_base(
     source = 'import "shared.malloy"\nrun: values -> { select: amount }'
     expected = (tmp_path / "model.malloy").as_uri()
     assert pm.draft(source).url == pm.read_model(source).url == expected
-    with pm.model(source, data_root=tmp_path) as model:
+    with pm.connect(data_root=tmp_path).model(source) as model:
         snapshot = model.source()
         assert snapshot.url == expected
         assert snapshot.document_kind == "model"
-        assert model.run().rows() == [{"amount": 42}]
+        assert model.query().run().to_pylist() == [{"amount": 42}]
 
 
 def test_explicit_document_kind_survives_snapshot_replay_and_overrides_suffix():
     notebook = ">>>sql connection:duckdb\nSELECT 42 AS answer\n"
     url = "memory://test/analysis.txt"
-    assert pm.check(notebook, url=url, document_kind="notebook").ok
+    assert pm.connect().check(notebook, url=url, document_kind="notebook").ok
     assert not pm.parse(notebook, url=url, document_kind="notebook").diagnostics
-    with pm.model(notebook, url=url, document_kind="notebook") as model:
+    with pm.connect().model(notebook, url=url, document_kind="notebook") as model:
         captured = model.source()
         assert captured.document_kind == "notebook"
-        assert model.run().rows() == [{"answer": 42}]
-    assert pm.run(captured).rows() == [{"answer": 42}]
+        assert model.query().run().to_pylist() == [{"answer": 42}]
+    assert pm.connect().model(captured).query().run().to_pylist() == [{"answer": 42}]
     plain = pm.ModelSource("memory://test/plain.malloynb", ONE, document_kind="model")
-    assert pm.run(plain).rows() == [{"value": 1}]
-    assert pm.run(ONE, url=plain.url, document_kind="model").rows() == [{"value": 1}]
-    assert pm.run(pm.draft(ONE, url=plain.url)).rows() == [{"value": 1}]
+    assert pm.connect().model(plain).query().run().to_pylist() == [{"value": 1}]
+    assert pm.connect().model(
+        ONE, url=plain.url, document_kind="model"
+    ).query().run().to_pylist() == [{"value": 1}]
+    assert pm.connect().model(
+        pm.draft(ONE, url=plain.url)
+    ).query().run().to_pylist() == [{"value": 1}]
     with pytest.raises(ValueError, match="document_kind"):
-        pm.model(ONE, document_kind="unknown")
+        pm.connect().model(ONE, document_kind="unknown")
 
 
 def test_timestamp_rows_use_bundled_zoneinfo_data_without_a_system_database():
@@ -688,16 +640,7 @@ def test_timestamp_rows_use_bundled_zoneinfo_data_without_a_system_database():
         [
             sys.executable,
             "-c",
-            r"""
-import zoneinfo
-import pymalloy as pm
-zoneinfo.reset_tzpath([])
-zoneinfo.ZoneInfo.clear_cache()
-result = pm.run("run: duckdb.sql(\"SELECT TIMESTAMPTZ '2026-01-01 12:00:00+00' AS moment\") -> { select: moment }")
-value = result.rows()[0]["moment"]
-assert value.hour == 12
-assert isinstance(value.tzinfo, zoneinfo.ZoneInfo)
-""",
+            "\nimport zoneinfo\nimport pymalloy as pm\nzoneinfo.reset_tzpath([])\nzoneinfo.ZoneInfo.clear_cache()\nresult = pm.connect().model('run: duckdb.sql(\"SELECT TIMESTAMPTZ \\'2026-01-01 12:00:00+00\\' AS moment\") -> { select: moment }').query().run()\nvalue = result.to_pylist()[0][\"moment\"]\nassert value.hour == 12\nassert isinstance(value.tzinfo, zoneinfo.ZoneInfo)\n",
         ],
         check=True,
         capture_output=True,
@@ -714,10 +657,11 @@ def test_native_config_preserves_explicit_settings_and_borrowed_ownership(tmp_pa
         "File_Search_Path": str(tmp_path),
         "threads": 1,
     }
-    assert pm.check(source, config=config).ok
-    with pm.model(source, config=config) as model:
-        assert model.run().rows() == [{"amount": 42}]
-        assert model.connection.execute(
+    assert pm.connect(config=config).check(source).ok
+    native = pm.connect(config=config)
+    with native.model(source) as model:
+        assert model.query().run().to_pylist() == [{"amount": 42}]
+        assert native.duckdb.execute(
             "SELECT current_setting('timezone'), current_setting('threads'), current_setting('file_search_path')"
         ).fetchone() == ("America/New_York", 1, str(tmp_path))
     assert config == {
@@ -726,12 +670,12 @@ def test_native_config_preserves_explicit_settings_and_borrowed_ownership(tmp_pa
         "threads": 1,
     }
     with pytest.raises(ValueError, match="Choose data_root"):
-        pm.model(ONE, data_root=tmp_path, config=config)
+        pm.connect(data_root=tmp_path, config=config).model(ONE)
     with duckdb.connect() as connection:
         connection.execute("BEGIN")
         connection.execute("CREATE TABLE retained AS SELECT 42 AS value")
         with pytest.raises(ValueError, match="Borrowed connections"):
-            pm.model(ONE, connection=connection, config={})
+            pm.connect(database=connection, config={}).model(ONE)
         assert connection.execute("SELECT * FROM retained").fetchone() == (42,)
         connection.execute("ROLLBACK")
 
@@ -747,15 +691,15 @@ def test_native_config_restricts_external_reads_before_schema_discovery(tmp_path
         "lock_configuration": True,
     }
     source = f"run: duckdb.table('{allowed}') -> {{ select: amount }}"
-    with pm.model(source, config=config) as model:
-        assert model.run().rows() == [{"amount": 42}]
+    with pm.connect(config=config).model(source) as model:
+        assert model.query().run().to_pylist() == [{"amount": 42}]
         with pytest.raises(CompilationError, match="disabled|Permission"):
             model.query(
                 malloy=f"run: duckdb.table('{denied}') -> {{ select: amount }}"
             ).run()
-        assert model.run().rows() == [{"amount": 42}]
-    report = pm.check(
-        f"run: duckdb.table('{denied}') -> {{ select: amount }}", config=config
+        assert model.query().run().to_pylist() == [{"amount": 42}]
+    report = pm.connect(config=config).check(
+        f"run: duckdb.table('{denied}') -> {{ select: amount }}"
     )
     assert not report.ok
 
@@ -769,17 +713,23 @@ def test_declared_extensions_initialize_before_external_access_restrictions(tmp_
         "enable_external_access": False,
         "lock_configuration": True,
     }
-    assert pm.check(source, extensions=("icu", "json"), config=config).ok
-    assert pm.run(source, extensions=("icu", "json"), config=config).rows() == [
-        {"n": 3}
-    ]
+    assert pm.connect(extensions=("icu", "json"), config=config).check(source).ok
+    assert pm.connect(extensions=("icu", "json"), config=config).model(
+        source
+    ).query().run().to_pylist() == [{"n": 3}]
     with duckdb.connect() as connection:
         with pytest.raises(ValueError, match="Borrowed connections"):
-            pm.model(ONE, connection=connection, extensions=("json",))
+            pm.connect(database=connection, extensions=("json",)).model(ONE)
         assert connection.execute("SELECT 42").fetchone() == (42,)
 
 
-@pytest.mark.parametrize("operation", [pm.model, pm.check])
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda source, **kw: pm.connect(**kw).model(source),
+        lambda source, **kw: pm.connect(**kw).check(source),
+    ],
+)
 def test_extension_initialization_shares_the_startup_deadline(monkeypatch, operation):
     connections = []
     statements = []
@@ -814,3 +764,40 @@ def test_extension_initialization_shares_the_startup_deadline(monkeypatch, opera
     assert len(connections) == 1
     with pytest.raises(duckdb.ConnectionException, match="closed"):
         connections[0].execute("SELECT 1")
+
+
+def test_query_selection_errors_name_the_next_step():
+    source = pm.sql("SELECT 1 AS value")
+    with pm.connect() as con:
+        with pytest.raises(ValueError, match="has no queries"):
+            con.model(pm.draft().sources(values=source)).query()
+        several = (
+            pm.draft()
+            .sources(values=source)
+            .queries(
+                a=pm.source("values").pipe(pm.view().select("value")),
+                b=pm.source("values").pipe(pm.view().select("value")),
+            )
+        )
+        with pytest.raises(ValueError, match="several queries. Choose one of: a, b"):
+            con.model(several).query()
+
+
+def test_file_name_text_points_to_path():
+    with (
+        pm.connect() as con,
+        pytest.raises(TypeError, match=r"Pass Path\('orders.malloy'\)"),
+    ):
+        con.model("orders.malloy")
+
+
+def test_missing_given_error_shows_the_python_binding():
+    source = """##! experimental.givens
+given: minimum :: number
+run: duckdb.sql('SELECT 1 AS value') -> { where: value > $minimum select: value }
+"""
+    with pm.connect() as con, con.model(source) as model:
+        with pytest.raises(CompilationError, match=r"Query.run\(givens=") as error:
+            model.query().run()
+        assert error.value.diagnostics[0].code == "compiler-given-no-value"
+        assert model.query().run(givens={"minimum": 0}).to_pylist() == [{"value": 1}]

@@ -1,12 +1,15 @@
-from collections.abc import Mapping
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import get_args
+from typing import TYPE_CHECKING, get_args
 from urllib.parse import urlsplit
 
+from pymalloy._model.inputs import Input
 from pymalloy._notebook import NotebookDisplay
-from pymalloy._protocol.records import DocumentKind
+from pymalloy._protocol.records import DocumentKind, ParseReport
 
 DEFAULT_SOURCE_FILENAME = "model.malloy"
 _DOCUMENT_KINDS = get_args(DocumentKind.__value__)
@@ -55,11 +58,13 @@ class ModelSource(NotebookDisplay):
         Missing imports fail during compilation instead of falling back to I/O.
     document_kind : {"model", "notebook"}, optional
         Explicit root grammar. Otherwise inferred from the URL extension.
+    inputs : tuple of Input, default ()
+        Captured data owners referenced by logical paths in the source graph.
 
     Notes
     -----
     Constructing the snapshot validates its shape, not the model or import closure.
-    It contains no table data, database state or Python dataframe preparation logic.
+    Captured inputs retain their values independently of the producer and runtime.
     Use Model.source to capture resolved imports and export.bundle to copy inputs.
 
     Examples
@@ -70,7 +75,7 @@ class ModelSource(NotebookDisplay):
     ...     "import 'base.malloy'\nrun: values -> {select: n}",
     ...     {"memory://tour/base.malloy": "source: values is duckdb.sql('SELECT 42 AS n')"},
     ... )
-    >>> pm.run(source).rows()
+    >>> pm.connect().model(source).query().run().to_pylist()
     [{'n': 42}]
     """
 
@@ -78,6 +83,7 @@ class ModelSource(NotebookDisplay):
     text: str
     imports: Mapping[str, str]
     document_kind: DocumentKind
+    inputs: tuple[Input, ...]
 
     def __init__(
         self,
@@ -85,10 +91,16 @@ class ModelSource(NotebookDisplay):
         text: str,
         imports: Mapping[str, str] | None = None,
         document_kind: DocumentKind | None = None,
+        *,
+        inputs: tuple[Input, ...] = (),
     ) -> None:
         validate_url(url)
         if not isinstance(text, str):
             raise TypeError("Model source text must be a string")
+        if not isinstance(inputs, tuple) or not all(
+            isinstance(value, Input) for value in inputs
+        ):
+            raise TypeError("Model source inputs must be a tuple of Input owners")
         object.__setattr__(self, "url", url)
         object.__setattr__(self, "text", text)
         object.__setattr__(
@@ -97,6 +109,7 @@ class ModelSource(NotebookDisplay):
         object.__setattr__(
             self, "document_kind", resolve_document_kind(url, document_kind)
         )
+        object.__setattr__(self, "inputs", inputs)
 
 
 def resolve_source(
@@ -107,6 +120,13 @@ def resolve_source(
     if isinstance(source, ModelSource):
         return source.url, source.text, source.imports
     if isinstance(source, str):
+        name = source.strip()
+        if name.endswith((".malloy", ".malloynb", ".malloysql")) and not any(
+            character.isspace() for character in name
+        ):
+            raise TypeError(
+                f"A string is Malloy source text. Pass Path({name!r}) to read a file."
+            )
         return url or (root / DEFAULT_SOURCE_FILENAME).as_uri(), source, None
     raise TypeError("source must be Malloy text, a Path, or ModelSource")
 
@@ -115,3 +135,79 @@ def read_text(path: Path) -> str:
     """Read authored UTF-8 without changing line endings or string literal contents."""
     with path.open(encoding="utf-8", newline="") as handle:
         return handle.read()
+
+
+if TYPE_CHECKING:
+    from pymalloy._authoring.draft import Draft
+
+
+def open_source(
+    source: str | Path | ModelSource | Draft,
+    *,
+    url: str | None,
+    document_kind: DocumentKind | None,
+    root: Path,
+    materialize: bool = False,
+    parse: Callable[[str, str, DocumentKind], ParseReport] | None = None,
+):
+    from pymalloy._authoring.draft import Draft
+
+    if isinstance(source, (Path, ModelSource, Draft)):
+        identity = source.resolve().as_uri() if isinstance(source, Path) else source.url
+        if url is not None and url != identity:
+            raise ValueError("url conflicts with source identity")
+    if isinstance(source, (Draft, ModelSource)) and document_kind is None:
+        document_kind = source.document_kind
+    if isinstance(source, Draft):
+        url = source.url
+        source = (
+            source._input()
+            if materialize
+            else (
+                source.text
+                if source.imports is None
+                else ModelSource(
+                    source.url, source.text, source.imports, source.document_kind
+                )
+            )
+        )
+    identity, text, imports = resolve_source(source, url=url, root=root)
+    kind = resolve_document_kind(identity, document_kind)
+    if materialize and isinstance(source, ModelSource) and source.inputs:
+        assert parse is not None
+        from itertools import accumulate
+
+        from pymalloy.authoring import table
+
+        captures = {value.reference: value for value in source.inputs}
+
+        def render(text: str, identity: str, kind: DocumentKind) -> str:
+            assert parse is not None
+            parsed = parse(text, identity, kind)
+            offsets = list(
+                accumulate((len(line) + 1 for line in text.split("\n")), initial=0)
+            )
+            edits = []
+            for reference in parsed.tables:
+                if reference.path in captures:
+                    span = reference.range
+                    edits.append(
+                        (
+                            offsets[span.start.line] + span.start.character,
+                            offsets[span.end.line] + span.end.character,
+                            table(
+                                captures[reference.path]._materialize().path,
+                                connection=reference.connection,
+                            ).text,
+                        )
+                    )
+            for start, end, replacement in sorted(edits, reverse=True):
+                text = text[:start] + replacement + text[end:]
+            return text
+
+        text = render(text, identity, kind)
+        imports = {
+            identity: render(text, identity, "model")
+            for identity, text in source.imports.items()
+        }
+    return identity, text, imports, kind

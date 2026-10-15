@@ -1,3 +1,4 @@
+import type { Needs, LoadOptions } from "@malloy-runtime/compiler/jobs";
 import type {
   SourcePosition,
   QuerySelection,
@@ -7,8 +8,6 @@ import type {
   ModelSource,
   DocumentCell,
   QueryDescriptor,
-  Needs,
-  LoadOptions,
   DocumentKind,
   Diagnostic,
   Column,

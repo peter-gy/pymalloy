@@ -22,8 +22,10 @@ test("an exported widget hydrates captured imports and synchronizes query change
   await expect(page.getByRole("table")).toContainText("North");
   await expect(page.getByRole("table")).toContainText("42");
   await page.getByRole("combobox", { name: "Query", exact: true }).selectOption("report.filtered");
+  await expect(page.getByRole("table")).not.toContainText("North");
   await expect(page.getByRole("table")).toContainText("42");
   await run('run_0.givens = {"region_filter": "South"}');
+  await expect(page.getByRole("table")).not.toContainText("42");
   await expect(page.getByRole("table")).toContainText("30");
   await run('print("Export query:", run_0.query)');
   await expect(page.getByText("Export query: report.filtered", { exact: true })).toBeVisible();
@@ -48,7 +50,7 @@ test("JupyterLab renders, synchronizes, recovers, and closes multiple views", as
     await cell.click();
     await page.getByRole("button", { name: /Run this cell and advance/ }).click();
   };
-  await run("import asyncio");
+  await run("import json");
   await expect(page.getByRole("table")).toHaveCount(1);
   await expect(page.getByRole("table")).toContainText("North");
   await expect(page.getByRole("table")).toContainText("42");
@@ -61,6 +63,7 @@ test("JupyterLab renders, synchronizes, recovers, and closes multiple views", as
   ).toBeVisible();
 
   await run('widget.givens = {"region_filter": "South"}');
+  await expect(page.getByRole("table")).not.toContainText("North");
   await expect(page.getByRole("table")).toContainText("30");
   await run('print("Python filtered:",');
   await expect(page.getByText('Python filtered: [{"revenue": 30}]', { exact: true })).toBeVisible();

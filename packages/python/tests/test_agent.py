@@ -34,12 +34,13 @@ class BlockServer(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, BlockServer())
 import pymalloy as pm
 import pymalloy.agent as agent
-candidate = pm.draft().define(
-    values=pm.sql('SELECT 42 value').extend(
-        pm.dimension(doubled=pm.col('value') * 2),
-        pm.measure(total=pm.col('value').sum()),
-    )
+candidate = pm.draft().sources(
+    values=pm.sql('SELECT 42 value').dimension(doubled=pm.col('value') * 2).measure(total=pm.col('value').sum())
 )
+for value in (candidate, candidate["values"], pm.view().select("value"), pm.col("value")):
+    widget = pm.MalloyWidget(value, auto_run=False)
+    assert widget.state["status"] == "idle"
+    widget.close()
 scope = {}
 exec(candidate.to_python(), scope)
 assert scope["model"]["values"]["doubled"].equals(pm.col('value') * 2)
@@ -62,10 +63,10 @@ class BaseInstall(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, BaseInstall())
 import pymalloy as pm
 from pymalloy.validation import Validation
-candidate = pm.draft().define(values=pm.sql('SELECT 42 value'))
-for operation in (candidate.compile, candidate.check, candidate.validate):
+candidate = pm.draft().sources(values=pm.sql('SELECT 42 value'))
+for operation in ("model", "check", "validate"):
     try:
-        operation()
+        getattr(pm.connect(), operation)(candidate)
     except ImportError as error:
         assert 'pymalloy[headless]' in str(error)
     else:

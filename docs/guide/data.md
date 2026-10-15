@@ -1,90 +1,67 @@
-# Connect files, tables, and Python data
+# Connect files and catalog tables
 
-Choose how a model accesses its inputs:
-
-| Input                              | Lifetime and use                                                      |
-| ---------------------------------- | --------------------------------------------------------------------- |
-| `pm.data(frame, name="orders")`    | Immutable captured values for composition, widgets, and bundles       |
-| `pm.table("orders")`               | A catalog table or registered object on the model's DuckDB connection |
-| `pm.table(Path("orders.parquet"))` | A file resolved by DuckDB                                             |
-| Widget `files={...}`               | Bytes or URLs registered as virtual files in the browser              |
-
-Install `pymalloy[headless]` and `polars` to query a captured Polars dataframe:
+`pm.table` references a table or file through [DuckDB](https://duckdb.org/docs/stable/),
+the native SQL engine. Schema discovery and execution use the same connection
+and settings. This example writes its data in a temporary directory:
 
 ```python
-import polars as pl
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 import pymalloy as pm
 
-orders = pl.DataFrame({"region": ["North", "South"], "amount": [42, 30]})
-model = pm.draft().define(orders=pm.data(orders)).queries(
-    totals=pm.ref("orders").pipe(pm.query(
-        pm.group_by(pm.col("region")),
-        pm.aggregate(total=pm.col("amount").sum()),
-        pm.order_by(pm.col("region")),
-    ))
-)
-print(pm.run(model).rows())
-```
-
-The captured input stays fixed when the original dataframe changes. DuckDB
-resolves catalog names, quoted identifiers, CTEs, reader functions, and file paths.
-Schema discovery and execution use the same connection and settings.
-
-Owned connections default to UTC and configure `file_search_path` from `data_root`
-(Python) or `dataRoot` (Node), defaulting to the current directory at creation.
-The current process directory has precedence over that search path. Absolute
-paths provide an unambiguous file identity.
-
-Pass native DuckDB settings through `config`, for example `config={"threads": 2}`.
-Settings apply before schema discovery and execution. Explicit `timezone` and
-`file_search_path` settings are preserved. Choose either `data_root` or a configured
-`file_search_path`. Supplying both raises an error.
-
-Use `extensions=("httpfs",)` to install and load native DuckDB extensions before
-compilation. Installation may download from DuckDB's configured repository.
-Extension initialization counts toward the model or check call's timeout.
-
-A model's URL controls imports independently of data access. Loading a file does
-not change the connection's data search path.
-
-## Borrow a connection
-
-Register Python objects with DuckDB directly when you want native registration
-and caller-controlled lifetime:
-
-```python
-import duckdb
-import polars as pl
-import pymalloy as pm
-
-orders = pl.DataFrame({"amount": [42, 30]})
-with duckdb.connect() as connection:
-    connection.register("orders", orders)
-    result = pm.run(
-        "run: duckdb.table('orders') -> { aggregate: total is amount.sum() }",
-        connection=connection,
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "orders.csv"
+    path.write_text("region,amount\nNorth,20\nNorth,22\n")
+    candidate = pm.draft().queries(
+        total=pm.table(path).pipe(pm.view().aggregate(total=pm.col("amount").sum()))
     )
-    print(result.rows())  # [{'total': Decimal('72')}]
-    connection.unregister("orders")
+    with pm.connect(data_root=directory) as con:
+        print(con.model(candidate).query().run().to_pylist())
 ```
 
-Configure borrowed connections yourself. Supplying `data_root`, `database`,
-`config`, a nonempty `extensions` list, or `read_only` with a borrowed connection
-raises an error. Model cleanup preserves
-the connection, settings, registrations, and transaction state. Coordinate direct
-connection use with model operations. A timed-out query interrupts its statement
-and leaves a healthy model reusable. If DuckDB aborts an explicit transaction,
-the caller must roll it back before issuing another statement.
+Expected output is `[{'total': Decimal('42')}]`.
+Use [`pm.data(frame)`](dataframes.md) when prepared Python values must travel
+with a model, or [widget virtual files](widget.md) for browser data.
 
-Python adapters use the Malloy connection name `duckdb` by default. Match a
-model's alternative name with `connection_name="analytics"` on `pm.model` or
-`pm.check` and `connection="analytics"` on `pm.table`, `pm.sql`, or `pm.data`.
-The native engine remains DuckDB.
+## Resolve names and paths
 
-Browser models receive virtual files with `files`. Each model snapshots its
-mapping. URL descriptors require HTTP(S) and server CORS permission. COPY output
-paths in native DuckDB follow DuckDB's rules. Notebook exporters anchor relative
-COPY destinations to their exported data root.
+| Input                          | Resolution                                                                         |
+| ------------------------------ | ---------------------------------------------------------------------------------- |
+| `pm.table("orders")`           | Native catalog table or registered object, then DuckDB file resolution             |
+| `pm.table("orders.csv")`       | DuckDB table/file reference retaining the supplied relative spelling               |
+| `pm.table(Path("orders.csv"))` | Absolute file reference, resolved when constructed                                 |
+| `pm.sql(text)`                 | Native SQL including catalog names, common table expressions, and reader functions |
 
-Follow [capture Python data](dataframes.md) when an input must travel with the
-model, or [bundle models and inputs](bundles.md) to publish explicitly bound files.
+[Malloy](https://docs.malloydata.dev/), the model compiler, delegates schemas
+to the configured connection. DuckDB resolves identifiers with its native quoting
+and catalog rules. The current working directory takes precedence over
+`file_search_path`. Use absolute file paths to disambiguate duplicate filenames.
+
+Owned connections set UTC and `file_search_path` at creation. `data_root` defaults
+to the current directory. `config={"threads": 2}` supplies native settings.
+Explicit `timezone` and `file_search_path` values are preserved. Choose either
+`data_root` or a configured `file_search_path`. Supplying both raises `ValueError`.
+
+The model's URL determines import resolution independently of data paths.
+Loading a model file keeps the connection's search path.
+[Borrowed connections](running.md#borrow-a-duckdb-connection) use caller settings.
+
+## Use remote files and extensions
+
+Pass `extensions=("httpfs",)` to install and load DuckDB's
+[HTTP and object-storage extension](https://duckdb.org/docs/stable/core_extensions/httpfs/overview.html)
+before compilation. Installation can download from the configured extension
+repository and consumes the connection-opening timeout. Remote data access needs
+network permission in the execution environment.
+
+`pm.table("https://example.org/orders.parquet")` is a remote file reference.
+Use an actual reachable dataset URL. Remote values remain live unless you copy
+them into a captured input or bind a local copy when bundling.
+
+Match an alternative Malloy connection name across constructors and runtime:
+`pm.table("orders", connection="analytics")` uses
+`pm.connect(name="analytics")`. The engine remains DuckDB.
+Browser URL descriptors require cross-origin resource sharing (CORS) permission
+from the server. See [notebook export](export.md) for declared SQL-reader files
+and export-specific access restrictions.

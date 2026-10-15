@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   pack: {
-    entry: ["src/index.ts", "src/tooling.ts", "src/types.ts"],
+    entry: ["src/index.ts", "src/tooling.ts", "src/jobs.ts", "src/adapters.ts"],
     format: "esm",
     dts: true,
     platform: "neutral",

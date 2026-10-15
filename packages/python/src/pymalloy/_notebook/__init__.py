@@ -19,7 +19,8 @@ class NotebookDisplay:
 
         from .lifetime import own_display
 
-        widget = MalloyWidget(self, auto_run=False, _transient=True)
+        widget = MalloyWidget(self, auto_run=False)
+        widget.set_trait("_transient", True)
         try:
             own_display(widget)
         except BaseException:

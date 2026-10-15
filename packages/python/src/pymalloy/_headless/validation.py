@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import time
 from collections.abc import Mapping
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Unpack
+from typing import TYPE_CHECKING, Any
 
 import msgspec
 
-from pymalloy._authoring.syntax import Fragment
-from pymalloy._model import DEFAULT_CONNECTION
-from pymalloy._model.errors import CompilationError
-from pymalloy._protocol.givens import encode_givens
-from pymalloy.execution import ExecutionError
+from pymalloy._authoring.draft import Draft
+from pymalloy._protocol.givens import encode_givens, given_values
+from pymalloy.authoring import Source
+from pymalloy.errors import CompilationError, ExecutionError
 from pymalloy.validation import (
     DataCheck,
     DocumentationPolicy,
@@ -22,37 +20,35 @@ from pymalloy.validation import (
 )
 
 if TYPE_CHECKING:
-    from pymalloy._authoring.draft import Draft
-
-    from .api import _RuntimeOptions
+    from .api import Connection
 
 
 def validate(
+    connection: Connection,
     draft: Draft,
-    checks: Mapping[str, Fragment],
+    checks: Mapping[str, Source],
     *,
     givens: Mapping[str, Any] | None,
     documentation: DocumentationPolicy | None = None,
-    **options: Unpack[_RuntimeOptions],
+    deadline: float,
 ) -> Validation:
-    # One budget covers compilation, metadata, and every data assertion.
-    deadline = time.monotonic() + options.get("timeout", 120)
-    bindings = msgspec.json.encode(encode_givens(givens)).decode()
-    connection_name = options.get("connection_name", DEFAULT_CONNECTION)
+    if not isinstance(draft, Draft):
+        raise TypeError("validate requires a Draft")
+    encoded = encode_givens(givens)
+    bindings = msgspec.json.encode(encoded).decode()
+    connection_name = connection.name
     selected = tuple(checks.items())
     if not all(
         isinstance(name, str)
         and name
-        and isinstance(query, Fragment)
+        and isinstance(query, Source)
         and query.kind == "expression"
         for name, query in selected
     ):
-        raise ValueError(
-            "Checks must map nonempty names to symbolic source/query expressions"
-        )
+        raise ValueError("Checks must map nonempty names to symbolic Source values")
     skipped = tuple(DataCheck(name, "skipped") for name, _ in selected)
     try:
-        model = draft.compile(**options)
+        model = connection._model(draft, deadline=deadline)
     except CompilationError as error:
         return Validation(
             draft,
@@ -62,28 +58,22 @@ def validate(
             bindings,
             connection_name=connection_name,
         )
+    frozen = draft
     try:
-
-        def remaining() -> float:
-            value = deadline - time.monotonic()
-            if value <= 0:
-                raise TimeoutError("Model validation exceeded its deadline")
-            return value
-
-        captured = model.source(timeout=remaining())
+        captured = model.source()
         frozen = replace(draft, url=captured.url, imports=captured.imports)
-        inspection = model.inspect(timeout=remaining())
+        inspection = model._inspect(deadline=deadline)
         diagnostics = tuple(inspection.diagnostics) + _documentation(
             inspection.model, documentation
         )
         results = []
         for name, query in selected:
             try:
-                result = model.query(query).preview(
-                    limit=1, givens=givens, timeout=remaining()
-                )
+                result = model.query(query)._execute(given_values(encoded), deadline, 1)
                 results.append(
-                    DataCheck(name, "failed" if result.rows() else "passed", result)
+                    DataCheck(
+                        name, "failed" if result.to_pylist() else "passed", result
+                    )
                 )
             except (CompilationError, ExecutionError) as error:
                 results.append(
@@ -109,7 +99,12 @@ def validate(
         )
     except CompilationError as error:
         return Validation(
-            draft, (), skipped, str(error), bindings, connection_name=connection_name
+            frozen,
+            tuple(error.diagnostics),
+            skipped,
+            str(error),
+            bindings,
+            connection_name=connection_name,
         )
     finally:
         model.close()

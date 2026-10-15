@@ -1,7 +1,7 @@
-import { type MalloyTranslator } from "@malloydata/malloy";
+import { Parse, type MalloyTranslator } from "@malloydata/malloy";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
 import type { SourceRange } from "./metadata";
-import { createParse, parseTree, type NativeListener } from "./upstream";
+import { parseTree, type NativeListener } from "./upstream";
 
 interface TableReference {
   connection: string;
@@ -16,7 +16,7 @@ export function tableReferences(translator: MalloyTranslator): TableReference[] 
   const parsed = parseTree(translator);
   if (!parsed) return [];
   const metadata = new Map(
-    createParse(translator).tablePathInfo.map((table) => {
+    new Parse(translator).tablePathInfo.map((table) => {
       const start = table.range.toJSON().start;
       return [`${start.line}:${start.character}`, table];
     }),

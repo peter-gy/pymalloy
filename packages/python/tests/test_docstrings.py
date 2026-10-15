@@ -14,13 +14,6 @@ import pytest
         "pymalloy",
         "pymalloy.authoring",
         "pymalloy.expressions",
-        "pymalloy._authoring.draft",
-        "pymalloy._authoring.syntax",
-        "pymalloy._model.source",
-        "pymalloy._model.inputs",
-        "pymalloy._headless.api",
-        "pymalloy._headless.runtime",
-        "pymalloy._headless.tooling",
         "pymalloy.result",
         "pymalloy.validation",
         "pymalloy.widget",
@@ -43,7 +36,7 @@ def test_public_api_examples(module_name):
                     )
                 )
     runner = doctest.DocTestRunner(
-        optionflags=doctest.ELLIPSIS | doctest.DONT_ACCEPT_TRUE_FOR_1,
+        optionflags=doctest.DONT_ACCEPT_TRUE_FOR_1,
     )
     for example in examples:
         runner.run(example)

@@ -15,7 +15,7 @@ test("retained models own competing file mappings and preserve exact result valu
   await page.goto("/runtime.html");
   const output = await page.evaluate(async () => {
     const entry = "/runtime.mjs";
-    const { Session } = await import(entry);
+    const { Session, Model, Query, ToolingError } = await import(entry);
     const session = await Session.open({
       bundles: {
         mvp: {
@@ -53,6 +53,20 @@ test("retained models own competing file mappings and preserve exact result valu
           DATE '2024-02-03' AS date_value,
           [9007199254740993::BIGINT] AS nested_value
       """) -> { select: * }`);
+      const special = await session.run(`run: duckdb.sql("""
+        SELECT TIME '12:34:56.123456' AS clock,
+          INTERVAL '14 months 3 days 1234567 microseconds' AS duration,
+          MAP([9007199254740993::BIGINT], [9007199254740995::BIGINT]) AS mapping,
+          {'clock': TIME '00:00:00.000001', 'durations': [INTERVAL '1 microsecond', NULL],
+           'maps': [MAP([9007199254740997::BIGINT], [9007199254740999::BIGINT])]} AS nested
+      """) -> {select: *}`);
+      let caught = false;
+      try {
+        await session.model({ text: "run: missing" });
+      } catch (error) {
+        caught = error instanceof ToolingError;
+      }
+      const identity = [second instanceof Model, second.query() instanceof Query, caught];
       const empty = await session.run(
         "run: duckdb.sql('SELECT 42::BIGINT AS value WHERE false') -> { select: value }",
       );
@@ -102,6 +116,8 @@ test("retained models own competing file mappings and preserve exact result valu
             remaining,
             remoteValues,
             exact: exact.rows,
+            special: { rows: special.rows, data: special.malloy.data },
+            identity,
             empty,
             submitted: submitted.map((result) => ({ rows: result.rows, sql: result.sql })),
             updated: updated.rows,
@@ -134,6 +150,43 @@ test("retained models own competing file mappings and preserve exact result valu
       nested_value: ["9007199254740993"],
     },
   ]);
+  expect(output.identity).toEqual([true, true, true]);
+  expect(output.special.rows).toEqual([
+    {
+      clock: "45296123456",
+      duration: { months: 14, days: 3, micros: "1234567" },
+      mapping: [{ key: "9007199254740993", value: "9007199254740995" }],
+      nested: {
+        clock: "1",
+        durations: [{ months: 0, days: 0, micros: "1" }, null],
+        maps: [[{ key: "9007199254740997", value: "9007199254740999" }]],
+      },
+    },
+  ]);
+  expect(output.special.data).toEqual({
+    kind: "array_cell",
+    array_value: [
+      {
+        kind: "record_cell",
+        record_value: [
+          { kind: "string_cell", string_value: "12:34:56.123456" },
+          {
+            kind: "sql_native_cell",
+            sql_native_value: '{"months":14,"days":3,"micros":"1234567"}',
+          },
+          {
+            kind: "sql_native_cell",
+            sql_native_value: '[{"key":"9007199254740993","value":"9007199254740995"}]',
+          },
+          {
+            kind: "sql_native_cell",
+            sql_native_value:
+              '{"clock":"1","durations":[{"months":0,"days":0,"micros":"1"},null],"maps":[[{"key":"9007199254740997","value":"9007199254740999"}]]}',
+          },
+        ],
+      },
+    ],
+  });
   expect(output.empty.rows).toEqual([]);
   expect(output.empty.columns).toEqual([{ name: "value", type: "BIGINT" }]);
   expect(requested).toContain("/duckdb/duckdb-mvp.wasm");
@@ -507,6 +560,67 @@ test("cancelling one browser query preserves its model and queued work", async (
     repeated: [{ answer: 42 }],
     closed: false,
   });
+});
+
+test("browser schema cancellation stops discovery and leaves the session reusable", async ({
+  page,
+}) => {
+  await page.goto("/runtime.html");
+  const output = await page.evaluate(async () => {
+    const entry = "/runtime.mjs";
+    const { Session } = await import(entry);
+    const session = await Session.open({
+      bundles: {
+        mvp: {
+          mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
+          mainWorker: new URL("/duckdb/duckdb-browser-mvp.worker.js", location.href).href,
+        },
+      },
+    });
+    const source = "run: duckdb.sql('SELECT 42 AS value') -> {select: value}";
+    const controller = new AbortController();
+    const requests: string[] = [];
+    // Abort on preparation dispatch to exercise schema discovery before execution.
+    // oxlint-disable-next-line typescript/unbound-method -- Restored in finally, called with its original receiver.
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (message, transfer) {
+      post.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
+      requests.push(message.type);
+      if (message.type === "CREATE_PREPARED") controller.abort();
+    };
+    try {
+      const preaborted = new AbortController();
+      preaborted.abort();
+      const outcomes = await Promise.allSettled([
+        session.model({ text: source }, { signal: preaborted.signal }),
+        session.check(source, { signal: preaborted.signal }),
+      ]);
+      const beforeDiscovery = requests.slice();
+      const discovery = await session.model({ text: source }, { signal: controller.signal }).then(
+        () => "resolved",
+        (error: Error) => error.name,
+      );
+      const discoveryRequests = requests.slice();
+      Worker.prototype.postMessage = post;
+      const recovered = await session.run(source);
+      return {
+        preaborted: outcomes.map((outcome) => outcome.status),
+        beforeDiscovery,
+        discovery,
+        requests: discoveryRequests,
+        recovered: recovered.rows,
+      };
+    } finally {
+      Worker.prototype.postMessage = post;
+      await session.close();
+    }
+  });
+  expect(output.preaborted).toEqual(["rejected", "rejected"]);
+  expect(output.beforeDiscovery).toEqual([]);
+  expect(output.discovery).toBe("AbortError");
+  expect(output.recovered).toEqual([{ value: 42 }]);
+  expect(output.requests).toContain("CREATE_PREPARED");
+  expect(output.requests).not.toContain("START_PENDING_QUERY");
 });
 
 test("a widget replaces an active query on its retained browser model", async ({ page }) => {

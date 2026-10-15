@@ -6,8 +6,8 @@ from contextlib import closing
 import pytest
 
 import pymalloy as pm
-from pymalloy import CompilationError
 from pymalloy.analysis import SourcePosition, to_dict
+from pymalloy.errors import CompilationError
 
 ONE = "run: duckdb.sql('SELECT 42 AS value') -> { select: value }"
 
@@ -30,7 +30,7 @@ def cli(*arguments):
 def test_semantic_diagnostics_preserve_codepoint_ranges_and_repair(tmp_path):
     source = "run: duckdb.sql(\"SELECT '😀' AS label\") -> { select: missing }"
     path = tmp_path / "unicode.malloy"
-    report = pm.check(source, path=path)
+    report = pm.connect().check(source, url=path.resolve().as_uri())
     assert not report.ok
     diagnostic = next(
         item for item in report.diagnostics if item.code == "field-not-found"
@@ -44,12 +44,14 @@ def test_semantic_diagnostics_preserve_codepoint_ranges_and_repair(tmp_path):
         line=0, character=source.index("missing") + 7
     )
     repaired = source.replace("select: missing", "select: label")
-    assert pm.check(repaired, path=path).ok
-    assert pm.run(repaired).polars().to_dicts() == [{"label": "😀"}]
+    assert pm.connect().check(repaired, url=path.resolve().as_uri()).ok
+    assert pm.connect().model(repaired).query().run().to_polars().to_dicts() == [
+        {"label": "😀"}
+    ]
     with pytest.raises(CompilationError) as caught:
-        pm.model(source)
+        pm.connect().model(source)
     assert caught.value.diagnostics[0].code == "field-not-found"
-    assert pm.run(ONE).polars().item() == 42
+    assert pm.connect().model(ONE).query().run().to_polars().item() == 42
 
 
 def test_check_file_reports_diagnostics_in_imported_source(tmp_path):
@@ -59,7 +61,7 @@ def test_check_file_reports_diagnostics_in_imported_source(tmp_path):
     )
     root = tmp_path / "report.malloy"
     root.write_text("import 'base.malloy'\nrun: numbers -> { select: value }")
-    report = pm.check(root.read_text(), path=root)
+    report = pm.connect().check(root.read_text(), url=root.resolve().as_uri())
     assert not report.ok
     diagnostic = next(
         item for item in report.diagnostics if item.code == "field-not-found"
@@ -71,13 +73,12 @@ def test_check_file_reports_diagnostics_in_imported_source(tmp_path):
 
 def test_syntax_check_describes_missing_data_without_resolving_it(tmp_path):
     source = "import 'absent.malloy'\nsource: rows is duckdb.table('absent.csv')"
-    syntax = pm.check(
-        source, path=tmp_path / "report.malloy", syntax_only=True, data_root=tmp_path
+    syntax = pm.parse(source, url=(tmp_path / "report.malloy").resolve().as_uri())
+    semantic = pm.connect(data_root=tmp_path).check(
+        source, url=(tmp_path / "report.malloy").resolve().as_uri()
     )
-    semantic = pm.check(source, path=tmp_path / "report.malloy", data_root=tmp_path)
     assert syntax.ok
-    assert syntax.model.model is None
-    assert syntax.queries == []
+    assert syntax.help is None
     assert syntax.tables[0].connection == "duckdb"
     assert syntax.tables[0].path == "absent.csv"
     assert syntax.imports[0].url == (tmp_path / "absent.malloy").as_uri()
@@ -95,7 +96,7 @@ SELECT * FROM %{
   missing_source -> { select: * }
 }%"""
     path.write_text(source)
-    report = pm.check(path.read_text(), path=path)
+    report = pm.connect().check(path.read_text(), url=path.resolve().as_uri())
     assert not report.ok
     diagnostic = next(
         item for item in report.diagnostics if item.code == "source-or-query-not-found"
@@ -109,7 +110,7 @@ def test_headless_warning_contains_a_source_replacement():
     source = (
         "run: duckdb.sql('SELECT 1 AS value') -> { where: value = null select: value }"
     )
-    report = pm.check(source)
+    report = pm.connect().check(source)
     assert report.ok
     warning = next(item for item in report.diagnostics if item.severity == "warning")
     assert warning.replacement == "value is null"
@@ -118,17 +119,13 @@ def test_headless_warning_contains_a_source_replacement():
     repaired = (
         source[: at.start.character] + warning.replacement + source[at.end.character :]
     )
-    assert pm.check(repaired).diagnostics == []
+    assert pm.connect().check(repaired).diagnostics == ()
 
 
 def test_headless_completions_and_help_have_source_context():
     source = "source: numbers is duckdb.table('absent.csv')\nrun: numbers -> {\n  group_by: value\n  \n}"
-    report = pm.check(
-        source, syntax_only=True, position=SourcePosition(line=3, character=2)
-    )
-    context = pm.check(
-        source, syntax_only=True, position=SourcePosition(line=2, character=3)
-    )
+    report = pm.connect().check(source, position=SourcePosition(line=3, character=2))
+    context = pm.connect().check(source, position=SourcePosition(line=2, character=3))
     assert any(item.text == "group_by: " for item in report.completions)
     assert to_dict(context.help) == {"type": "query_property", "token": "group_by:"}
     assert report.symbols[0].name == "numbers"
@@ -144,16 +141,17 @@ run: numbers -> filtered
 """
     path = tmp_path / "numbers.malloy"
     path.write_text(source)
-    with closing(pm.model(path)) as model:
+    with closing(pm.connect().model(path)) as model:
         inspection = to_dict(model.inspect())
         selected = to_dict(model.inspect(position=SourcePosition(line=5, character=6)))
-        assert model.query().run().polars().item() == 42
+        assert model.query().run().to_polars().item() == 42
     assert [q["name"] for q in inspection["queries"]] == ["run:0", "numbers.filtered"]
     entry = inspection["model"]["model"]["entries"][0]
     assert entry["kind"] == "source"
     assert entry["name"] == "numbers"
     assert entry["schema"]["fields"][0] == {
         "kind": "dimension",
+        "annotations": None,
         "name": "value",
         "type": {"kind": "number_type", "subtype": "integer"},
     }
@@ -180,7 +178,7 @@ query: total is numbers -> { aggregate: total is value.sum() }"""
     )
     root = tmp_path / "report.malloy"
     root.write_text("import 'base.malloy'\nrun: total")
-    with closing(pm.model(root)) as model:
+    with closing(pm.connect().model(root)) as model:
         imported_at = to_dict(
             model.inspect(position=SourcePosition(line=0, character=10))
         )
@@ -203,40 +201,23 @@ def test_sql_resolves_file_bindings_and_leaves_execution_to_the_caller(tmp_path)
         f">>>sql connection:duckdb\nCOPY (SELECT 42 AS value) TO '{output.as_posix()}' (HEADER)\n"
     )
     output = tmp_path / "values.csv"
-    with closing(pm.model(model_path, data_root=tmp_path)) as model:
+    native = pm.connect(data_root=tmp_path)
+    with closing(native.model(model_path)) as model:
         sql = model.query("sql:0").sql()
         assert not output.exists()
-        model.connection.execute(sql)
+        native.duckdb.execute(sql)
     assert output.read_text() == "value\n42\n"
 
 
 def test_format_roundtrip_preserves_execution_and_reports_malformed_source():
     formatted = pm.format(ONE)
     assert pm.format(formatted) == formatted
-    assert pm.check(formatted).ok
-    assert pm.run(formatted).polars().item() == 42
+    assert pm.connect().check(formatted).ok
+    assert pm.connect().model(formatted).query().run().to_polars().item() == 42
     with pytest.raises(CompilationError) as caught:
         pm.format("run: ->")
     assert caught.value.diagnostics[0].code == "syntax-error"
     assert caught.value.diagnostics[0].location.range.start.line == 0
-
-
-def test_cli_check_returns_json_diagnostics_and_preserves_source(tmp_path):
-    path = tmp_path / "model.malloy"
-    source = "run: duckdb.sql('SELECT 1 AS value') -> { select: missing }"
-    path.write_text(source)
-    result = cli("check", path, "--json")
-    assert result.returncode == 1
-    assert result.stderr == ""
-    report = json.loads(result.stdout)
-    assert not report["ok"]
-    assert report["url"] == path.as_uri()
-    assert report["diagnostics"][0]["code"] == "field-not-found"
-    assert path.read_text() == source
-    path.write_text(ONE)
-    good = cli("check", path, "--json")
-    assert good.returncode == 0
-    assert json.loads(good.stdout)["ok"]
 
 
 def test_cli_syntax_check_accepts_an_unavailable_data_source(tmp_path):
@@ -247,42 +228,12 @@ def test_cli_syntax_check_accepts_an_unavailable_data_source(tmp_path):
     assert json.loads(result.stdout)["tables"][0]["path"] == "absent.csv"
 
 
-def test_cli_formatter_emits_source_and_checks_without_writing(tmp_path):
-    path = tmp_path / "model.malloy"
-    path.write_text(ONE)
-    result = cli("format", path)
-    assert result.returncode == 0
-    assert result.stderr == ""
-    assert path.read_text() == ONE
-    assert result.stdout != ONE
-    assert cli("format", path, "--check").returncode == 1
-    path.write_text(result.stdout)
-    checked = cli("format", path, "--check")
-    assert checked.returncode == 0
-    assert checked.stdout == ""
-    assert path.read_text() == result.stdout
-    crlf = result.stdout.replace(
-        "\n",
-        "\r\n",
-    ).encode("utf-8")
-    path.write_bytes(crlf)
-    assert cli("format", path, "--check").returncode == 1
-    assert path.read_bytes() == crlf
-    path.write_text("run: ->")
-    failed = cli("format", path)
-    assert failed.returncode == 1
-    assert failed.stdout == ""
-    assert "syntax-error" in failed.stderr
-    assert str(path) in failed.stderr
-    assert path.read_text() == "run: ->"
-
-
 def test_invalid_tool_arguments_leave_model_available():
-    with closing(pm.model(ONE)) as model:
+    with closing(pm.connect().model(ONE)) as model:
         calls = [
-            lambda: pm.check(ONE, syntax_only=1),
-            lambda: pm.model(ONE).query({}).run().polars(),
-            lambda: model.query({}).run().polars(),
+            lambda: pm.connect().check(ONE, position={}),
+            lambda: pm.connect().model(ONE).query({}).run().to_polars(),
+            lambda: model.query({}).run().to_polars(),
             lambda: model.query({}).sql(),
             lambda: to_dict(
                 model.inspect(position=SourcePosition(line=0, character=5), url={})
@@ -291,36 +242,35 @@ def test_invalid_tool_arguments_leave_model_available():
         for call in calls:
             with pytest.raises(TypeError):
                 call()
-            assert model.run().polars().item() == 42
+            assert model.query().run().to_polars().item() == 42
 
 
-def test_required_givens_leave_source_metadata_available_before_execution():
+def test_required_givens_keep_source_metadata_before_execution():
     source = """##! experimental.givens
 given: cutoff :: number
 source: numbers is duckdb.sql('SELECT 42 AS value')
+run: numbers -> { select: first is value }
 run: numbers -> { where: value > $cutoff select: value }
+run: numbers -> { select: last is value * 2 }
 """
-    report = pm.check(source)
-    assert report.ok
-    assert report.model.model is None
-    assert [q.name for q in report.queries] == ["run:0"]
-    assert report.model.sources[0].name == "numbers"
-    with closing(pm.model(source)) as model:
-        inspection = to_dict(model.inspect())
-        assert inspection["model"]["model"] is None
-        assert inspection["model"]["sources"][0]["name"] == "numbers"
-        assert inspection["givens"][0]["name"] == "cutoff"
-        assert inspection["givens"][0]["default_text"] is None
-        sql = model.query().sql(givens={"cutoff": 10})
-        assert model.connection.sql(sql).fetchone() == (42,)
-
-
-def test_cli_check_reports_database_setup_errors(tmp_path):
-    source = tmp_path / "model.malloy"
-    source.write_text(ONE)
-    database = tmp_path / "invalid.duckdb"
-    database.write_text("invalid database contents")
-    result = cli("check", source, "--database", database)
-    assert result.returncode == 1
-    assert result.stdout == ""
-    assert result.stderr.startswith("pymalloy:")
+    with pm.connect() as native:
+        report = native.check(source)
+        assert report.ok
+        assert [entry.name for entry in report.model.model.entries] == ["numbers"]
+        assert report.model.model.anonymous_queries == ()
+        assert [q.name for q in report.queries] == ["run:0", "run:1", "run:2"]
+        assert [field.name for field in report.queries[0].schema.fields] == ["first"]
+        assert report.queries[1].schema is None
+        assert [field.name for field in report.queries[2].schema.fields] == ["last"]
+        assert report.model.sources[0].name == "numbers"
+        with native.model(source) as model:
+            inspection = to_dict(model.inspect())
+            entries = inspection["model"]["model"]["entries"]
+            assert [entry["name"] for entry in entries] == ["numbers"]
+            assert inspection["givens"][0]["name"] == "cutoff"
+            assert inspection["givens"][0]["default_text"] is None
+            assert inspection["queries"][0]["schema"]["fields"][0]["name"] == "first"
+            assert inspection["queries"][1]["schema"] is None
+            assert inspection["queries"][2]["schema"]["fields"][0]["name"] == "last"
+            sql = model.query("run:1").sql(givens={"cutoff": 10})
+            assert native.duckdb.sql(sql).fetchone() == (42,)

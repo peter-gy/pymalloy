@@ -14,9 +14,13 @@
       "types": "./dist/tooling.d.mts",
       "import": "./dist/tooling.mjs"
     },
-    "./types": {
-      "types": "./dist/types.d.mts",
-      "import": "./dist/types.mjs"
+    "./jobs": {
+      "types": "./dist/jobs.d.mts",
+      "import": "./dist/jobs.mjs"
+    },
+    "./adapters": {
+      "types": "./dist/adapters.d.mts",
+      "import": "./dist/adapters.mjs"
     }
   },
   "scripts": {

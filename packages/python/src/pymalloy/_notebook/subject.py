@@ -6,15 +6,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-import msgspec
-
 from pymalloy._authoring.annotations import annotation_content
+from pymalloy._authoring.operations import KINDS, normalize
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.source import DocumentKind, ModelSource
 from pymalloy._protocol.givens import given_values
 from pymalloy._protocol.records import (
     ExecutionKind,
-    Input,
     Inspection,
     NotebookBinding,
     NotebookInfo,
@@ -27,9 +25,12 @@ from pymalloy._protocol.records import (
     ScalarField,
     ScalarGiven,
 )
+from pymalloy._protocol.records import (
+    Input as WidgetInput,
+)
 
 if TYPE_CHECKING:
-    from pymalloy._model.inputs import DataInput
+    from pymalloy._model.inputs import Input
     from pymalloy.result import Result
 
 
@@ -40,13 +41,15 @@ class Subject:
     url: str | None = None
     document_kind: DocumentKind = "model"
     imports: Mapping[str, str] | None = None
-    inputs: tuple[DataInput, ...] = ()
+    inputs: tuple[Input, ...] = ()
     queries: tuple[QueryDescriptor, ...] = ()
     inspect: Callable[[], Inspection] | None = None
     preview: Callable[[str | None, Mapping[str, Any]], Result] | None = None
     connection_name: str | None = None
 
-    def perform(self, request: Input) -> tuple[NotebookResponse, list[memoryview]]:
+    def perform(
+        self, request: WidgetInput
+    ) -> tuple[NotebookResponse, list[memoryview]]:
         if request.action == "inspect" and self.info.execution != "result":
             raise ValueError("Choose Preview to execute this value")
         if request.action == "check":
@@ -62,7 +65,7 @@ class Subject:
         import pyarrow as pa
 
         sink = pa.BufferOutputStream()
-        table = result.arrow()
+        table = result.to_arrow()
         with pa.ipc.new_stream(sink, table.schema) as writer:
             writer.write_table(table)
         return NotebookResult(
@@ -114,9 +117,9 @@ def native(
 def describe(value) -> Subject:
     from pymalloy._authoring.draft import Draft, draft
     from pymalloy._authoring.identifiers import identifier
-    from pymalloy._authoring.syntax import Fragment
+    from pymalloy._authoring.syntax import Syntax
     from pymalloy._authoring.tables import TableReference
-    from pymalloy.authoring import limit, query, syntax
+    from pymalloy.authoring import Source, View
     from pymalloy.expressions import Expr, Sort
     from pymalloy.result import Result
 
@@ -136,11 +139,11 @@ def describe(value) -> Subject:
                 "Result",
                 value.sql,
                 "result",
-                f"Materialized result · {value.arrow().num_rows:,} rows. Display shows up to 20 rows without executing SQL again.",
+                f"Materialized result · {value.to_arrow().num_rows:,} rows. Display shows up to 20 rows without executing SQL again.",
             )
         )
         result.preview = lambda _query, _givens: Result(
-            value.sql, value.columns, value.arrow().slice(0, 20)
+            value.sql, value.columns, value.to_arrow().slice(0, 20)
         )
         return result
 
@@ -159,24 +162,19 @@ def describe(value) -> Subject:
                 text if route == '"' else f"{route or 'render'}: {text}"
                 for route, text in node._annotations
             )
-            scalars = [node._node]
-            while scalars:
-                scalar = scalars.pop()
+
+            def collect(scalar):
                 if isinstance(scalar, ScalarField):
                     paths.add(tuple(scalar.path))
                 elif isinstance(scalar, ScalarGiven):
                     references.add("$" + scalar.name)
-                elif isinstance(scalar, ScalarCall):
-                    if scalar.receiver:
-                        paths.add(tuple(scalar.receiver))
-                    scalars.extend(scalar.args)
-                elif isinstance(scalar, msgspec.Struct):
-                    scalars.extend(msgspec.structs.astuple(scalar))
-                elif isinstance(scalar, (list, tuple)):
-                    scalars.extend(scalar)
+                elif isinstance(scalar, ScalarCall) and scalar.receiver:
+                    paths.add(tuple(scalar.receiver))
+
+            normalize(node._node, visit=collect)
         elif isinstance(node, TableReference):
             independent_source = True
-        elif isinstance(node, Fragment):
+        elif isinstance(node, Syntax):
             if node.kind == "annotation":
                 content = annotation_content(node.text) if node.name == '"' else None
                 annotations.append(
@@ -191,7 +189,7 @@ def describe(value) -> Subject:
     references.update(".".join(identifier(part) for part in path) for path in paths)
     bindings = ()
     inputs = ()
-    if isinstance(source, Fragment):
+    if isinstance(source, Syntax):
         bindings = tuple(
             NotebookBinding(name=name, kind=binding.kind, source=source[name].text)
             for name, binding in source._scope.items()
@@ -203,35 +201,31 @@ def describe(value) -> Subject:
     if isinstance(value, Draft):
         kind = "Model"
         text, url, imports = value.text, value.url, value.imports
-    elif isinstance(value, Fragment):
+    elif isinstance(value, Syntax):
         operation = value._operation.kind if value._operation else None
-        kind = {
-            "sql": "SQL source",
-            "block": "Query block",
-            "pipe": "Query",
-            "extend": "Source",
-        }.get(
-            operation or "",
-            operation.replace("_", " ").title()
+        kind = (
+            KINDS[operation][1]
             if operation
             else "Captured source"
             if inputs
-            else value.kind.title(),
+            else "View"
+            if isinstance(value, View)
+            else "Source"
         )
         if value.kind == "document":
             text = value.text
         elif independent_source and value.kind == "expression":
             text = (
                 draft()
-                .define(preview_source=value)
+                .sources(preview_source=Source._from_syntax(value))
                 .append(
                     "run: preview_source -> ",
-                    query(syntax("select: *", kind="clause"), limit(20)),
+                    View.raw("{ select: * }").limit(20),
                 )
             ).text
             message = "A source preview selects up to 20 rows. Compose a model to choose a different query."
         else:
-            message = "Compose this fragment into a source or model to resolve its references and run it."
+            message = "Compose this value into a source or model to resolve its references and run it."
     elif isinstance(value, Expr):
         kind = "Expression"
         message = "Use this expression in select, dimension, measure, or aggregate. Its type and source scope are resolved by Malloy when the model compiles."
@@ -240,7 +234,7 @@ def describe(value) -> Subject:
         message = "Use this value in order_by to order a query result."
     else:
         raise TypeError(
-            "Display requires Malloy text, an expression, fragment, draft, source snapshot, model, query, or result"
+            "Display requires Malloy text, an expression, source, view, draft, source snapshot, model, query, or result"
         )
     return Subject(
         NotebookInfo(

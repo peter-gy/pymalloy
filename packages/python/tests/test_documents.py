@@ -3,7 +3,7 @@ import pytest
 from test_compile import EXAMPLES, run_notebook
 from test_jupyter import execute_notebook
 
-from pymalloy.export import Markdown, jupyter, marimo, prepare
+from pymalloy.export import MarkdownCell, jupyter, marimo, prepare
 
 
 def test_notebook_preserves_markdown_and_embedded_sql(tmp_path):
@@ -20,7 +20,7 @@ SELECT SUM(revenue) AS total FROM (%{{ orders -> by_region }}%)
 ''')
     book = prepare(model, data_root=EXAMPLES)
     assert [query.name for query in book.queries] == ["run:0", "sql:0"]
-    assert [cell.text for cell in book.cells if isinstance(cell, Markdown)] == [
+    assert [cell.text for cell in book.cells if isinstance(cell, MarkdownCell)] == [
         "# Regional sales",
         "## Total revenue",
     ]

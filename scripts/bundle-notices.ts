@@ -5,8 +5,8 @@ import { dirname, join, resolve } from "node:path";
 const upstreamNotices = new Map([
   ["@stylexjs/stylex@0.19.1", new URL("./licenses/stylex-0.19.1.LICENSE", import.meta.url)],
   [
-    "@duckdb/duckdb-wasm@1.33.1-dev57.0",
-    new URL("./licenses/duckdb-wasm-1.33.1-dev57.0.LICENSE", import.meta.url),
+    "@duckdb/duckdb-wasm@1.33.1-dev65.0",
+    new URL("./licenses/duckdb-wasm-1.33.1-dev65.0.LICENSE", import.meta.url),
   ],
   [
     "@malloydata/motly-ts-parser@0.9.0",

@@ -1,4 +1,4 @@
-import { routeOf } from "@malloydata/malloy";
+import { MalloyTranslator, routeOf } from "@malloydata/malloy";
 import { ParseUtil } from "@malloydata/malloy-tag";
 import type { ParserRuleContext } from "antlr4ts";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker.js";
@@ -6,7 +6,7 @@ import { diagnostics, ToolingError } from "./diagnostics";
 import { identifierText, scalarExpression, type Scalar } from "./scalar";
 import { tableReferences } from "./tables";
 import { defaultSourceURL } from "./source";
-import { createTranslator, parseTree, type NativeContext, type NativeListener } from "./upstream";
+import { parseTree, type NativeContext, type NativeListener } from "./upstream";
 
 /** Lossless authored syntax. Strings retain all syntax outside editable bindings. */
 export type SyntaxNode = ConcreteSyntax | ScalarSyntax | TableSyntax;
@@ -88,7 +88,7 @@ interface Span {
 
 /** Parse plain Malloy without schema discovery and preserve untouched text exactly. */
 export function syntaxSource(source: string, url = new URL(defaultSourceURL)): SyntaxNode {
-  const translator = createTranslator(url.href, url.href, {
+  const translator = new MalloyTranslator(url.href, url.href, {
     urls: { [url.href]: source },
   });
   const parsed = parseTree(translator);

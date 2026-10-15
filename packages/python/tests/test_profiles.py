@@ -8,8 +8,31 @@ from test_compile import run_notebook
 from test_jupyter import execute_notebook
 
 import pymalloy as pm
-from pymalloy import CompilationError, ModelSource
+from pymalloy import ModelSource
+from pymalloy.errors import CompilationError
 from pymalloy.export import jupyter, marimo, prepare
+
+
+@pytest.mark.parametrize("catalog", [False, True])
+def test_export_file_probe_matches_compiler_identifier_and_catalog_precedence(
+    tmp_path, catalog
+):
+    filename = 'main."orders.csv"' if catalog else "orders-2024.csv"
+    (tmp_path / filename).write_text("amount\n2\n")
+    database = tmp_path / "data.duckdb"
+    with duckdb.connect(str(database)) as native:
+        if catalog:
+            native.execute('CREATE TABLE main."orders.csv" AS SELECT 1 amount')
+    source = tmp_path / "model.malloy"
+    source.write_text(
+        pm.draft().queries(q=pm.table(filename).pipe(pm.view().select("amount"))).text
+    )
+    document = prepare(source, database=database, data_root=tmp_path)
+    assert dict(document.files) == ({} if catalog else {filename: tmp_path / filename})
+    output = tmp_path / "export.py"
+    output.write_text(marimo.render(document, output_path=output))
+    values = run_notebook(output)
+    assert values["q"].to_dicts() == [{"amount": 1 if catalog else 2}]
 
 
 @pytest.mark.parametrize("renderer,suffix", [(marimo, ".py"), (jupyter, ".ipynb")])
@@ -73,7 +96,7 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
             assert values["sql_0"].item() == 42
             assert "visible.entries" in [q.name for q in model.queries]
             assert model.inspect().model.sources
-            assert model.query("run:0").run(givens={"minimum": 10}).polars()[
+            assert model.query("run:0").run(givens={"minimum": 10}).to_polars()[
                 "value"
             ].to_list() == [12, 42]
             assert (
@@ -81,7 +104,7 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
                     malloy="run: numbers -> { aggregate: total is value.sum() }"
                 )
                 .run(givens=values["givens"])
-                .polars()
+                .to_polars()
                 .item()
                 == 56
             )
@@ -92,7 +115,7 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
         assert notebook["metadata"]["pymalloy"]["profile"] == "headless"
         execute_notebook(
             output,
-            f"\nassert model_source.text == {original!r}\nassert run_0.to_dicts() == [{{'value': 42}}]\nassert sql_0.item() == 42\nassert 'visible.entries' in [q.name for q in model.queries]\nassert model.inspect().model.sources\ngivens['minimum'] = 10\nassert model.query('run:0').run(givens=givens).polars()['value'].to_list() == [12, 42]\nassert model.query(malloy='run: numbers -> {{ aggregate: total is value.sum() }}').run(givens=givens).polars().item() == 56\nmodel.close()\n",
+            f"\nassert model_source.text == {original!r}\nassert run_0.to_dicts() == [{{'value': 42}}]\nassert sql_0.item() == 42\nassert 'visible.entries' in [q.name for q in model.queries]\nassert model.inspect().model.sources\ngivens['minimum'] = 10\nassert model.query('run:0').run(givens=givens).to_polars()['value'].to_list() == [12, 42]\nassert model.query(malloy='run: numbers -> {{ aggregate: total is value.sum() }}').run(givens=givens).to_polars().item() == 56\nmodel.close()\n",
             pymalloy=True,
         )
 
@@ -134,10 +157,13 @@ def test_source_bundle_is_closed_and_does_not_fall_back_to_original_files(tmp_pa
         "import 'base.malloy'\nrun: numbers -> { select: value }",
     )
     with pytest.raises(CompilationError, match="Source bundle is missing"):
-        pm.model(source)
+        pm.connect().model(source)
     assert (
-        pm.run("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}")
-        .polars()
+        pm.connect()
+        .model("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}")
+        .query()
+        .run()
+        .to_polars()
         .item()
         == 42
     )
@@ -146,15 +172,13 @@ def test_source_bundle_is_closed_and_does_not_fall_back_to_original_files(tmp_pa
 @pytest.mark.parametrize("borrowed", [False, True])
 def test_query_retains_model_resources_until_it_is_released(borrowed):
     connection = duckdb.connect() if borrowed else None
-    model = pm.model(
-        "run: duckdb.sql('SELECT 42 AS answer') -> {select:answer}",
-        connection=connection,
-    )
-    connection = model.connection
+    native = pm.connect(database=connection if connection is not None else ":memory:")
+    model = native.model("run: duckdb.sql('SELECT 42 AS answer') -> {select:answer}")
+    connection = native.duckdb
     query = model.query()
-    del model
+    del model, native
     gc.collect()
-    assert query.run().rows() == [{"answer": 42}]
+    assert query.run().to_pylist() == [{"answer": 42}]
     del query
     gc.collect()
     if borrowed:
@@ -216,7 +240,7 @@ def test_cli_profiles_preserve_selection_title_and_readonly_access(tmp_path, pro
 assert selected.item() == 42
 assert numbers_entries.item() == 42
 try:
-    model.connection.execute('DELETE FROM numbers')
+    connection.duckdb.execute('DELETE FROM numbers')
 except duckdb.InvalidInputException:
     pass
 else:
@@ -308,8 +332,8 @@ def test_http_inputs_survive_notebook_relocation(
         table = pm.sql(f"SELECT * FROM read_csv('{url}')") if reader else pm.table(url)
         source = (
             pm.draft()
-            .define(rows=table)
-            .queries(answer=pm.ref("rows").pipe(pm.query(pm.select(pm.col("value")))))
+            .sources(rows=table)
+            .queries(answer=pm.source("rows").pipe(pm.view().select(pm.col("value"))))
         )
         path = tmp_path / "model.malloy"
         path.write_text(source.text)

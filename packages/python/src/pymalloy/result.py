@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class Result(NotebookDisplay):
     """Materialized query data with SQL and native column descriptions.
 
-    Returned by run, Query.run and Query.preview. It retains a DuckDB-produced
+    Returned by Query.run and Query.preview. It retains a DuckDB-produced
     Arrow table independently of compiler/connection lifetime.
 
     Attributes
@@ -29,15 +29,15 @@ class Result(NotebookDisplay):
 
     See Also
     --------
-    Result.rows, Result.arrow, Result.polars
+    Result.to_pylist, Result.to_arrow, Result.to_polars
 
     Examples
     --------
     >>> import pymalloy as pm
-    >>> result = pm.run("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+    >>> result = pm.connect().model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}").query().run()
     >>> result.columns[0].name
     'n'
-    >>> result.rows()
+    >>> result.to_pylist()
     [{'n': 42}]
     """
 
@@ -45,7 +45,7 @@ class Result(NotebookDisplay):
     columns: tuple[Column, ...]
     _table: pa.Table = field(repr=False)
 
-    def rows(self) -> list[dict[str, Any]]:
+    def to_pylist(self) -> list[dict[str, Any]]:
         """Materialize detached Python dictionaries in result order.
 
         Returns
@@ -58,21 +58,21 @@ class Result(NotebookDisplay):
 
         Notes
         -----
-        This conversion allocates Python objects. Prefer arrow or polars for large
+        This conversion allocates Python objects. Prefer to_arrow or to_polars for large
         columnar results. Timestamp conversion uses the Arrow timezone metadata.
 
         Examples
         --------
         >>> import pymalloy as pm
-        >>> result = pm.run("run: duckdb.sql('SELECT 9007199254740993::BIGINT AS id') -> {select: id}")
-        >>> rows = result.rows()
+        >>> result = pm.connect().model("run: duckdb.sql('SELECT 9007199254740993::BIGINT AS id') -> {select: id}").query().run()
+        >>> rows = result.to_pylist()
         >>> rows[0]["id"] = 0
-        >>> result.rows()
+        >>> result.to_pylist()
         [{'id': 9007199254740993}]
         """
         return self._table.to_pylist()
 
-    def arrow(self) -> pa.Table:
+    def to_arrow(self) -> pa.Table:
         """Return the retained materialized PyArrow table.
 
         Returns
@@ -84,13 +84,13 @@ class Result(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> result = pm.run("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
-        >>> result.arrow().to_pylist()
+        >>> result = pm.connect().model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}").query().run()
+        >>> result.to_arrow().to_pylist()
         [{'n': 42}]
         """
         return self._table
 
-    def polars(self) -> pl.DataFrame:
+    def to_polars(self) -> pl.DataFrame:
         """Convert the retained Arrow table to a Polars DataFrame.
 
         Returns
@@ -101,16 +101,19 @@ class Result(NotebookDisplay):
 
         Notes
         -----
-        Requires Polars, installed directly with ``pip install polars``. The headless extra
-        alone supports rows and arrow but does not install Polars.
+        Requires Polars, installed directly with ``pip install polars``.
 
         Examples
         --------
         >>> import pymalloy as pm
-        >>> result = pm.run("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
-        >>> result.polars().to_dicts()
+        >>> result = pm.connect().model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}").query().run()
+        >>> result.to_polars().to_dicts()
         [{'n': 42}]
         """
         import polars as pl
 
         return cast("pl.DataFrame", pl.from_arrow(self._table, rechunk=False))
+
+    def __arrow_c_stream__(self, requested_schema=None):
+        """Expose the retained table through the Arrow PyCapsule stream protocol."""
+        return self._table.__arrow_c_stream__(requested_schema)

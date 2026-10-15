@@ -10,7 +10,6 @@ from check_samples import (
     execute_jupyter,
     execute_marimo,
     summarize_result,
-    worker,
 )
 
 
@@ -31,8 +30,7 @@ def test_notebook_results_keep_query_identity_nested_values_and_empty_columns(
 ):
     import polars as pl
 
-    from pymalloy.export import Document, QueryCell, jupyter, marimo
-    from pymalloy.export._plan import query_variables
+    from pymalloy.export import Document, NotebookQuery, jupyter, marimo
 
     data = tmp_path / "seed.csv"
     data.write_text("value\n42\n")
@@ -40,11 +38,11 @@ def test_notebook_results_keep_query_identity_nested_values_and_empty_columns(
     document = Document(
         title="Identity",
         cells=(
-            QueryCell("a.b", "SELECT [2, 1] AS values", kind="select"),
-            QueryCell("a_b", "SELECT [1, 2] AS values", kind="select"),
-            QueryCell("empty", "SELECT 1 AS value WHERE false", kind="select"),
+            NotebookQuery("a.b", "SELECT [2, 1] AS values", kind="select"),
+            NotebookQuery("a_b", "SELECT [1, 2] AS values", kind="select"),
+            NotebookQuery("empty", "SELECT 1 AS value WHERE false", kind="select"),
             *(
-                QueryCell(name, "SELECT * FROM 'seed.csv'", kind="select")
+                NotebookQuery(name, "SELECT * FROM 'seed.csv'", kind="select")
                 for name in setup_names
             ),
         ),
@@ -57,13 +55,16 @@ def test_notebook_results_keep_query_identity_nested_values_and_empty_columns(
     }[format]
     target = tmp_path / f"identity{suffix}"
     target.write_text(renderer.render(document, output_path=target))
-    variables = dict(
-        zip(
-            (query.name for query in document.queries),
-            query_variables(document),
-            strict=True,
-        )
-    )
+    variables = {
+        "a.b": "a_b",
+        "a_b": "a_b_2",
+        "empty": "empty",
+        "remote_files": "remote_files",
+        "check_files": "check_files_2",
+        "connection_config": "connection_config_2",
+        "value": "value",
+        "str": "str_2",
+    }
     actual = execute(target, variables, {})
     assert actual == {
         "a.b": summarize_result(pl.DataFrame({"values": [[2, 1]]})),
@@ -74,28 +75,6 @@ def test_notebook_results_keep_query_identity_nested_values_and_empty_columns(
             for name in setup_names
         },
     }
-
-
-@pytest.mark.parametrize("format", ["marimo", "jupyter"])
-def test_sample_checker_detects_wrong_generated_notebook_values(
-    tmp_path, monkeypatch, format
-):
-    from pymalloy.export import jupyter, marimo
-
-    model = tmp_path / "answer.malloynb"
-    model.write_text(">>>sql connection:duckdb\nSELECT 42 AS value\n")
-    renderer = {"marimo": marimo, "jupyter": jupyter}[format]
-    render = renderer.render
-
-    def wrong_values(*args, **kwargs):
-        source = render(*args, **kwargs)
-        assert "42 AS value" in source
-        return source.replace("42 AS value", "99 AS value")
-
-    monkeypatch.setattr(renderer, "render", wrong_values)
-    result = worker(model, tmp_path, tmp_path / "answer.py")
-    assert result["status"] == "notebook_failed", result
-    assert result["queries"][0]["error"] == f"{format}: Result values differ"
 
 
 def test_sample_checker_executes_copy_before_reading_its_output(tmp_path):

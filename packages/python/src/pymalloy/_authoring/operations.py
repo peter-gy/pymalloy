@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import assert_never
 
 from pymalloy._authoring.identifiers import identifier
@@ -30,38 +30,71 @@ _MALLOY_TYPES = frozenset(
 )
 
 
-def normalize(node: Scalar) -> Scalar:
+KINDS = {
+    "ref": ("source", "Reference"),
+    "sql": ("sql", "SQL source"),
+    "block": ("view", "Query block"),
+    "extend": ("extend", "Source"),
+    "pipe": ("pipe", "Query"),
+    **{
+        kind: (kind, kind.replace("_", " ").title())
+        for kind in (
+            "source",
+            "query",
+            "dimension",
+            "measure",
+            "view",
+            "nest",
+            "group_by",
+            "select",
+            "aggregate",
+            "where",
+            "having",
+            "limit",
+            "primary_key",
+            "order_by",
+            "asc",
+            "desc",
+        )
+    },
+}
+
+
+def normalize(node: Scalar, *, visit: Callable[[Scalar], None] | None = None) -> Scalar:
     """Snapshot protocol sequences so expression values remain deeply immutable."""
+    if visit is not None:
+        visit(node)
+
+    def walk(value: Scalar) -> Scalar:
+        return normalize(value, visit=visit)
+
     match node:
         case ScalarField(path=path):
             return ScalarField(path=tuple(path))
         case ScalarUnary(operator=operator, value=value):
-            return ScalarUnary(operator=operator, value=normalize(value))
+            return ScalarUnary(operator=operator, value=walk(value))
         case ScalarBinary(operator=operator, left=left, right=right):
-            return ScalarBinary(
-                operator=operator, left=normalize(left), right=normalize(right)
-            )
+            return ScalarBinary(operator=operator, left=walk(left), right=walk(right))
         case ScalarCall(name=name, args=args, receiver=receiver):
             return ScalarCall(
                 name=name,
-                args=tuple(map(normalize, args)),
+                args=tuple(map(walk, args)),
                 receiver=None if receiver is None else tuple(receiver),
             )
         case ScalarCast(value=value, type=type_, safe=safe):
-            return ScalarCast(value=normalize(value), type=type_, safe=safe)
+            return ScalarCast(value=walk(value), type=type_, safe=safe)
         case ScalarNullTest(value=value, negated=negated):
-            return ScalarNullTest(value=normalize(value), negated=negated)
+            return ScalarNullTest(value=walk(value), negated=negated)
         case ScalarTruncate(value=value, unit=unit):
-            return ScalarTruncate(value=normalize(value), unit=unit)
+            return ScalarTruncate(value=walk(value), unit=unit)
         case ScalarFilter(value=value, predicate=predicate):
-            return ScalarFilter(value=normalize(value), predicate=normalize(predicate))
+            return ScalarFilter(value=walk(value), predicate=walk(predicate))
         case ScalarCase(branches=branches, otherwise=otherwise):
             return ScalarCase(
                 branches=tuple(
-                    Branch(when=normalize(b.when), then=normalize(b.then))
-                    for b in branches
+                    Branch(when=walk(b.when), then=walk(b.then)) for b in branches
                 ),
-                otherwise=normalize(otherwise),
+                otherwise=walk(otherwise),
             )
         case ScalarGiven() | ScalarLiteral() | ScalarRaw():
             return node
@@ -140,8 +173,12 @@ def _malloy_parts(node: Scalar) -> Sequence[str | Scalar]:
             return ("(", value, (":::" if safe else "::") + target + ")")
         case ScalarNullTest(value=value, negated=negated):
             return ("(", value, " is not null)" if negated else " is null)")
+        case ScalarTruncate(value=ScalarField() as value, unit=unit):
+            return (value, "." + unit)
         case ScalarTruncate(value=value, unit=unit):
             return ("(", value, ")." + unit)
+        case ScalarFilter(value=ScalarField() as value, predicate=predicate):
+            return (value, " { where: ", predicate, " }")
         case ScalarFilter(value=value, predicate=predicate):
             return ("(", value, ") { where: ", predicate, " }")
         case ScalarCase(branches=branches, otherwise=otherwise):
@@ -196,16 +233,22 @@ def to_python(node: Scalar) -> str:
             else:
                 if str(integer) == value:
                     return f"pm.lit({integer})"
-            return f"pm.number({value!r})"
+            return f"pm.expressions.number({value!r})"
         case ScalarRaw(code=code):
-            return f"pm.raw_expr({code!r})"
+            return f"pm.Expr.raw({code!r})"
         case ScalarUnary(operator=operator, value=value):
             return f"({'~' if operator == 'not' else '-'}{to_python(value)})"
+        case ScalarBinary(
+            operator=">",
+            left=ScalarCall(name="strpos", args=args, receiver=None),
+            right=ScalarLiteral(type="number", value="0"),
+        ) if len(args) == 2:
+            return f"{to_python(args[0])}.str.contains({to_python(args[1])})"
         case ScalarBinary(operator="??", left=left, right=right):
             return f"{to_python(left)}.fill_null({to_python(right)})"
         case ScalarBinary(operator=operator, left=left, right=right):
             if operator not in _BINARY_PYTHON:
-                return f"pm.raw_expr({render(node)!r})"
+                return f"pm.Expr.raw({render(node)!r})"
             return f"({to_python(left)} {_BINARY_PYTHON[operator]} {to_python(right)})"
         case ScalarCall(name=name, args=args, receiver=receiver):
             if (
@@ -216,10 +259,46 @@ def to_python(node: Scalar) -> str:
                 return "pm.col(" + ", ".join(map(repr, receiver)) + f").{name}()"
             if not args and name == "count":
                 return "pm.count(" + ", ".join(map(repr, receiver or ())) + ")"
+            if receiver is None and args:
+                methods = {
+                    "sum": "sum",
+                    "avg": "avg",
+                    "min": "min",
+                    "max": "max",
+                    "count": "count_distinct",
+                    "nullif": "nullif",
+                    "lower": "str.lower",
+                    "upper": "str.upper",
+                    "length": "str.length",
+                    "trim": "str.strip",
+                    "replace": "str.replace",
+                    "starts_with": "str.starts_with",
+                    "ends_with": "str.ends_with",
+                    "year": "dt.year",
+                    "month": "dt.month",
+                    "day": "dt.day",
+                    "hour": "dt.hour",
+                    "minute": "dt.minute",
+                    "second": "dt.second",
+                }
+                method = methods.get(name)
+                arity = (
+                    3
+                    if name == "replace"
+                    else 2
+                    if name in {"nullif", "starts_with", "ends_with"}
+                    else 1
+                )
+                if method is not None and len(args) == arity:
+                    return (
+                        f"{to_python(args[0])}.{method}("
+                        + ", ".join(map(to_python, args[1:]))
+                        + ")"
+                    )
             values = [repr(name), *map(to_python, args)]
             if receiver is not None:
                 values.append(f"receiver={tuple(receiver)!r}")
-            return "pm.call(" + ", ".join(values) + ")"
+            return "pm.expressions.call(" + ", ".join(values) + ")"
         case ScalarCast(value=value, type=type_, safe=safe):
             return f"{to_python(value)}.cast({type_!r}, safe={safe!r})"
         case ScalarNullTest(value=value, negated=negated):

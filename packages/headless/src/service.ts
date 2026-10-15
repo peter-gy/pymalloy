@@ -5,7 +5,8 @@ import {
   syntaxSource,
   compilerVersion,
 } from "@malloy-runtime/compiler/tooling";
-import { CompiledModel, ToolingError, type Job, type Fulfilled } from "@malloy-runtime/compiler";
+import { ToolingError } from "@malloy-runtime/compiler";
+import { CompiledModel, type Job, type Fulfilled } from "@malloy-runtime/compiler/jobs";
 import { fields } from "@malloy-runtime/duckdb";
 import {
   decodeGivens,

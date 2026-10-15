@@ -1,12 +1,8 @@
 import { checkSource } from "../src/tooling";
-import { drive as fulfilJob, connection } from "../../duckdb/src/index";
-import {
-  CompiledModel,
-  documentKind,
-  type Job,
-  type LoadOptions,
-  type SourcePosition,
-} from "../src/index";
+import { drive as fulfilJob } from "../src/drive";
+import { connection, fields, describeSQL } from "../../duckdb/src/index";
+import { CompiledModel, type Job, type LoadOptions } from "../src/jobs";
+import { documentKind, type SourcePosition } from "../src/index";
 interface Fixture extends Omit<LoadOptions, "connection"> {
   describe(sql: string): Promise<{ name: string; type: string }[]>;
   readURL(url: URL): Promise<string>;
@@ -20,7 +16,10 @@ const defaults = {
   },
 };
 export function drive<T>(job: Job<T>, host = defaults): Promise<T> {
-  return fulfilJob(job, host);
+  return fulfilJob(job, {
+    readURL: host.readURL,
+    schema: async (need) => fields(await host.describe(describeSQL(need))),
+  });
 }
 export function compile(options: Fixture) {
   return drive(

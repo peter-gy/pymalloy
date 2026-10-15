@@ -58,10 +58,8 @@ def _(pm):
 def _(orders_frame, pm, revenue):
     orders = (
         pm.data(orders_frame, name="orders")
-        .extend(
-            pm.primary_key("order_id"),
-            pm.measure(revenue=revenue, order_count=pm.count()),
-        )
+        .primary_key("order_id")
+        .measure(revenue=revenue, order_count=pm.count())
         .doc("One row per order. Amount and refund are USD.")
     )
     orders
@@ -70,10 +68,11 @@ def _(orders_frame, pm, revenue):
 
 @app.cell
 def _(pm):
-    regional = pm.query(
-        pm.group_by(pm.col("region")),
-        pm.aggregate(pm.col("revenue"), pm.col("order_count")),
-        pm.order_by(pm.col("revenue").desc(), pm.col("region").asc()),
+    regional = (
+        pm.view()
+        .group_by(pm.col("region"))
+        .aggregate(pm.col("revenue"), pm.col("order_count"))
+        .order_by(pm.col("revenue").desc(), pm.col("region").asc())
     )
     regional
     return (regional,)
@@ -83,8 +82,8 @@ def _(pm):
 def _(orders, pm, regional):
     candidate = (
         pm.draft()
-        .define(orders=orders)
-        .queries(by_region=pm.ref("orders").pipe(regional))
+        .sources(orders=orders)
+        .queries(by_region=pm.source("orders").pipe(regional))
     )
     candidate
     return (candidate,)
@@ -92,12 +91,12 @@ def _(orders, pm, regional):
 
 @app.cell
 def _(candidate, pm):
-    net_candidate = candidate.define(
+    net_candidate = candidate.sources(
         orders=candidate["orders"].replace(
             revenue=(pm.col("amount").sum() - pm.col("refund").sum()).doc(
                 "Booked amount less refunds, in USD."
             ),
-        ),
+        )
     )
     net_candidate
     return (net_candidate,)

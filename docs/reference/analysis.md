@@ -1,42 +1,83 @@
 # Analysis records
 
-Language tools return typed Python records generated from the compiler schema:
+`pymalloy.analysis` exports frozen records from the
+[Malloy](https://docs.malloydata.dev/documentation/) compiler contract. Malloy
+supplies symbols, diagnostics, and resolved model metadata.
 
 ```python
 import pymalloy as pm
 from pymalloy.analysis import SourcePosition, to_dict
 
-report = pm.check("run: missing", position=SourcePosition(line=0, character=5))
-print(report.ok, to_dict(report.diagnostics))
+with pm.connect() as con:
+    report = con.check("run: missing", position=SourcePosition(line=0, character=5))
+assert not report.ok
+assert report.diagnostics
+print(to_dict(report.diagnostics)[0]["severity"])
 ```
 
-`ParseReport` contains syntax metadata: `url`, `compiler_version`, `diagnostics`,
-`symbols`, `tables`, `imports`, `completions`, and `help`. `pm.parse(source, url=..., document_kind=None)` returns this record. The optional
-kind selects `"model"` or `"notebook"`, with URL-based inference when omitted.
+The print is `error`. `to_dict(value)` converts records, mappings, and sequences
+to detached dictionaries and lists. It preserves Python scalar values, including
+exact integers and decimals, and preserves authored dictionary keys. Choose a
+scalar encoder when writing JSON.
 
-`MarkdownCell(text=...)` and `QueryCell(name=..., sql=...)` form the `DocumentCell`
-union returned by `model.document()`. Use `isinstance` to distinguish the cell
-types, or `to_dict` to obtain their tagged JSON shape.
+## Record construction and shapes
 
-`CheckReport` contains `url`, `compiler_version`, `ok`, `diagnostics`, `symbols`,
-`tables`, `imports`, `completions`, `help`, `queries`, and `model`.
+Records use keyword-only fields. Sequence fields are tuples, including nested
+record sequences. Optional values use `None`. Supply nonnegative integers for
+source positions and spans. Code-point positions count Unicode characters
+rather than JavaScript UTF-16 units. Ranges and spans have exclusive ends.
 
-`Diagnostic` contains `code`, `severity`, `message`, `location`, `replacement`,
-`error_tag`, and `data`. Source locations contain a URL and a start/end range.
-Coordinates are zero-based code-point offsets. `SourcePosition` uses named
-`line` and `character` fields.
+| Qualified record                     | Fields and contract                                                                                                                |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `pymalloy.analysis.SourcePosition`   | `line: int`, `character: int`, both zero-based                                                                                     |
+| `pymalloy.analysis.SourceRange`      | `start: SourcePosition`, `end: SourcePosition`                                                                                     |
+| `pymalloy.analysis.SourceLocation`   | `url: str`, `range: SourceRange`                                                                                                   |
+| `pymalloy.analysis.SourceSpan`       | `start: int`, `end: int`, absolute code-point offsets                                                                              |
+| `pymalloy.analysis.Diagnostic`       | `code`, `severity` (`error`, `warning`, `debug`), `message`, nullable `location`, `replacement`, `error_tag`, and arbitrary `data` |
+| `pymalloy.analysis.SymbolInfo`       | `name`, `type`, `range`, `lens_range`, `children: tuple[SymbolInfo, ...]`                                                          |
+| `pymalloy.analysis.Table`            | `connection`, `path`, `range`, describing an authored table reference                                                              |
+| `pymalloy.analysis.ImportInfo`       | Resolved `url` and authored statement `location`                                                                                   |
+| `pymalloy.analysis.ParsedImport`     | `url`, `location`, and `reference: SourceSpan` locating the quoted import URL including delimiters                                 |
+| `pymalloy.analysis.Completion`       | `type: str`, `text: str`                                                                                                           |
+| `pymalloy.analysis.Help`             | `type: str`, `token: str \| None`                                                                                                  |
+| `pymalloy.analysis.AnnotationInfo`   | `route`, original `text`, parsed `content`, and `location`                                                                         |
+| `pymalloy.analysis.RoutedAnnotation` | Nullable `route`, parsed `content`, and original `text`                                                                            |
+| `pymalloy.analysis.AnnotatedObject`  | `path: tuple[str, ...]`, `kind`, `annotations: tuple[RoutedAnnotation, ...]`                                                       |
+| `pymalloy.analysis.GivenInfo`        | `name`, `type`, `required: bool`, nullable `default_text` and `location`, and `annotations`                                        |
+| `pymalloy.analysis.QueryDescriptor`  | `name`, `kind` (`run`, `named`, `view`, `sql`), nullable `location`, and `schema=None`                                             |
+| `pymalloy.analysis.MarkdownCell`     | `text: str`, one ordered prose cell                                                                                                |
+| `pymalloy.analysis.QueryCell`        | `name: str`, `sql: str`, one compiler-prepared query cell                                                                          |
+| `pymalloy.analysis.DocumentCell`     | Union of `MarkdownCell` and `QueryCell`. Use `isinstance` to distinguish them                                                      |
 
-`Inspection` contains typed givens, annotations, dependencies, imports, queries,
-diagnostics and upstream model schemas. Positional inspection also includes
-`reference` and `import_` when requested. Optional fields may be absent.
+`pymalloy.analysis.QueryCell` comes from `Model.document()`. Notebook export uses
+[`pymalloy.export.NotebookQuery`](export.md#document-and-cells), which adds SQL
+statement classification.
 
-`QueryDescriptor` contains `name`, `kind`, and `location`. `NativeMetadata.model`
-and `.sources` retain upstream Malloy schema records. Required givens may defer
-the whole-model schema while source schemas remain available.
+## Reports and metadata
 
-Records are immutable. `to_dict(value)` converts records, mappings, and sequences
-into detached dictionaries and lists. Record fields use Python names, including
-tagged schema variants. Authored dictionary keys retain their spelling. Use the
-same function to convert a widget's read-only state into editable containers.
-Scalar values, including exact integers and decimals, retain their Python types.
-JSON encoding may require a serializer for those scalar types.
+`pymalloy.analysis.ParseReport` contains `url`, `compiler_version`, `diagnostics`,
+`symbols`, `tables`, `imports: tuple[ParsedImport, ...]`, `completions`, and
+nullable `help`. Its derived `.ok` is true when diagnostics contain no errors.
+`pm.parse` checks syntax and records unresolved imports and tables.
+
+`pymalloy.analysis.CheckReport` contains the same syntax fields plus `ok: bool`,
+`queries: tuple[QueryDescriptor, ...]`, and `model: NativeMetadata`.
+`Connection.check` resolves names, imports, types, and schemas.
+Documentation policy findings can also affect `ok`.
+
+`pymalloy.analysis.NativeMetadata` contains nullable upstream `model`,
+`sources: tuple[SourceInfo, ...]`, and `annotations: tuple[AnnotatedObject, ...]`.
+These upstream schema records follow Malloy's
+[interface definitions](https://github.com/malloydata/malloy/tree/main/packages/malloy-interfaces).
+
+`pymalloy.analysis.Inspection` contains `model`, `queries`, `givens`, `annotations`,
+`model_annotations`, `dependencies: tuple[str, ...]`, `imports: tuple[ImportInfo, ...]`,
+and `diagnostics`. `reference=None` and `import_=None` carry optional positional
+lookup results. An imported-document lookup requires a position and its URL.
+
+Read query output from `QueryDescriptor.schema`. Compiled runs and named queries
+carry their own output fields. Required unbound givens yield `None`.
+For `run:0`, `run:1`, and `run:2`, each descriptor retains its authored ordinal
+even when `run:1` requires givens. Source views and SQL cells resolve output during
+preparation or execution. Source schemas remain available through
+`NativeMetadata.sources`. The upstream model's `anonymous_queries` is empty.

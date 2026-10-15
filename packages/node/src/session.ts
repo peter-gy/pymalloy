@@ -1,23 +1,23 @@
+import { CompiledModel } from "@malloy-runtime/compiler/jobs";
+import { Runtime, drive, type Host } from "@malloy-runtime/compiler/adapters";
 import { checkSource, formatSource } from "@malloy-runtime/compiler/tooling";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type DuckDBConnection, DuckDBInstance } from "@duckdb/node-api";
 import {
-  CompiledModel,
   documentKind,
   defaultSourceFilename,
   type DocumentKind,
-  Model,
+  type Model,
   ToolingError,
   type ModelSource,
   type OperationOptions,
   type QueryOptions,
   type SourcePosition,
 } from "@malloy-runtime/compiler";
-import { connection, drive, fileSearchPath, type Host } from "@malloy-runtime/duckdb";
+import { connection, fields, describeSQL, fileSearchPath } from "@malloy-runtime/duckdb";
 import { DuckDBBackend } from "./duckdb";
-import { Operations } from "@malloy-runtime/compiler";
 
 export interface SessionOptions {
   dataRoot?: string;
@@ -41,8 +41,7 @@ export interface CheckOptions extends OperationOptions {
 export class Session {
   private readonly backend: DuckDBBackend;
   private readonly compilerConnection: typeof connection;
-  private readonly models = new Set<Model>();
-  private readonly operations: Operations;
+  private readonly operations: Runtime;
   private readonly imports = new AbortController();
   private closing?: Promise<void>;
   private constructor(
@@ -51,7 +50,7 @@ export class Session {
     private readonly instance?: DuckDBInstance,
     connectionName = connection.name,
   ) {
-    this.operations = new Operations(() => this.connection.interrupt());
+    this.operations = new Runtime(() => this.connection.interrupt());
     this.compilerConnection = { ...connection, name: connectionName };
     this.backend = new DuckDBBackend(nativeConnection, connectionName);
   }
@@ -90,9 +89,9 @@ export class Session {
       : this.imports.signal;
     return {
       signal,
-      describe: (sql) => {
+      schema: async (need) => {
         signal.throwIfAborted();
-        return this.backend.describe(sql);
+        return fields(await this.backend.describe(describeSQL(need)));
       },
       readURL: async (url) => {
         signal.throwIfAborted();
@@ -133,18 +132,15 @@ export class Session {
         host,
       );
       this.operations.assertActive();
-      const model = new Model(compiled, {
+      return this.operations.model(compiled, {
         assertAvailable: () => this.operations.assertHealthy(),
-        compile: (job) => drive(job, this.host(captured)),
+        host: () => this.host(captured),
         run: (sql, template) => {
-          this.operations.assertActive();
           return this.backend.run(sql, template, this.operations.signal);
         },
         submit: (task, options) => this.operations.run(task, options),
-        release: () => this.models.delete(model),
+        release: () => {},
       });
-      this.models.add(model);
-      return model;
     }, options);
   }
   async run(text: string, options: QueryOptions = {}) {
@@ -185,8 +181,8 @@ export class Session {
     return result.source;
   }
   close(): Promise<void> {
-    this.closing ??= this.operations.close().then(() => {
-      for (const model of this.models) model.close();
+    this.closing ??= this.operations.close(true).finally(() => {
+      this.operations.release();
       this.imports.abort();
       if (this.instance) {
         this.connection.closeSync();

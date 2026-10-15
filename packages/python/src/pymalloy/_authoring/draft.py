@@ -6,16 +6,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from difflib import unified_diff
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Unpack
+from typing import TYPE_CHECKING, ClassVar, Literal
 
 from pymalloy._authoring.syntax import (
-    Fragment,
-    expression,
+    Syntax,
     from_wire,
     named_clause,
     syntax,
 )
-from pymalloy._model.inputs import DataInput
+from pymalloy._model.inputs import Input
 from pymalloy._model.persistence import write_text
 from pymalloy._model.source import (
     DEFAULT_SOURCE_FILENAME,
@@ -27,13 +26,10 @@ from pymalloy._model.source import (
     validate_url,
 )
 from pymalloy._notebook import NotebookDisplay
-from pymalloy.validation import DocumentationPolicy
 
 if TYPE_CHECKING:
-    from pymalloy._headless.api import _RuntimeOptions
-    from pymalloy._headless.runtime import Model
-    from pymalloy.analysis import CheckReport
-    from pymalloy.validation import Validation
+    from pymalloy.authoring import Source, View
+    from pymalloy.expressions import Expr
 
 
 @dataclass(frozen=True, eq=False)
@@ -53,7 +49,7 @@ class Draft(NotebookDisplay):
         Absolute source identity and base for relative imports.
     imports : mapping or None
         Closed imported source text, or None for live resolution at compile time.
-    inputs : tuple of DataInput
+    inputs : tuple of Input
         Immutable Python data captures retained by this draft.
     path : pathlib.Path or None
         Original file path when loaded with read_model(Path(...)).
@@ -61,22 +57,25 @@ class Draft(NotebookDisplay):
     Examples
     --------
     >>> import pymalloy as pm
-    >>> initial = pm.draft().define(values=pm.sql("SELECT 1 AS n"))
-    >>> revised = initial.queries(total=pm.ref("values").pipe(
-    ...     pm.query(pm.aggregate(n=pm.count()))
+    >>> initial = pm.draft().sources(values=pm.sql("SELECT 1 AS n"))
+    >>> revised = initial.queries(total=pm.source("values").pipe(
+    ...     pm.view().aggregate(n=pm.count())
     ... ))
     >>> initial.names, revised.names
     (('values',), ('values', 'total'))
     """
 
     document_kind: ClassVar[DocumentKind] = "model"
-    syntax: Fragment = field(default_factory=lambda: syntax(kind="document"))
+    syntax: Syntax = field(default_factory=lambda: syntax(kind="document"))
     url: str = field(
         default_factory=lambda: (Path.cwd() / DEFAULT_SOURCE_FILENAME).as_uri()
     )
     imports: Mapping[str, str] | None = None
     path: Path | None = field(default=None, repr=False, compare=False)
     _original: str | None = field(default=None, repr=False, compare=False)
+
+    def __repr__(self) -> str:
+        return f"Draft({self.text!r})"
 
     def __post_init__(self) -> None:
         if self.syntax.kind != "document":
@@ -95,7 +94,7 @@ class Draft(NotebookDisplay):
         """Return top-level declaration names in authored order."""
         return self.syntax.names
 
-    def __getitem__(self, name: str) -> Fragment:
+    def __getitem__(self, name: str) -> Source | View | Expr:
         """Select a named declaration's source or query expression.
 
         Parameters
@@ -105,26 +104,28 @@ class Draft(NotebookDisplay):
 
         Returns
         -------
-        Fragment
+        Source, View, or Expr
             Editable right-hand side. Missing names raise KeyError and ambiguous
             names raise ValueError. Index again to select a field within a source.
 
         Examples
         --------
         >>> import pymalloy as pm
-        >>> candidate = pm.draft().define(orders=pm.table("orders.parquet"))
+        >>> candidate = pm.draft().sources(orders=pm.table("orders.parquet"))
         >>> candidate["orders"].text
         'duckdb.table("orders.parquet")'
         """
-        return expression(self.syntax[name])
+        return self.syntax[name]
 
-    def append(self, *parts: str | Fragment) -> Draft:
+    def append(self, *parts: str | Source | View | Draft) -> Draft:
         r"""Append complete declarations or other syntax verbatim.
 
         Parameters
         ----------
-        *parts : str or Fragment
-            Text/fragments to concatenate. Include needed whitespace or newlines.
+        *parts : str, Source, View, or Draft
+            Text or authored syntax to concatenate. Include needed whitespace or
+            newlines. A Draft contributes its named editing slots and captured
+            inputs. Source identity and import resolution follow the receiver.
             Literal declarations are not parsed into named editing slots.
 
         Returns
@@ -134,7 +135,7 @@ class Draft(NotebookDisplay):
 
         See Also
         --------
-        Draft.define, Draft.queries, read_model
+        Draft.sources, Draft.queries, read_model
 
         Examples
         --------
@@ -143,35 +144,44 @@ class Draft(NotebookDisplay):
         >>> candidate.text
         '// model notes\n'
         """
-        return replace(self, syntax=syntax(*self.syntax.parts, *parts, kind="document"))
+        pieces = [
+            piece
+            for part in parts
+            for piece in (part.syntax.parts if isinstance(part, Draft) else (part,))
+        ]
+        return replace(
+            self, syntax=syntax(*self.syntax.parts, *pieces, kind="document")
+        )
 
     def _define(
-        self, kind: Literal["source", "query"], values: Mapping[str, Fragment]
+        self, kind: Literal["source", "query"], values: Mapping[str, Source]
     ) -> Draft:
+        from pymalloy.authoring import Source
+
+        if not all(isinstance(value, Source) for value in values.values()):
+            raise TypeError("Draft declarations require Source values")
         existing = self.syntax._scope
         updates = {name: value for name, value in values.items() if name in existing}
         for name, target in self.syntax._select(updates).items():
             if target.kind != kind:
                 raise ValueError(f"{name!r} is not a {kind} declaration")
         result = self.syntax.replace(**updates) if updates else self.syntax
-        additions = [
-            named_clause(kind, {name: value}, kind=kind)
-            for name, value in values.items()
-            if name not in existing
-        ]
+        additions = {
+            name: value for name, value in values.items() if name not in existing
+        }
         if additions:
-            parts: list[str | Fragment] = [result._line_break]
-            for addition in additions:
-                parts.extend((addition, "\n"))
+            parts: list[str | Syntax] = [result._line_break]
+            for name, value in additions.items():
+                parts.extend((named_clause(kind, {name: value}, kind=kind), "\n"))
             result = syntax(*result.parts, *parts, kind="document")
         return replace(self, syntax=result)
 
-    def define(self, **sources: Fragment) -> Draft:
+    def sources(self, /, **sources: Source) -> Draft:
         """Bind or replace named source expressions.
 
         Parameters
         ----------
-        **sources : Fragment
+        **sources : Source
             Declaration names mapped to source expressions. Existing declarations
             must have the same kind. Missing names are appended in keyword order.
 
@@ -183,19 +193,19 @@ class Draft(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> initial = pm.draft().define(values=pm.sql("SELECT 0 AS n"))
-        >>> revised = initial.define(values=pm.sql("SELECT 1 AS n"))
+        >>> initial = pm.draft().sources(values=pm.sql("SELECT 0 AS n"))
+        >>> revised = initial.sources(values=pm.sql("SELECT 1 AS n"))
         >>> revised.names
         ('values',)
         """
         return self._define("source", sources)
 
-    def queries(self, **queries: Fragment) -> Draft:
+    def queries(self, /, **queries: Source) -> Draft:
         """Bind or replace named query expressions.
 
         Parameters
         ----------
-        **queries : Fragment
+        **queries : Source
             Declaration names mapped to query expressions. Existing declarations
             must have the same kind. Missing names are appended in keyword order.
 
@@ -207,8 +217,8 @@ class Draft(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> initial = pm.draft().define(values=pm.sql("SELECT 0 AS n"))
-        >>> revised = initial.queries(result=pm.ref("values").pipe(pm.query(pm.select(pm.col("n")))))
+        >>> initial = pm.draft().sources(values=pm.sql("SELECT 0 AS n"))
+        >>> revised = initial.queries(result=pm.source("values").pipe(pm.view().select(pm.col("n"))))
         >>> revised.names
         ('values', 'result')
         """
@@ -270,7 +280,7 @@ class Draft(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> original = pm.draft().define(values=pm.sql("SELECT 1 AS n"))
+        >>> original = pm.draft().sources(values=pm.sql("SELECT 1 AS n"))
         >>> original.diff(original)
         ''
         """
@@ -311,12 +321,12 @@ class Draft(NotebookDisplay):
             parse_syntax(self.text, url=self.url, format=True),
             {value.reference: value for value in self.inputs},
         )
-        if not isinstance(formatted, Fragment):
+        if not isinstance(formatted, Syntax):
             raise TypeError("Compiler returned a scalar for a model document")
         return replace(self, syntax=formatted)
 
     @property
-    def inputs(self) -> tuple[DataInput, ...]:
+    def inputs(self) -> tuple[Input, ...]:
         """Return captured data owners, deduplicated and ordered by input name."""
         return self.syntax.inputs
 
@@ -326,118 +336,6 @@ class Draft(NotebookDisplay):
             text
             if self.imports is None
             else ModelSource(self.url, text, self.imports, self.document_kind)
-        )
-
-    def check(
-        self,
-        *,
-        documentation: DocumentationPolicy | None = None,
-        **options: Unpack[_RuntimeOptions],
-    ) -> CheckReport:
-        """Check names, types and schemas, with optional documentation lint.
-
-        Parameters
-        ----------
-        documentation : DocumentationPolicy, optional
-            Opt-in policy from pymalloy.validation. None performs compiler checks
-            alone. Documentation presence is not evidence of business correctness.
-        **options
-            Runtime options accepted by model, including data_root, connection,
-            connection_name, config, extensions, timeout and compiler_memory_mb.
-
-        Returns
-        -------
-        CheckReport
-            ok, diagnostics, source metadata, query inventory and tooling context.
-            Invalid Malloy is reported. Infrastructure failures still raise exceptions.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> candidate = pm.draft().define(values=pm.sql("SELECT 42 AS n"))
-        >>> candidate.check().ok
-        True
-        """
-        from pymalloy._headless import load_api
-        from pymalloy.validation import _checked
-
-        return _checked(load_api().check(self, url=self.url, **options), documentation)
-
-    def compile(self, **options: Unpack[_RuntimeOptions]) -> Model:
-        """Compile this revision into a reusable runtime model.
-
-        Parameters
-        ----------
-        **options
-            Runtime options accepted by model. The draft supplies its own identity,
-            imports and captured inputs. Requires pymalloy[headless].
-
-        Returns
-        -------
-        Model
-            A retained compiler and owned or borrowed engine connection. Reuse it
-            for repeated query preparation/execution, then call close.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> candidate = pm.draft().define(values=pm.sql("SELECT 42 AS n"))
-        >>> candidate = candidate.queries(answer=pm.ref("values").pipe(pm.query(pm.select(pm.col("n")))))
-        >>> model = candidate.compile()
-        >>> model.query("answer").run().rows()
-        [{'n': 42}]
-        >>> model.close()
-        """
-        from pymalloy._headless import load_api
-
-        return load_api().model(self, url=self.url, **options)
-
-    def validate(
-        self,
-        checks: Mapping[str, Fragment] | None = None,
-        *,
-        givens: Mapping[str, Any] | None = None,
-        documentation: DocumentationPolicy | None = None,
-        **options: Unpack[_RuntimeOptions],
-    ) -> Validation:
-        """Compile once and run named counterexample queries against the input data.
-
-        Parameters
-        ----------
-        checks : mapping of str to Fragment, optional
-            Assertion names mapped to source/query expressions that return bad rows.
-            Zero rows passes. A failing check retains one counterexample. No checks
-            means compilation alone, not a general proof of data quality.
-        givens : mapping, optional
-            Typed parameter values used by every check and retained in the report.
-        documentation : DocumentationPolicy, optional
-            Opt-in description-presence policy.
-        **options
-            Runtime options accepted by model. One timeout covers all validation work.
-
-        Returns
-        -------
-        Validation
-            Captured source and per-check evidence. Failed compilation/assertions
-            make ok false. Infrastructure errors propagate. Owned resources close
-            before return, while borrowed connections stay caller-owned.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> candidate = pm.draft().define(orders=pm.sql("SELECT 42 AS amount"))
-        >>> accepted = candidate.validate({
-        ...     "nonnegative_amount": pm.ref("orders").pipe(pm.query(
-        ...         pm.where(pm.col("amount") < 0), pm.select(pm.col("amount")),
-        ...     )),
-        ... })
-        >>> accepted.ok, accepted.checks[0].status
-        (True, 'passed')
-        """
-        from pymalloy._headless import load_api
-
-        return load_api().validate(
-            self, checks or {}, givens=givens, documentation=documentation, **options
         )
 
     def save(self, path: str | Path | None = None, *, overwrite: bool = False) -> Path:
@@ -476,7 +374,7 @@ class Draft(NotebookDisplay):
         """
         if self.inputs:
             raise ValueError(
-                "Drafts with captured data require bundle(draft.validate(), directory)"
+                "Drafts with captured data require bundle(connection.validate(draft), directory)"
             )
         target = Path(path).resolve() if path is not None else self.path
         if target is None:
@@ -512,7 +410,7 @@ class Draft(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> original = pm.draft().define(values=pm.sql("SELECT 42 AS n"))
+        >>> original = pm.draft().sources(values=pm.sql("SELECT 42 AS n"))
         >>> namespace = {}
         >>> exec(original.to_python(name="rebuilt"), namespace)
         >>> namespace["rebuilt"].text == original.text
@@ -526,17 +424,17 @@ class Draft(NotebookDisplay):
 
 
 def draft(
-    *parts: str | Fragment,
+    *parts: str | Source | View,
     url: str | None = None,
     imports: Mapping[str, str] | None = None,
 ) -> Draft:
-    """Create an immutable model draft from syntax fragments or literal text.
+    """Create an immutable model draft from Source values or literal text.
 
     Parameters
     ----------
-    *parts : str or Fragment
-        Ordered source text and fragments, concatenated without parsing.
-        Use define and queries to introduce editable named declarations.
+    *parts : str, Source, or View
+        Ordered source text and Source values, concatenated without parsing.
+        Use sources and queries to introduce editable named declarations.
     url : str, optional
         Absolute model identity used to resolve imports and report locations.
         Defaults to ``model.malloy`` in the current directory as a file URL.
@@ -553,12 +451,12 @@ def draft(
     See Also
     --------
     read_model : Parse existing Malloy and recover its named editing scopes.
-    model : Compile a retained model for execution.
+    connect : Own native compilation and execution.
 
     Examples
     --------
     >>> import pymalloy as pm
-    >>> candidate = pm.draft().define(values=pm.sql("SELECT 42 AS answer"))
+    >>> candidate = pm.draft().sources(values=pm.sql("SELECT 42 AS answer"))
     >>> candidate.names
     ('values',)
     """
@@ -595,7 +493,7 @@ def read_model(source: str | Path | ModelSource, *, url: str | None = None) -> D
     >>> import pymalloy as pm
     >>> text = "source: orders is duckdb.sql('SELECT 2 AS amount') extend {measure: revenue is amount.sum()}"
     >>> original = pm.read_model(text)
-    >>> revised = original.define(orders=original["orders"].replace(
+    >>> revised = original.sources(orders=original["orders"].replace(
     ...     revenue=pm.col("amount").sum() * 2
     ... ))
     >>> original.text == text
@@ -614,7 +512,12 @@ def read_model(source: str | Path | ModelSource, *, url: str | None = None) -> D
     if kind != "model":
         raise ValueError("Structured authoring requires a .malloy document")
     path = source.resolve() if isinstance(source, Path) else None
-    parsed = from_wire(parse_syntax(text, url=identity))
-    if not isinstance(parsed, Fragment):
+    parsed = from_wire(
+        parse_syntax(text, url=identity),
+        {value.reference: value for value in source.inputs}
+        if isinstance(source, ModelSource)
+        else None,
+    )
+    if not isinstance(parsed, Syntax):
         raise TypeError("Compiler returned a scalar for a model document")
     return Draft(parsed, identity, imports, path, text if path is not None else None)

@@ -11,7 +11,6 @@ from anywidget_bundle import Bundle, BundledWidget
 from msgspec import ValidationError, convert, to_builtins
 
 from pymalloy._authoring.draft import Draft
-from pymalloy._authoring.syntax import Fragment
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._notebook import NotebookDisplay
 from pymalloy._notebook.subject import Subject, describe
@@ -29,6 +28,7 @@ from pymalloy._protocol.records import (
     WidgetMessage,
 )
 from pymalloy._protocol.snapshot import freeze
+from pymalloy.authoring import Source, View
 from pymalloy.browser import Runtime
 
 
@@ -89,12 +89,13 @@ class MalloyWidget(BundledWidget):
 
     Parameters
     ----------
-    source : str, Expr, Sort, Fragment, Draft, ModelSource, Model, Query, or Result
+    source : str, Expr, Sort, Source, View, Draft, ModelSource, Model, Query, or Result
         Authored syntax, a complete model, a bound native query, or materialized
         results. Syntax shows its Malloy text, references and annotations.
         Complete drafts run in the browser. Native models and queries preview
-        at most 20 rows on their existing Python connection, with a 30-second
-        timeout. Results show up to 20 retained rows without executing SQL.
+        at most 20 rows on their existing Python connection, using the model's
+        timeout, inherited from its connection unless overridden. Results show
+        up to 20 retained rows without executing SQL.
     files : mapping, optional
         Browser virtual names mapped to UTF-8 text, bytes, or {"url": "https://..."}.
         Remote files require browser-accessible URLs with suitable CORS headers.
@@ -196,7 +197,6 @@ class MalloyWidget(BundledWidget):
         runtime: Runtime | None = None,
         connection_name: str = DEFAULT_CONNECTION,
         auto_run: bool = True,
-        _transient: bool = False,
     ) -> None:
         self._initializing = True
         self._closed = False
@@ -228,7 +228,6 @@ class MalloyWidget(BundledWidget):
             givens=dict(givens) if givens is not None else {},
         )
         try:
-            self.set_trait("_transient", _transient)
             self.on_msg(self._view_message)
             self.set_trait(
                 "connection_name", subject.connection_name or connection_name
@@ -251,7 +250,7 @@ class MalloyWidget(BundledWidget):
         if name in {"source", "files"}:
             source = value if name == "source" else self.source
             files = value if name == "files" else self.files
-            if isinstance(source, (Draft, Fragment)) and any(
+            if isinstance(source, (Draft, Source, View)) and any(
                 item.reference in files for item in source.inputs
             ):
                 raise t.TraitError("Files cannot replace captured dataframe inputs")
@@ -342,7 +341,7 @@ class MalloyWidget(BundledWidget):
             }
             if action != "inspect":
                 files.update(
-                    (item.reference, item.materialize().path.read_bytes())
+                    (item.reference, item._materialize().path.read_bytes())
                     for item in subject.inputs
                 )
                 prepared = True

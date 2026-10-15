@@ -5,9 +5,11 @@ from pymalloy._protocol.records import (
     AnnotatedObject,
     AnnotationInfo,
     CheckReport,
+    Completion,
     Diagnostic,
     DocumentCell,
     GivenInfo,
+    Help,
     ImportInfo,
     Inspection,
     MarkdownCell,
@@ -22,15 +24,18 @@ from pymalloy._protocol.records import (
     SourceRange,
     SourceSpan,
     SymbolInfo,
+    Table,
 )
 
 __all__ = [
     "AnnotatedObject",
     "AnnotationInfo",
     "CheckReport",
+    "Completion",
     "Diagnostic",
     "DocumentCell",
     "GivenInfo",
+    "Help",
     "ImportInfo",
     "Inspection",
     "MarkdownCell",
@@ -45,5 +50,6 @@ __all__ = [
     "SourceRange",
     "SourceSpan",
     "SymbolInfo",
+    "Table",
     "to_dict",
 ]

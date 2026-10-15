@@ -4,19 +4,19 @@ Start with ``import pymalloy as pm``. Constructors build immutable syntax.
 Malloy resolves language semantics, and runtime adapters execute with DuckDB.
 
 Choose an entry point
---------------------
+---------------------
 table, sql, data
     Start from a table/file, SQL source, or captured Python dataframe.
 col, lit, given
     Reference a field, encode a scalar value, or reference a parameter.
 draft, read_model
     Compose a new model or parse existing Malloy for scoped edits.
-query, group_by, aggregate, select
-    Build reusable query syntax. These constructors do not execute it.
-model, run
-    Retain a compiled model or execute once and release runtime resources.
-parse, check, format
-    Inspect syntax, check schemas/types, or format Malloy source.
+source, view
+    Reference a relation and build reusable query stages with method chains.
+connect
+    Own native execution and compile models through Connection.model.
+parse, format
+    Inspect syntax or format Malloy source.
 MalloyWidget
     Execute in a notebook browser and observe revision-bound results.
 
@@ -25,16 +25,18 @@ Notes
 The base package includes symbolic authoring, browser widgets, and agent guidance.
 Native execution and compiler tooling require ``pymalloy[headless]``. Widgets
 run without Deno. Install PyArrow directly for Python dataframe capture and
-Polars directly for ``Result.polars()``. The headless extra already includes PyArrow.
+Polars directly for ``Result.to_polars()``. The headless extra already includes PyArrow.
 
 Examples
 --------
 >>> import pymalloy as pm
->>> candidate = pm.draft().define(values=pm.sql("SELECT 42 AS amount"))
->>> candidate = candidate.queries(answer=pm.ref("values").pipe(
-...     pm.query(pm.select(pm.col("amount")))
-... ))
->>> pm.run(candidate).rows()
+>>> model = (
+...     pm.draft()
+...     .sources(values=pm.sql("SELECT 42 AS amount"))
+...     .queries(answer=pm.source("values").pipe(pm.view().select("amount")))
+... )
+>>> with pm.connect() as con:
+...     con.model(model).query("answer").run().to_pylist()
 [{'amount': 42}]
 """
 
@@ -43,114 +45,50 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pymalloy._authoring.draft import Draft, draft, read_model
-from pymalloy._model.errors import (
-    CompilationError,
-    CompilerError,
-    ModelError,
-    PyMalloyError,
-    SchemaError,
-)
 from pymalloy._model.source import ModelSource
-from pymalloy.analysis import QueryDescriptor
-from pymalloy.authoring import (
-    Fragment,
-    aggregate,
-    data,
-    dimension,
-    group_by,
-    having,
-    join,
-    limit,
-    measure,
-    nest,
-    order_by,
-    primary_key,
-    query,
-    ref,
-    select,
-    sql,
-    syntax,
-    table,
-    view,
-    where,
-)
-from pymalloy.execution import ExecutionContext, ExecutionError
-from pymalloy.expressions import (
-    Expr,
-    Sort,
-    call,
-    case,
-    col,
-    count,
-    given,
-    lit,
-    number,
-    raw_expr,
-)
+from pymalloy.authoring import Source, View, data, source, sql, table, view
+from pymalloy.errors import PyMalloyError
+from pymalloy.expressions import Expr, Sort, case, col, count, given, lit
 from pymalloy.result import Result
 
 if TYPE_CHECKING:
-    from pymalloy._headless.api import Model, Query, check, model, run
+    from pymalloy._headless.api import Connection, Model, Query, connect
     from pymalloy._headless.tooling import format, parse
     from pymalloy.widget import MalloyWidget
 
 __all__ = [
-    "CompilationError",
-    "CompilerError",
+    "Connection",
     "Draft",
-    "ExecutionContext",
-    "ExecutionError",
     "Expr",
-    "Fragment",
     "MalloyWidget",
     "Model",
-    "ModelError",
     "ModelSource",
     "PyMalloyError",
     "Query",
-    "QueryDescriptor",
     "Result",
-    "SchemaError",
     "Sort",
-    "aggregate",
-    "call",
+    "Source",
+    "View",
     "case",
-    "check",
     "col",
+    "connect",
     "count",
     "data",
-    "dimension",
     "draft",
     "format",
     "given",
-    "group_by",
-    "having",
-    "join",
-    "limit",
     "lit",
-    "measure",
-    "model",
-    "nest",
-    "number",
-    "order_by",
     "parse",
-    "primary_key",
-    "query",
-    "raw_expr",
     "read_model",
-    "ref",
-    "run",
-    "select",
+    "source",
     "sql",
-    "syntax",
     "table",
     "view",
-    "where",
 ]
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(__all__))
+    return __all__
 
 
 def __getattr__(name: str):
@@ -158,7 +96,7 @@ def __getattr__(name: str):
         from pymalloy.widget import MalloyWidget
 
         return MalloyWidget
-    if name in {"model", "run", "check", "Model", "Query"}:
+    if name in {"connect", "Connection", "Model", "Query"}:
         from pymalloy._headless import load_api
 
         return getattr(load_api(), name)

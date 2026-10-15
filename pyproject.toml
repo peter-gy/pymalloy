@@ -10,24 +10,30 @@ pymalloy = { workspace = true }
 [dependency-groups]
 dev = [
   "pymalloy[headless]",
-  "polars>=1.44",
-  "marimo[recommended]>=0.24",
+  "polars>=2",
+  "marimo[recommended]>=0.25.1",
   "nbformat>=5.11",
   "nbclient>=0.11",
-  "ipykernel>=7.3",
+  "ipykernel>=7.4",
   "pytest>=9.1.1",
-  "ruff>=0.16.6",
-  "ty>=0.0.80",
-  "jupyterlab>=4.6.2",
-  "datamodel-code-generator>=0.82.0",
-  "pyrefly>=1.3.1",
-  "basedpyright>=1.40.1",
+  "pytest-timeout>=2.4.0",
+  "ruff>=0.17",
+  "ty>=0.0.87",
+  "jupyterlab>=4.6.4",
+  "datamodel-code-generator>=0.83.0",
+  "pyrefly>=1.3.2",
+  "basedpyright>=1.40.2",
 ]
 
 release = ["twine>=7.0.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages/python/tests"]
+markers = [
+  "e2e: installed packages, exported notebooks, and CLI process boundaries (uv run pytest -m e2e)",
+]
+timeout = 180
+timeout_method = "thread"
 
 [tool.ruff]
 target-version = "py312"

@@ -1,4 +1,4 @@
-"""Generated from Malloy 0.0.433's native lexer. Run pnpm records to update."""
+"""Generated from Malloy 0.0.435's native lexer. Run pnpm records to update."""
 
 RESERVED_WORDS = frozenset(
     {

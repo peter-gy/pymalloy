@@ -16,18 +16,18 @@ given: cutoff :: number is 0
 import "values.malloy"
 query: failure is values -> { select: converted is value::number, cutoff is $cutoff }
 """)
-    model = pm.model(source)
+    model = pm.connect().model(source)
     parameters = {"cutoff": 9007199254740993}
     try:
         query = model.query("failure")
-        with pytest.raises(pm.ExecutionError) as failed:
+        with pytest.raises(pm.errors.ExecutionError) as failed:
             query.preview(givens=parameters) if preview else query.run(
                 givens=parameters
             )
         context = failed.value.context
         assert isinstance(failed.value.__cause__, duckdb.ConversionException)
         assert context.query.name == "failure"
-        assert context.compiler_version == pm.check(source).compiler_version
+        assert context.compiler_version == pm.connect().check(source).compiler_version
         assert context.sql == query.sql(givens=parameters)
         assert context.preview_limit == (20 if preview else None)
     finally:
@@ -36,9 +36,9 @@ query: failure is values -> { select: converted is value::number, cutoff is $cut
     assert context.givens == {"cutoff": 9007199254740993}
     source.unlink()
     dependency.unlink()
-    replay = pm.model(context.source)
+    replay = pm.connect().model(context.source)
     try:
-        with pytest.raises(pm.ExecutionError) as repeated:
+        with pytest.raises(pm.errors.ExecutionError) as repeated:
             replay.query(context.query.name).run(givens=context.givens)
         assert repeated.value.context.sql == context.sql
     finally:
@@ -46,13 +46,14 @@ query: failure is values -> { select: converted is value::number, cutoff is $cut
 
 
 def test_assertion_engine_failure_keeps_execution_evidence():
-    candidate = pm.draft().define(values=pm.sql("SELECT 'invalid' AS value"))
-    report = candidate.validate(
+    candidate = pm.draft().sources(values=pm.sql("SELECT 'invalid' AS value"))
+    report = pm.connect().validate(
+        candidate,
         {
-            "numeric": pm.ref("values").pipe(
-                pm.query(pm.select(value=pm.col("value").cast("number")))
+            "numeric": pm.source("values").pipe(
+                pm.view().select(value=pm.col("value").cast("number"))
             )
-        }
+        },
     )
     assert not report.ok
     check = report.checks[0]
@@ -61,17 +62,17 @@ def test_assertion_engine_failure_keeps_execution_evidence():
     assert (
         check.execution.malloy
         == "run: "
-        + pm.ref("values")
-        .pipe(pm.query(pm.select(value=pm.col("value").cast("number"))))
+        + pm.source("values")
+        .pipe(pm.view().select(value=pm.col("value").cast("number")))
         .text
     )
 
 
 def test_schema_failure_keeps_native_diagnostics_sql_and_engine_cause():
-    with pytest.raises(pm.CompilationError) as failed:
-        pm.model("run: duckdb.sql('SELECT absent_column') -> { select: * }")
+    with pytest.raises(pm.errors.CompilationError) as failed:
+        pm.connect().model("run: duckdb.sql('SELECT absent_column') -> { select: * }")
     schema = failed.value.__cause__
-    assert isinstance(schema, pm.SchemaError)
+    assert isinstance(schema, pm.errors.SchemaError)
     assert schema.sql == "DESCRIBE SELECT absent_column"
     assert isinstance(schema.__cause__, duckdb.BinderException)
     assert failed.value.diagnostics
@@ -80,12 +81,12 @@ def test_schema_failure_keeps_native_diagnostics_sql_and_engine_cause():
 def test_ad_hoc_failure_captures_new_imports_for_detached_replay(tmp_path):
     imported = tmp_path / "values.malloy"
     imported.write_text("source: values is duckdb.sql(\"SELECT 'invalid' AS value\")")
-    model = pm.model(
+    model = pm.connect().model(
         "source: base is duckdb.sql('SELECT 1 AS id')",
         url=(tmp_path / "root.malloy").as_uri(),
     )
     try:
-        with pytest.raises(pm.ExecutionError) as failed:
+        with pytest.raises(pm.errors.ExecutionError) as failed:
             model.query(
                 malloy='import "values.malloy"\nrun: values -> {select: value is value::number}'
             ).run()
@@ -94,9 +95,9 @@ def test_ad_hoc_failure_captures_new_imports_for_detached_replay(tmp_path):
     finally:
         model.close()
     imported.unlink()
-    replay = pm.model(context.source)
+    replay = pm.connect().model(context.source)
     try:
-        with pytest.raises(pm.ExecutionError) as repeated:
+        with pytest.raises(pm.errors.ExecutionError) as repeated:
             replay.query(malloy=context.malloy).run(givens=context.givens)
         assert repeated.value.context.sql == context.sql
     finally:
@@ -107,14 +108,12 @@ def test_execution_evidence_retains_the_configured_connection_after_close():
     source = """source: values is analytics.sql("SELECT 'invalid' AS value")
 query: numeric is values -> {select: value is value::number}
 """
-    with pytest.raises(pm.ExecutionError) as failed:
-        pm.run(source, connection_name="analytics")
+    with pytest.raises(pm.errors.ExecutionError) as failed:
+        pm.connect(name="analytics").model(source).query().run()
     context = failed.value.context
     assert context.connection_name == "analytics"
-    with pytest.raises(pm.ExecutionError) as replayed:
-        pm.run(
-            context.source,
-            connection_name=context.connection_name,
-            givens=context.givens,
+    with pytest.raises(pm.errors.ExecutionError) as replayed:
+        pm.connect(name=context.connection_name).model(context.source).query().run(
+            givens=context.givens
         )
     assert replayed.value.context.sql == context.sql

@@ -15,37 +15,32 @@ orders = pl.DataFrame(
 prepared = orders.filter(pl.col("amount") >= 10)
 candidate = (
     pm.draft()
-    .define(
+    .sources(
         orders=pm.data(prepared, name="orders")
-        .extend(
-            pm.primary_key("id"),
-            pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
-        )
+        .primary_key("id")
+        .measure(revenue=pm.col("amount").sum().doc("Booked amount in USD."))
         .doc("One retained order per id, with amount of at least 10 USD.")
     )
     .queries(
-        by_region=pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("region")),
-                pm.aggregate(pm.col("revenue")),
-                pm.order_by(pm.col("region")),
-            )
+        by_region=pm.source("orders").pipe(
+            pm.view()
+            .group_by(pm.col("region"))
+            .aggregate(pm.col("revenue"))
+            .order_by(pm.col("region"))
         )
     )
 )
-accepted = candidate.validate(
-    {
-        "unique_id": pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("id")),
-                pm.aggregate(n=pm.count()),
-                pm.having(pm.col("n") > 1),
+with pm.connect() as con:
+    accepted = con.validate(
+        candidate,
+        {
+            "unique_id": pm.source("orders").pipe(
+                pm.view().group_by("id").aggregate(n=pm.count()).having(pm.col("n") > 1)
             )
-        ),
-    }
-).require_valid()
+        },
+    ).require_valid()
 
 with TemporaryDirectory() as directory:
     artifact = bundle(accepted, Path(directory) / "sales", query="by_region")
     result = runpy.run_path(str(artifact.model.parent / "replay.py"))["result"]
-    print(result.rows())
+    print(result.to_pylist())

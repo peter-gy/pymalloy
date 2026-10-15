@@ -20,6 +20,11 @@ export default defineConfig({
   projects: [
     { name: "marimo", testMatch: "marimo.spec.ts", use: { baseURL: "http://127.0.0.1:28441" } },
     {
+      name: "marimo-export",
+      testMatch: "marimo-export.spec.ts",
+      use: { baseURL: "http://127.0.0.1:28444" },
+    },
+    {
       name: "jupyterlab",
       testMatch: "jupyter.spec.ts",
       use: { baseURL: "http://127.0.0.1:28442" },
@@ -32,30 +37,42 @@ export default defineConfig({
     },
   ],
   webServer: [
-    {
-      command:
-        "uv run --no-sync marimo run apps/e2e/fixtures/notebook.py --headless --host 127.0.0.1 --port 28441 --no-token --session-ttl 0",
-      cwd: "../..",
-      url: "http://127.0.0.1:28441",
-      reuseExistingServer: false,
-      timeout: 60_000,
-      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
-    },
-    {
-      command: "uv run --no-sync python apps/e2e/serve_jupyter.py",
-      cwd: "../..",
-      url: "http://127.0.0.1:28442/lab",
-      reuseExistingServer: false,
-      timeout: 60_000,
-      gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
-    },
+    ...(process.env.PYMALLOY_BROWSER_BUNDLE
+      ? []
+      : [
+          {
+            command:
+              "uv run --no-sync marimo run apps/e2e/fixtures/notebook.py --headless --host 127.0.0.1 --port 28441 --no-token --session-ttl 0",
+            cwd: "../..",
+            url: "http://127.0.0.1:28441",
+            reuseExistingServer: false,
+            timeout: 60_000,
+            gracefulShutdown: { signal: "SIGTERM" as const, timeout: 5_000 },
+          },
+          {
+            command: "uv run --no-sync python apps/e2e/serve_jupyter.py",
+            cwd: "../..",
+            url: "http://127.0.0.1:28442/lab",
+            reuseExistingServer: false,
+            timeout: 120_000,
+            gracefulShutdown: { signal: "SIGTERM" as const, timeout: 10_000 },
+          },
+          {
+            command: "uv run --no-sync python apps/e2e/serve_marimo_export.py",
+            cwd: "../..",
+            url: "http://127.0.0.1:28444",
+            reuseExistingServer: false,
+            timeout: 120_000,
+            gracefulShutdown: { signal: "SIGTERM" as const, timeout: 5_000 },
+          },
+        ]),
     {
       command: "pnpm --filter @pymalloy/e2e browser:dev",
       cwd: "../..",
       url: "http://127.0.0.1:28443",
       reuseExistingServer: false,
       timeout: 60_000,
-      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
+      gracefulShutdown: { signal: "SIGTERM" as const, timeout: 5_000 },
     },
   ],
 });

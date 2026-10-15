@@ -1,3 +1,5 @@
+import { CompiledModel } from "@malloy-runtime/compiler/jobs";
+import { Runtime, drive, type Host } from "@malloy-runtime/compiler/adapters";
 import { Table } from "apache-arrow";
 import { materialize } from "@malloy-runtime/duckdb/arrow";
 import { checkSource, formatSource } from "@malloy-runtime/compiler/tooling";
@@ -11,11 +13,9 @@ import {
   VoidLogger,
 } from "@duckdb/duckdb-wasm";
 import {
-  CompiledModel,
   documentKind,
   type DocumentKind,
-  Model,
-  Operations,
+  type Model,
   ToolingError,
   type OperationOptions,
   type QueryOptions,
@@ -25,9 +25,9 @@ import {
 } from "@malloy-runtime/compiler";
 import {
   connection as compilerConnection,
-  drive,
+  fields,
+  describeSQL,
   stableResult,
-  type Host,
 } from "@malloy-runtime/duckdb";
 import { type File, type Files, modelURL, snapshot, readImport } from "./files";
 
@@ -42,8 +42,7 @@ export type ModelSpec = (
   | { url: string }
 ) & { files?: Files; documentKind?: DocumentKind };
 export class Session {
-  private readonly models = new Set<Model>();
-  private readonly operations: Operations;
+  private readonly operations: Runtime;
   private stopped = false;
   private closing?: Promise<void>;
   private activeFiles: string[] = [];
@@ -59,7 +58,7 @@ export class Session {
     private readonly removeAbortListener: () => void,
     private readonly connectionName: string,
   ) {
-    this.operations = new Operations(async () => {
+    this.operations = new Runtime(async () => {
       try {
         await this.connection.cancelSent();
       } catch (error) {
@@ -169,16 +168,14 @@ export class Session {
       if (this.stopped) throw new Error("Session is closed");
       this.operations.assertActive();
       const schemas = new Map<string, { signature: string; columns: Column[] }>();
-      const model = new Model(compiled, {
+      return this.operations.model(compiled, {
         assertAvailable: () => {
           if (this.stopped) throw new Error("Session is closed");
-          this.operations.assertHealthy();
         },
-        compile: (job) => drive(job, this.host(files, root, captured)),
+        host: () => this.host(files, root, captured),
         run: async (sql, template) => {
-          const host = this.host(files, root, captured);
           const cached = schemas.get(sql);
-          let columns = cached?.columns ?? (await host.describe(`DESCRIBE ${sql}`));
+          let columns = cached?.columns ?? (await this.describe(`DESCRIBE ${sql}`));
           const table = await this.query(sql);
           const data = materialize(table);
           const signature = JSON.stringify(table.schema, (_key, value) =>
@@ -187,17 +184,20 @@ export class Session {
           const reusable =
             table.schema.dictionaries.size === 0 && sql.length + signature.length <= 65_536;
           if (cached && (!reusable || cached.signature !== signature)) {
-            columns = await host.describe(`DESCRIBE ${sql}`);
+            columns = await this.describe(`DESCRIBE ${sql}`);
           }
           if (reusable && cached?.signature !== signature) {
             if (schemas.size === 32) schemas.delete(schemas.keys().next().value!);
             schemas.set(sql, { signature, columns });
           }
+          const connectionName = this.connectionName;
           return {
             sql,
             rows: data.rows,
             columns: structuredClone(columns),
-            malloy: stableResult(sql, columns, data.rows, template, this.connectionName),
+            get malloy() {
+              return stableResult(sql, columns, data.rows, template, connectionName);
+            },
           };
         },
         submit: (task, options) =>
@@ -206,12 +206,9 @@ export class Session {
             return task();
           }, options),
         release: () => {
-          this.models.delete(model);
           if (this.activeSnapshot === files) this.activeSnapshot = undefined;
         },
       });
-      this.models.add(model);
-      return model;
     }, options);
   }
   async run(text: string, options: QueryOptions & { files?: Files } = {}) {
@@ -266,7 +263,7 @@ export class Session {
     if (!this.closing) {
       this.stopped = true;
       void this.operations.close();
-      for (const model of this.models) model.close();
+      this.operations.release();
       this.removeAbortListener();
       this.imports.abort();
       this.activeSnapshot = undefined;
@@ -311,6 +308,17 @@ export class Session {
     this.activeSnapshot = files;
   }
 
+  private async describe(sql: string): Promise<Column[]> {
+    this.operations.assertActive();
+    this.imports.signal.throwIfAborted();
+    const statement = await this.connection.prepare(sql);
+    await statement.close();
+    const result = await this.query(sql);
+    return result
+      .toArray()
+      .map((row) => ({ name: String(row.column_name), type: String(row.column_type) }));
+  }
+
   private host(files: Map<string, File>, root: URL, captured?: ModelSource): Host {
     const operations = this.operations;
     const signal = operations.signal
@@ -318,14 +326,9 @@ export class Session {
       : this.imports.signal;
     return {
       signal,
-      describe: async (sql) => {
+      schema: async (need) => {
         signal.throwIfAborted();
-        const statement = await this.connection.prepare(sql);
-        await statement.close();
-        const result = await this.query(sql);
-        return result
-          .toArray()
-          .map((row) => ({ name: String(row.column_name), type: String(row.column_type) }));
+        return fields(await this.describe(describeSQL(need)));
       },
       readURL: async (url) => {
         if (!captured) return readImport(files, url, signal, root);

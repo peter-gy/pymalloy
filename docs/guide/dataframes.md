@@ -1,116 +1,83 @@
 # Capture Python data
 
-Use `pm.data(frame)` to capture prepared Python data in a semantic model. The
-input travels with the draft, validation result, and exported bundle.
-Install `pymalloy[headless]` and `polars` for this example:
+`pm.data(frame)` captures materialized Python values so they travel with a model.
+Install `pymalloy[headless]` and [Polars](https://docs.pola.rs/), a dataframe
+library, for this example:
 
 ```python
 import polars as pl
 import pymalloy as pm
-from pymalloy.export import bundle
 
-orders = pl.DataFrame({
-    "id": [1, 2, 3],
-    "region": ["North", "South", "North"],
-    "amount": [12, 20, 8],
-})
+orders = pl.DataFrame({"region": ["North", "South", "North"], "amount": [12, 20, 8]})
 prepared = orders.filter(pl.col("amount") >= 10)
-candidate = (
-    pm.draft()
-    .define(orders=pm.data(prepared, name="orders").extend(
-        pm.primary_key("id"),
-        pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
-    ).doc("One retained order per id, with amount of at least 10 USD."))
-    .queries(by_region=pm.ref("orders").pipe(pm.query(
-        pm.group_by(pm.col("region")),
-        pm.aggregate(pm.col("revenue")),
-        pm.order_by(pm.col("region")),
-    )))
+captured = pm.data(prepared, name="orders")
+candidate = pm.draft().queries(
+    by_region=captured.pipe(
+        pm.view().group_by("region").aggregate(revenue=pm.col("amount").sum()).order_by("region")
+    )
 )
-checks = {
-    "unique_id": pm.ref("orders").pipe(pm.query(
-        pm.group_by(pm.col("id")),
-        pm.aggregate(n=pm.count()),
-        pm.having(pm.col("n") > 1),
-    )),
-}
-accepted = candidate.validate(checks).require_valid()
-artifact = bundle(accepted, "booked-sales", query="by_region")
+with pm.connect() as con:
+    with con.model(candidate) as model:
+        snapshot = model.source()
+        print(model.query().run().to_pylist())
+    print(con.model(snapshot).query().run().to_pylist())
+assert snapshot.inputs[0].rows == 2
 ```
 
-`booked-sales/model.malloy` reads ordinary Parquet files under `data/`. The
-[bundle guide](bundles.md) explains its manifest, editable Python reconstruction,
-and replay script. Replay uses the captured data, while rebuilding requires the
-producer that created it.
+Both executions return:
 
-## Capture once, reuse the same values
-
-`pm.data` copies data through Arrow IPC at construction. Changing the original
-frame or a mutable backing buffer cannot change the captured input. The first
-compilation or widget use writes Parquet once. Schema discovery, query execution,
-validation, and export use those bytes. Closing a model does not invalidate a
-retained draft or validation result.
-
-Polars DataFrames, Arrow Tables and RecordBatches, pandas DataFrames, and
-materialized producers implementing Arrow's `__arrow_c_stream__` interface are
-accepted. PyArrow is supplied by the `headless` extra and can also be installed directly. Polars and
-pandas are optional producers, and a pandas index is excluded.
-Call `.collect()` on lazy data explicitly before passing it to `pm.data`.
-
-Supported data includes nested lists and records, nulls, booleans, strings,
-integers, floats, decimals up to precision 38, dates, and timestamps. Nanosecond
-timestamps are normalized to microseconds only when exact. Unsupported types,
-submicrosecond values, or a Parquet roundtrip that changes values or schema raise
-an error. Cast deliberately in the preparation code when another representation
-is appropriate. Query ordering still requires `pm.order_by`.
-
-Reuse a captured source expression to share one input. Two separate `pm.data`
-calls represent separate capture origins. Give distinct inputs distinct names.
-`draft.inputs` exposes names, row counts, fingerprints, and detached Arrow values.
-`draft.text` uses logical input paths. Use `bundle(accepted, ...)` to publish files.
-Plain `.save()` rejects drafts with managed inputs.
-
-`draft.to_python(inputs={"orders": "prepared"})` reconstructs the symbolic model
-with an explicit Python variable binding. It preserves shared input references.
-It cannot infer the code that produced `prepared`.
-
-## Work with query results
-
-Native query results retain the Arrow table produced by DuckDB. `result.arrow()`
-returns that table, `result.rows()` materializes Python values, and
-`result.polars()` converts without consolidating Arrow chunks. Install `polars`
-for the latter. Results remain usable after the model closes.
-
-Python rows follow Arrow scalar representations. With DuckDB's default Arrow
-settings, `HUGEINT` becomes `Decimal`, `UUID` becomes a string, and `INTERVAL`
-becomes `pyarrow.MonthDayNano`. Decimal precision, nested values, nulls, dates,
-and timezone-aware timestamps are preserved. Caller-owned connections retain
-their Arrow conversion settings.
-
-## Keep preparation in the notebook
-
-In marimo, put dataframe preparation, model construction, validation, and export
-in separate cells. Refer to their Python variables directly so marimo tracks the
-dependencies. Keep the notebook alongside the bundle as the editable record of
-how its inputs were prepared. For ordinary Python, retain the producer script.
-
-The bundle publishes the accepted data snapshot. Its `model.py` reconstructs the
-Malloy grammar against bundled files. The notebook retains the original dataframe
-operations and the model's construction logic.
-
-External files, services, environment settings, and randomness remain requirements
-of the producer. Record them alongside the notebook when others need to rebuild
-the input. Source bundles record captured values and file identities, not the
-producer's dependency graph.
-
-## Use a browser without Deno
-
-```python
-widget = pm.MalloyWidget(candidate, query="by_region")
-widget
+```text
+[{'region': 'North', 'revenue': Decimal('12')}, {'region': 'South', 'revenue': Decimal('20')}]
 ```
 
-Install `pymalloy`, `pyarrow`, and your dataframe library. The widget
-materializes Parquet locally and sends it with the draft to DuckDB-WASM. Browser
-Malloy compilation requires neither the headless extra nor Deno. Additional
-`files=` may supply other virtual files but cannot replace managed inputs.
+[Malloy](https://docs.malloydata.dev/) defines the grouping and aggregate.
+[DuckDB](https://duckdb.org/docs/stable/), an embedded SQL engine, reads the
+captured values. The snapshot retains its input after the first model closes.
+
+## Capture once and reuse
+
+Construction copies values through [Arrow](https://arrow.apache.org/docs/), a
+columnar data format. Mutation of the producer or its backing buffers leaves
+the capture unchanged. The first compilation or widget request writes verified
+[Parquet](https://parquet.apache.org/docs/), a columnar file format, once.
+Schemas, execution, validation, and bundles use those bytes.
+
+Accepted producers include Polars DataFrames, Arrow Tables and RecordBatches,
+[pandas](https://pandas.pydata.org/docs/) DataFrames, and materialized objects
+implementing Arrow's `__arrow_c_stream__` interface. PyArrow is required and comes
+with the headless extra. Install dataframe libraries directly. A pandas index is
+excluded. Collect lazy frames explicitly before capture.
+
+Supported values include nested lists and records, nulls, booleans, strings,
+integers, floats, decimals up to precision 38, dates, and timestamps.
+Nanosecond timestamps normalize to microseconds when exact. Unsupported types,
+submicrosecond values, or a Parquet roundtrip that changes schema or values
+raise an error. Cast deliberately in preparation code.
+
+Reuse the same captured source to share one input. Separate `pm.data` calls
+create separate capture origins. Give distinct captures distinct names.
+`draft.inputs` exposes `pymalloy.authoring.Input` owners with names, row counts,
+fingerprints, and detached Arrow values. `draft.text` retains logical input paths.
+`ModelSource.inputs` carries those owners across runtime closure.
+
+## Carry inputs into widgets and bundles
+
+Pass a draft or snapshot directly to `pm.MalloyWidget`. With the base package,
+install PyArrow and the producer library directly. The widget sends captured
+Parquet as browser virtual files. Its browser compiler and engine use their own
+runtime. Explicit `files=` entries cannot shadow managed names.
+See [widgets](widget.md) for display and asynchronous readback.
+
+`pymalloy.export.bundle(accepted, directory)` writes a validated model and its
+captured inputs. A `ModelSource` also retains input owners and can be bundled.
+Passing `Validation` additionally records validation outcomes and bindings.
+Plain `Draft.save()` rejects captured inputs. See [source bundles](bundles.md).
+
+`draft.to_python(inputs={"orders": "prepared"})` reconstructs grammar with an
+explicit producer-variable binding. Keep the producing notebook or script for
+the dataframe operations, external files, environment, and randomness needed to
+rebuild the input. In a notebook, give preparation, construction, validation,
+and export separate cells with direct variable references.
+
+For result conversion and Arrow stream consumers, see
+[read columnar results](running.md#read-columnar-results).

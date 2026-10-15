@@ -5,7 +5,7 @@ import nbformat
 from nbclient import NotebookClient
 from test_compile import EXAMPLES
 
-from pymalloy.export import Document, Markdown, QueryCell, jupyter, prepare
+from pymalloy.export import Document, MarkdownCell, NotebookQuery, jupyter, prepare
 
 
 def execute_notebook(output: Path, assertions: str = "", *, pymalloy: bool = False):
@@ -70,8 +70,8 @@ def test_jupyter_serialization_is_deterministic_and_preserves_authored_markdown(
     document = Document(
         title="Sales",
         cells=(
-            Markdown(title),
-            QueryCell("report", "SELECT '{literal}' AS value", "select"),
+            MarkdownCell(text=title),
+            NotebookQuery("report", "SELECT '{literal}' AS value", "select"),
         ),
         data_root=tmp_path,
     )

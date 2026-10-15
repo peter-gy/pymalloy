@@ -1,6 +1,7 @@
 # Build and package
 
-Build the JavaScript assets before packaging Python:
+Build JavaScript assets before packaging Python with
+[Hatch](https://hatch.pypa.io/), the Python distribution builder:
 
 ```sh
 pnpm build
@@ -25,9 +26,9 @@ To build just Python's JavaScript dependencies:
 pnpm --filter '@pymalloy/python...' build
 ```
 
-`anywidget-bundle` builds the widget's module graph and `BundledWidget` serves it
+[anywidget-bundle](https://github.com/manzt/anywidget-bundle) builds the widget's module graph and `BundledWidget` serves it
 from the installed Python distribution. Static imports load with the app. Browser
-compilation, native Arrow decoding and the Malloy result renderer have dynamic
+compilation, native [Arrow](https://arrow.apache.org/docs/) columnar-data decoding and the Malloy result renderer have dynamic
 import boundaries. Keep every manifest-listed chunk and the stylesheet in wheel
 and source archives. Hatch checks those files before packaging.
 
@@ -35,13 +36,12 @@ and source archives. Hatch checks those files before packaging.
 
 `pnpm canary` packs and installs the four public TypeScript packages, checks their
 declarations in NodeNext and Bundler consumer projects, executes a Node query,
-and builds a browser consumer bundle. Run that bundle through the
-browser suite with `PYMALLOY_CONSUMER_CANARY=1 pnpm --filter @pymalloy/e2e exec
-playwright test --project browser`.
+builds a browser consumer bundle, and runs that bundle through the exact-value
+browser test. The browser server reads the bundle from `PYMALLOY_BROWSER_BUNDLE`.
 
 Test isolated installs of the wheel and a wheel rebuilt from the source archive.
-The base installation must support widgets and agent guidance without Deno or
-native DuckDB. The headless installation must execute queries and return Arrow
+Verify that the base installation supports widget construction and agent
+guidance with base dependencies. The headless installation must execute queries and return Arrow
 results. Check [browser behavior against the built wheel](testing.md#browser-tests).
 
 ```sh
@@ -62,3 +62,18 @@ Build and preview the deployed URL layout locally:
 BASE_PATH=/pymalloy/ pnpm docs:build
 BASE_PATH=/pymalloy/ pnpm docs:preview
 ```
+
+## Publish a release
+
+Set the version, merge it to `main`, then push an annotated tag:
+
+```sh
+uv version --package pymalloy 0.2.0
+git tag -a v0.2.0 -m "pymalloy 0.2.0"
+git push origin v0.2.0
+```
+
+`publish.yml` checks that the tag matches the package version, builds the wheel
+and source archive, runs the installed-package tests, attests build provenance,
+and publishes to PyPI through trusted publishing from the `pypi` environment.
+It then creates the GitHub release with generated notes and the distributions.

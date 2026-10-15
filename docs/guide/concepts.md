@@ -1,99 +1,86 @@
 # Concepts and boundaries
 
-PyMalloy connects editable Malloy source to execution and portable files.
-Malloy owns parsing, type checking, aggregate semantics, and SQL generation.
-Python expressions build Malloy syntax. Runtime adapters supply imports, schemas,
-and DuckDB execution.
+[Malloy](https://docs.malloydata.dev/) owns parsing, types, aggregate semantics,
+and SQL generation. PyMalloy builds Malloy syntax and supplies execution with
+[DuckDB](https://duckdb.org/docs/stable/), an embedded SQL database.
 
-## From source to results
+## From definitions to results
 
 ```text
-Draft.compile() → Model.query(...) → Query.run() → Result
-                      │                 └─ sql() → SQL text
-                      └─ source() → ModelSource
-
-Draft.validate(checks) → Validation → bundle(...) → SourceBundle
-
-Malloy file → export.prepare(...) → Document → notebook
+Expr → Source + View → Draft
+                        │
+Connection.model(draft) → Model.query(...) → Query.run() → Result
+                            └─ source() → ModelSource
+Connection.validate(draft, checks) → Validation → bundle(...) → SourceBundle
 ```
 
-| Value          | Responsibility                                                                                  |
-| -------------- | ----------------------------------------------------------------------------------------------- |
-| `Expr`         | A scalar expression such as `pm.col("amount").sum()`, resolved by Malloy                        |
-| `Fragment`     | Reusable source or query syntax, including clauses and named editing scopes                     |
-| `Draft`        | An immutable model revision, its source identity, optional captured imports, and managed inputs |
-| `Model`        | Compiled source and discovered schemas, retained for query preparation and execution            |
-| `Query`        | A selection within a model, or an ad hoc query, bound to givens when preparing SQL              |
-| `Result`       | An Arrow table and Malloy column types with the executed SQL                                    |
-| `ModelSource`  | Root URL, document kind, source text, and imports, independent of a live runtime                |
-| `Validation`   | Diagnostics and outcomes of the supplied data assertions for one draft revision                 |
-| `SourceBundle` | Paths to emitted Malloy, its data directory, and a manifest                                     |
-| `Document`     | Ordered Markdown and query cells prepared for notebook serialization                            |
+| Value         | What it holds                                                                                |
+| ------------- | -------------------------------------------------------------------------------------------- |
+| `Expr`        | A scalar operation, such as a field reference, comparison, or sum                            |
+| `Source`      | A relation with fields, measures, joins, saved views, or a query pipeline                    |
+| `View`        | A source-relative query stage defining grouping, projection, aggregation, or nesting         |
+| `Draft`       | An immutable model revision with source identity, optional captured imports, and inputs      |
+| `Connection`  | The native database owner and shared execution lock for its models                           |
+| `Model`       | Compiled source, resolved imports, discovered schemas, and query descriptors                 |
+| `Query`       | A selection that retains its model and binds givens when preparing SQL                       |
+| `Result`      | Materialized data, column descriptions, and executed SQL                                     |
+| `ModelSource` | A closed source graph and retained captured input owners                                     |
+| `Validation`  | Diagnostics and supplied data-check outcomes for one draft revision                          |
+| `Input`       | An immutable capture of Python data, including its identity and verified file representation |
 
-`pm.query(...)` constructs a query fragment. `model.query(...)` selects a query
-on an already compiled model. A fragment has no connection and does not execute.
-`pm.model(...)` accepts text, a `Path`, a draft, or a source snapshot.
-`pm.run(...)` compiles and executes once, releasing resources before it returns.
+Sources, views, expressions, and drafts build syntax before compilation.
+A model retains schemas while queries read current data. Recompile after a source
+or schema change. [Running queries](running.md) covers selection and lifetime.
 
 ## What gets captured
 
-A compiled model retains imports and discovered schemas. Each execution reads
-current data. Recompile after changing source or schema.
+A `ModelSource` retains the root URL, document kind, text, imported text keyed by
+URL, and captured inputs in `inputs`. Imports resolve from that mapping.
+A missing import fails compilation. Construction checks the record's shape.
+Compilation or bundling checks import closure.
 
-A `ModelSource` supplies all imports from its mapping. A missing import fails
-instead of falling back to the filesystem or network. Constructing the record
-checks its shape, while compilation or bundling checks whether referenced imports
-are present. It contains neither table data nor a database snapshot.
+`pm.data(frame)` copies materialized Python values into a retained
+[Arrow](https://arrow.apache.org/docs/), a columnar data format, snapshot.
+The first compilation or widget request materializes verified
+[Parquet](https://parquet.apache.org/docs/), a columnar file format, bytes.
+Drafts, snapshots, validations, and execution evidence keep those captures alive.
+External files and database tables remain live dependencies.
 
-`pm.data(frame)` captures materialized Python values and retains their verified
-Parquet representation when first needed. Use it when Python-prepared data must
-travel with a draft or widget. See [data access](data.md).
-
-A source bundle materializes imports and copies explicitly bound files and managed
-inputs. External SQL readers, catalog tables, remote services, and connection
-settings still need review before treating it as self-contained.
-[Bundle replay](bundles.md) describes the recorded evidence and remaining requirements.
+A source bundle copies captured inputs and explicitly bound files. Its manifest
+records source and file hashes, query selection, givens, and validation outcomes.
+Review catalog tables, SQL readers, remote services, and connection settings
+before treating it as self-contained. See [bundle replay](bundles.md).
 
 ## What checks establish
 
-| Check              | Evidence                                                                          |
-| ------------------ | --------------------------------------------------------------------------------- |
-| Parsing            | Source is accepted by the installed Malloy parser                                 |
-| Compilation        | Names, types, and schemas resolve for the configured data connection              |
-| Documentation lint | Required objects have nonempty descriptions on accepted annotation routes         |
-| Data assertions    | Supplied counterexample queries returned zero rows at validation time             |
-| Replay comparison  | A re-executed query matches a recorded output under an explicit comparison policy |
+| Check                                | Evidence                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------- |
+| `pm.parse`                           | The installed Malloy parser accepts the source                          |
+| `connection.check`                   | Names, types, and schemas resolve with the configured connection        |
+| Documentation policy                 | Selected objects have nonempty annotations on accepted routes           |
+| `connection.validate(draft, checks)` | Each supplied counterexample query returned zero rows                   |
+| Replay comparison                    | Results match recorded expectations under an explicit comparison policy |
 
-`draft.check()` returns compiler diagnostics. Pass a `DocumentationPolicy` with
-`documentation=` to also check descriptions. `draft.validate()` adds the supplied
-data assertions. Calling it without assertions establishes no
-additional data properties. A passing report does not establish that a metric or
-question matches someone's intent. Grain, units, denominators, coverage, and null
-meaning require explicit definitions and review.
+Validation with an empty check mapping establishes compilation and any requested
+documentation checks. Grain, units, denominators, coverage, and null meaning need
+explicit definitions and review. A passing assertion describes the observed data
+at validation time. It cannot establish future data quality or whether a metric
+matches the intended question.
 
-Descriptions use Malloy's native annotation routes. PyMalloy exposes them and
-checks their presence. Project-specific semantic records and visualization
-constraints belong to the project producing the dataset.
+Descriptions use Malloy's native annotation routes. Dataset-specific intent,
+review records, and visualization requirements belong to the producing project.
 
-## Execution and lifetime
+## Results and lifetime
 
-Python models own a Deno compiler process and an owned or borrowed DuckDB
-connection. Node and browser callers create a `Session` to own asynchronous work.
-Browser sessions use DuckDB WebAssembly. Widgets own a browser session and publish
-results asynchronously to Python.
+A Python connection owns or borrows a DuckDB connection. Each model owns one
+[Deno](https://docs.deno.com/) compiler process. Closing a model releases that
+compiler. Closing the connection closes its child models and owned database.
+Borrowed databases and transactions remain caller-owned.
 
-`sql()` prepares SQL. `run()` executes it and materializes a result. Python results
-retain Arrow tables, expose `.arrow()` directly, and materialize detached Python
-values through `.rows()`. `.polars()` requires Polars.
-JavaScript results expose `rows`, `columns`, `sql`, and a Malloy result tree for
-rendering. Results remain usable after their runtime closes.
+Operations serialize across a Python connection's models. A SQL timeout interrupts
+the statement and leaves a healthy model reusable. A compiler request timeout
+closes the affected model. Results retain their materialized data after closure.
 
-Operations serialize per Python model or TypeScript session. Queued cancellation
-rejects that call. Active cancellation interrupts the current operation and waits
-for it to settle before starting queued work. A healthy engine remains reusable.
-A Python compiler-request timeout closes its model, since the compiler protocol
-can no longer resume that request. Compiler process or worker failure also closes
-the affected runtime.
-Use `model.close()`, `session.close()`, or `widget.close()` for explicit release.
-Borrowed connections remain caller-owned. See [model reuse](models.md) and the
-[widget guide](widget.md) for their respective lifecycles.
+Node and browser callers use `Session` for asynchronous work. A widget owns a
+browser session and publishes revision-bound results to Python.
+[Widgets](widget.md) describes its asynchronous state.

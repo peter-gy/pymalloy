@@ -62,10 +62,17 @@ export class CompiledModel {
       [...this.entries].map(([name, entry]) => {
         const location =
           entry.kind === "run" || entry.kind === "named" ? entry.query.location : undefined;
+        const schema =
+          entry.kind === "run" || entry.kind === "named"
+            ? [...entry.query.givens.values()].some((given) => given.default === undefined)
+              ? null
+              : (entry.result ??= entry.query.getPreparedResult()).toStableResult().schema
+            : null;
         return Object.freeze({
           name,
           kind: entry.kind,
           location: location ? plain(location, details.locations) : null,
+          schema: structuredClone(schema),
         });
       }),
     );

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -13,11 +14,8 @@ from fixtures.model import SALES, SOURCE, UPDATED_SALES
 from jupyterlab.handlers.announcements import NeverCheckForUpdate
 from jupyterlab.labapp import LabApp
 
-from pymalloy.export import jupyter, prepare
-
 CELLS = [
-    f"""import asyncio
-import json
+    f"""import json
 from IPython.display import display
 from pymalloy import MalloyWidget
 from pymalloy.analysis import to_dict
@@ -25,26 +23,20 @@ from pymalloy.analysis import to_dict
 source = {SOURCE!r}
 widget = MalloyWidget(source, files={{"sales.csv": {SALES!r}}}, query="sales.by_region")
 
-async def ready(expected_rows):
-    event = asyncio.Event()
-    def changed(change):
-        if widget.state.get("status") == "ready" and to_dict(widget.state["rows"]) == expected_rows:
-            event.set()
-    widget.observe(changed, names="state")
-    try:
-        changed(None)
-        await asyncio.wait_for(event.wait(), timeout=30)
-        return to_dict(widget.state)
-    finally:
-        widget.unobserve(changed, names="state")
+# The kernel applies browser state between cells, so a cell reads the state the
+# browser published before it started.
+def ready(expected_rows):
+    state = to_dict(widget.state)
+    assert state["status"] == "ready" and state["rows"] == expected_rows, state
+    return state
 
 display(widget)""",
-    """state = await ready([{"region": "North", "revenue": 42}, {"region": "South", "revenue": 30}])
+    """state = ready([{"region": "North", "revenue": 42}, {"region": "South", "revenue": 30}])
 print("Python rows:", json.dumps(state["rows"], sort_keys=True))""",
     """widget.givens = {"region_filter": "South"}
 widget.query = "sales.filtered"
 print("South selected in Python")""",
-    """state = await ready([{"revenue": 30}])
+    """state = ready([{"revenue": 30}])
 print("Python filtered:", json.dumps(state["rows"], sort_keys=True))""",
     """widget.query = "sales.by_region"
 display(widget)""",
@@ -55,7 +47,7 @@ print("Invalid model supplied")""",
 widget.source = source
 widget.query = "sales.by_region"
 print("Model and data replaced")""",
-    """state = await ready([{"region": "North", "revenue": 70}, {"region": "South", "revenue": 10}])
+    """state = ready([{"region": "North", "revenue": 70}, {"region": "South", "revenue": 10}])
 print("Python replacement:", json.dumps(state["rows"], sort_keys=True))""",
     """widget.close()
 print("Analysis closed")""",
@@ -125,17 +117,9 @@ def main() -> None:
         nbformat.write(notebook, notebooks / "sales.ipynb")
         dataframe = nbformat.v4.new_notebook(
             cells=[
-                nbformat.v4.new_code_cell("""import pyarrow as pa
-import pymalloy as pm
-from pymalloy.analysis import to_dict
-from IPython.display import display
-
-prepared = pa.table({"region": ["North", "North"], "amount": [12, 20]})
-candidate = pm.draft().define(orders=pm.data(prepared)).queries(
-    total=pm.ref("orders").pipe(pm.query(pm.aggregate(total=pm.col("amount").sum())))
-)
-widget = pm.MalloyWidget(candidate, query="total")
-display(widget)"""),
+                nbformat.v4.new_code_cell(
+                    'import pyarrow as pa\nimport pymalloy as pm\nfrom pymalloy.analysis import to_dict\nfrom IPython.display import display\n\nprepared = pa.table({"region": ["North", "North"], "amount": [12, 20]})\ncandidate = pm.draft().sources(orders=pm.data(prepared)).queries(\n    total=pm.source("orders").pipe(pm.view().aggregate(total=pm.col("amount").sum()))\n)\nwidget = pm.MalloyWidget(candidate, query="total")\ndisplay(widget)'
+                ),
                 nbformat.v4.new_code_cell(
                     'print("Dataframe rows:", to_dict(widget.state["rows"]))'
                 ),
@@ -149,7 +133,7 @@ display(widget)"""),
                     'import pymalloy as pm\npm.col("amount").sum().doc("Booked amount in USD.")'
                 ),
                 nbformat.v4.new_code_cell(
-                    'import pyarrow as pa\norders = pm.data(pa.table({"amount": [20, 22]}), name="orders")\ncandidate = pm.draft().define(orders=orders).queries(total=pm.ref("orders").pipe(pm.query(pm.aggregate(total=pm.col("amount").sum()))))\ncandidate'
+                    'import pyarrow as pa\norders = pm.data(pa.table({"amount": [20, 22]}), name="orders")\ncandidate = pm.draft().sources(orders=orders).queries(total=pm.source("orders").pipe(pm.view().aggregate(total=pm.col("amount").sum())))\ncandidate'
                 ),
                 nbformat.v4.new_code_cell("orders"),
             ],
@@ -164,10 +148,28 @@ display(widget)"""),
         )
         (root / "sales.csv").write_text(SALES)
         output = notebooks / "exported.ipynb"
-        document = prepare(model, profile="widget", queries=["run:0"])
-        exported = nbformat.reads(
-            jupyter.render(document, output_path=output), as_version=4
+        completed = subprocess.run(
+            [
+                "pymalloy",
+                "export",
+                str(model),
+                "--format",
+                "jupyter",
+                "--profile",
+                "widget",
+                "--query",
+                "run:0",
+                "-o",
+                str(output),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
         )
+        if completed.returncode != 0:
+            raise SystemExit(completed.stderr or completed.stdout)
+        exported = nbformat.read(output, as_version=4)
         exported.metadata.kernelspec = notebook.metadata.kernelspec
         exported.cells.extend(
             nbformat.v4.new_code_cell(source)

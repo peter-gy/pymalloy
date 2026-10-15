@@ -30,7 +30,7 @@ def normalize_sql(value):
 def result_summary(result, *, float_precision=None):
     from pymalloy.analysis import to_dict
 
-    rows = result.rows()
+    rows = result.to_pylist()
     summary = {
         "columns": to_dict(result.columns),
         "rows": len(rows),
@@ -93,7 +93,7 @@ def worker(path, data_root, output, *, unordered=False, float_precision=None):
             connection.execute("SET TimeZone='UTC'")
             record["status"] = "baseline_compile_failed"
             original = stack.enter_context(
-                closing(pm.model(path, connection=connection, timeout=45))
+                closing(pm.connect(database=connection, timeout=45).model(path))
             )
             snapshot = original.source()
             record["status"] = "reconstruction_failed"
@@ -108,10 +108,8 @@ def worker(path, data_root, output, *, unordered=False, float_precision=None):
             record["status"] = "recompiled_failed"
             restored = stack.enter_context(
                 closing(
-                    pm.model(
-                        pm.ModelSource(snapshot.url, text, imports),
-                        connection=connection,
-                        timeout=45,
+                    pm.connect(database=connection, timeout=45).model(
+                        pm.ModelSource(snapshot.url, text, imports)
                     )
                 )
             )

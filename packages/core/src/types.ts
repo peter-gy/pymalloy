@@ -1,4 +1,4 @@
-import type { Result as MalloyResult } from "@malloydata/malloy-interfaces";
+import type { Result as MalloyResult, Schema } from "@malloydata/malloy-interfaces";
 import type { GivenValue } from "@malloydata/malloy";
 import type { SourceLocation } from "./metadata";
 export type Value =
@@ -44,12 +44,15 @@ export interface Result {
  * location supplies an authored URL and range when available, otherwise null.
  * Python positions use zero-based lines and Unicode code-point character offsets.
  *
+ * schema contains the resolved output fields. Required unbound givens yield null.
+ *
  * @title QueryDescriptor
  */
 export interface QueryDescriptor {
   name: string;
   kind: "run" | "named" | "view" | "sql";
   location: SourceLocation | null;
+  schema?: Schema | null;
 }
 export interface MalloyQuery {
   malloy: string;
@@ -68,16 +71,4 @@ export interface DocumentOptions extends QueryOptions {
   queries?: string[];
   all?: boolean;
 }
-export type { GivenValue } from "@malloydata/malloy";
 export type { ModelSource } from "./model";
-export type { Diagnostic } from "./diagnostics";
-export type {
-  SourceLocation,
-  SourcePosition,
-  SourceRange,
-  AnnotationInfo,
-  GivenInfo,
-  ImportInfo,
-} from "./metadata";
-
-export type { DocumentKind } from "./source";

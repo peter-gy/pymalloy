@@ -1,57 +1,50 @@
-# Python widget API
+# Python API
+
+Import `pymalloy as pm`. The root namespace exposes constructors, native runtime
+owners, language tools, the widget, and the common error base.
 
 ```python
-from pymalloy import MalloyWidget
+import pymalloy as pm
 
-widget = MalloyWidget("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
-widget
+with pm.connect() as con:
+    result = con.model("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }").query().run()
+print(result.to_pylist())
 ```
 
-`MalloyWidget(source, *, files=None, query=None, givens=None, runtime=None,
-connection_name="duckdb", auto_run=True)` creates an
-anywidget for text, `Expr`, `Sort`, `Fragment`, `Draft`, `ModelSource`, native
-`Model` or `Query`, and materialized `Result` values. `files`, `query`, `givens`,
-`auto_run`, and `source` can be assigned after construction. Assign complete mappings to update
-files or givens. `files`, `givens`, and `state` are recursively read-only mappings.
-Nested sequences are tuples. Reads reuse the published snapshot, and retained
-snapshots stay unchanged after later updates. `pymalloy.analysis.to_dict(value)`
-creates editable dictionaries and lists when needed.
+The result is `[{'answer': 42}]`. Native execution requires `pymalloy[headless]`.
+[Malloy](https://docs.malloydata.dev/) compiles the source and
+[DuckDB](https://duckdb.org/docs/stable/), an embedded SQL database, runs it.
 
-`state` contains `status`, `queries`, `sql`, `columns`, `rows`, `result`,
-`inspection`, `diagnostics`, and `error`. Status is `idle`, `loading`, `ready`, `error`, or
-`closed`. Observe `state` for asynchronous updates. Observers receive the same
-immutable snapshot. `close()` is idempotent and releases the browser session. Native models and
-connections remain owned by the caller.
+| Root names                                                         | Contract                                                     |
+| ------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `table`, `sql`, `data`, `source`, `view`                           | [Source and View](authoring.md#source-and-view) construction |
+| `col`, `lit`, `given`, `count`, `case`, `Expr`, `Sort`             | [Scalar expressions](authoring.md#scalar-expressions)        |
+| `draft`, `read_model`, `Source`, `View`, `Draft`                   | [Draft composition and editing](authoring.md#draft)          |
+| `connect`, `Connection`, `Model`, `Query`, `Result`, `ModelSource` | [Runtime and result contracts](runtime.md)                   |
+| `parse`, `format`                                                  | [Language tools](runtime.md#language-tools)                  |
+| `MalloyWidget`                                                     | [Widget inputs, state, and browser assets](widget.md)        |
+| `PyMalloyError`                                                    | [Domain errors](runtime.md#errors)                           |
 
-`connection_name` chooses the Malloy connection served by the browser's DuckDB
-runtime. It is read-only for the widget's lifetime and must match the connection
-used by the source. Pass it explicitly for aliases such as `analytics`.
+Construction, widgets, and installed agent guidance use base dependencies.
+`pm.data` requires [PyArrow](https://arrow.apache.org/docs/python/), the Python
+library for columnar data. Parsing, file reading through `read_model`, formatting,
+checks, validation, native execution, and export preparation require the
+headless extra. Install [Polars](https://docs.pola.rs/), a dataframe library,
+directly for `Result.to_polars()`.
 
-`ModelSource(url, text, imports, document_kind=None)` captures source independently
-of data. Its kind is `"model"` or `"notebook"`, inferred from the URL when omitted.
-The widget respects that kind when compiling the source.
-`pymalloy.browser.Bundle(module, worker)` and
-`Runtime(mvp, eh=None)` configure explicit DuckDB runtime URLs.
-Use absolute HTTP(S) URLs with CORS and the notebook host's content-security
-policy configured to allow them.
+## Qualified modules
 
-[Headless queries, models, and results](headless.md) are available with the
-headless extra. The base install includes widgets and agent guidance. Malloy compilation and DuckDB
-execution run in the browser, with no Deno dependency.
+| Module                                | Additional public values                                                    |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| `pymalloy.authoring`                  | `Input`, source/view/draft constructors                                     |
+| `pymalloy.expressions`                | `call`, `number`, scalar constructors                                       |
+| `pymalloy.analysis`                   | [Reports, schemas, locations, and `to_dict`](analysis.md)                   |
+| `pymalloy.errors`                     | [Specific exceptions and `ExecutionContext`](runtime.md#errors)             |
+| `pymalloy.validation`                 | [`DocumentationPolicy`, `Validation`, `DataCheck`](authoring.md#validation) |
+| `pymalloy.result`                     | `Result`, `Column`                                                          |
+| `pymalloy.widget`, `pymalloy.browser` | [`MalloyWidget`, `Bundle`, `Runtime`](widget.md)                            |
+| `pymalloy.export`                     | [Notebook preparation, renderers, and bundles](export.md)                   |
+| `pymalloy.agent`                      | `agent_plugin()`, `agent_skill()` for installed guidance                    |
 
-Set `auto_run=False` to require an explicit **Check** or **Run**
-action. PyMalloy values displayed directly as cell outputs use this setting.
-Check resolves the model and schemas, which can read data for schema discovery.
-A native `Model` or `Query` offers **Preview** using its existing
-connection with a 30-second timeout. Materialized `Result` values show up to
-20 retained rows. See [notebook editing](../guide/notebook-editing.md) for the
-behavior of each value type.
-
-For native `Model`, `Query`, and `Result` values, omit `files` and `runtime`:
-their Python context supplies data access. A widget bound to a `Query` accepts
-that query's name or `None`. Pass its `Model` to choose among the model's queries.
-
-A `Draft` can carry `pm.data(frame)` inputs. MalloyWidget sends their captured
-Parquet bytes as managed virtual files when compilation or execution is requested. This requires PyArrow, without the headless
-extra or Deno. User `files` cannot shadow managed names. See the
-[dataframe guide](../guide/dataframes.md).
+Function and method docstrings provide parameter details and runnable examples.
+Use `help(pm.connect)`, `help(pm.Source)`, or your editor's API lookup.

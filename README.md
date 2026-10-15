@@ -1,10 +1,8 @@
 # PyMalloy
 
-Author, check, run, and share [Malloy](https://www.malloydata.dev/) models from
-Python. Compose models with Python expressions or edit existing Malloy source.
-Malloy compiles the queries, and [DuckDB](https://duckdb.org/) executes them.
-
-## Author and run a model
+Author and run [Malloy](https://docs.malloydata.dev/) semantic models from Python.
+Malloy defines fields, measures, joins, and queries and compiles them to SQL.
+[DuckDB](https://duckdb.org/docs/stable/) executes the SQL.
 
 ```sh
 pip install 'pymalloy[headless]'
@@ -13,57 +11,49 @@ pip install 'pymalloy[headless]'
 ```python
 import pymalloy as pm
 
-orders = pm.sql("SELECT * FROM (VALUES ('North', 20), ('North', 22)) t(region, amount)")
-candidate = (
-    pm.draft()
-    .define(orders=orders.extend(
-        pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
-    ).doc("One row per order."))
-    .queries(by_region=pm.ref("orders").pipe(pm.query(
-        pm.group_by(pm.col("region")),
-        pm.aggregate(pm.col("revenue")),
-    )))
+orders = pm.sql(
+    "SELECT * FROM (VALUES ('North', 20), ('North', 22), ('South', 30)) t(region, amount)"
 )
-
-print(candidate.text)                 # Ordinary Malloy source
-print(pm.run(candidate).rows())       # [{'region': 'North', 'revenue': Decimal('42')}]
+model = (
+    pm.draft()
+    .sources(
+        orders=orders.measure(
+            revenue=pm.col("amount").sum().doc("Booked amount in USD.")
+        )
+    )
+    .queries(
+        by_region=pm.source("orders").pipe(
+            pm.view().group_by("region").aggregate("revenue").order_by("region")
+        )
+    )
+)
+print(model.text)
+with pm.connect() as con:
+    print(con.model(model).query("by_region").run().to_pylist())
 ```
 
-Drafts are immutable. Check them with Malloy, validate assumptions with named
-counterexample queries, and package accepted models with their captured inputs.
-Use `pm.data(frame)` to bring prepared Python data into the model as portable
-Parquet. Retain the producing notebook or script for preparation logic.
+The draft prints ordinary Malloy source. The query returns:
 
-## Explore in a browser widget
-
-```sh
-pip install 'pymalloy'
+```text
+[{'region': 'North', 'revenue': Decimal('42')}, {'region': 'South', 'revenue': Decimal('30')}]
 ```
 
-```python
-from pymalloy import MalloyWidget
+Drafts are immutable. Validate assumptions with named counterexample queries,
+capture prepared Python data with `pm.data(frame)`, and bundle the accepted model
+with its inputs. The base `pymalloy` package supports authoring and browser widgets.
+The `headless` extra adds native execution and compiler tooling.
 
-widget = MalloyWidget("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
-widget
-```
-
-Display the widget in Jupyter or marimo. Malloy and DuckDB WebAssembly run in the
-browser. The base install includes widgets and agent guidance, without Deno. First use downloads
-DuckDB WebAssembly and needs browser worker support.
-
-## Learn more
-
-- [Concepts and boundaries](https://peter-gy.github.io/pymalloy/guide/concepts)
-- [Author and validate models](https://peter-gy.github.io/pymalloy/guide/authoring)
+- [Run Python queries](https://peter-gy.github.io/pymalloy/guide/getting-started)
+- [Author a model](https://peter-gy.github.io/pymalloy/guide/authoring) or
+  [edit an existing model](https://peter-gy.github.io/pymalloy/guide/editing)
 - [Capture Python data](https://peter-gy.github.io/pymalloy/guide/dataframes)
-- [Bundle models and inputs](https://peter-gy.github.io/pymalloy/guide/bundles)
-- [Run queries from Python](https://peter-gy.github.io/pymalloy/guide/headless-python)
-- [Use widgets](https://peter-gy.github.io/pymalloy/guide/getting-started) or
-  [export notebooks](https://peter-gy.github.io/pymalloy/guide/export)
-- [Node](https://peter-gy.github.io/pymalloy/reference/node) and
-  [browser JavaScript](https://peter-gy.github.io/pymalloy/reference/browser) APIs
+- [Show a widget](https://peter-gy.github.io/pymalloy/guide/widget)
+- [Export a notebook](https://peter-gy.github.io/pymalloy/guide/export) or
+  [ship a source bundle](https://peter-gy.github.io/pymalloy/guide/bundles)
+- Use the [Node](https://peter-gy.github.io/pymalloy/reference/node) or
+  [browser JavaScript](https://peter-gy.github.io/pymalloy/reference/browser) API
 
-For the included versioned agent instructions, import
-`pymalloy.agent` and start with `help(pymalloy.agent)`.
+For versioned agent guidance, start with `help(pymalloy.agent)` after
+`import pymalloy.agent`.
 
 [Examples](examples) · [Contributing](development_docs/README.md)
