@@ -1,16 +1,23 @@
 # Export API
 
+`pymalloy.export` prepares [Malloy](https://docs.malloydata.dev/documentation/)
+source for notebooks and publishes source bundles. Malloy compiles the queries.
+[DuckDB](https://duckdb.org/docs/stable/) supplies native schemas and execution.
+Preparation requires `pymalloy[headless]`.
+
 ```python
 from pymalloy.export import prepare, jupyter
 
 book = prepare("examples/orders.malloy", all=True)
 notebook = jupyter.render(book, output_path="orders.ipynb")
+assert len(book.queries) == 3
+print([query.name for query in book.queries])
 ```
 
 `prepare(path, *, profile="precompiled", queries=None, all=False, givens=None,
 data_root=None, database=None, connection_name="duckdb", title=None, timeout=120,
 files=None, remote_files=(), extensions=())` returns a
-`Document`. `model` is a local path. The data root defaults to its parent.
+`Document`. `path` is a local source path. The data root defaults to its parent.
 `database` opens read-only. `title` defaults to the title-cased filename stem
 with underscores replaced by spaces.
 `queries` and `all` are mutually exclusive. `queries=None` uses the default
@@ -32,12 +39,34 @@ need network access.
 
 `extensions` names DuckDB extensions to install and load before restricting file
 access, both during preparation and in generated native notebooks. The widget
-profile rejects this option; its execution uses DuckDB WebAssembly's extension
-support.
+profile rejects this option. Its execution uses
+[DuckDB WebAssembly](https://duckdb.org/docs/stable/clients/wasm/overview),
+a browser SQL engine.
+
+## Document and cells
+
+`pymalloy.export.Document(title, cells, data_root, database=None, source=None,
+givens={}, profile=Profile.PRECOMPILED, files={}, connection_name="duckdb",
+remote_files=(), extensions=())` is frozen. Mappings are copied into read-only
+snapshots. `cells` is a tuple and `data_root` is a `Path`. `.queries` returns the
+tuple of notebook query cells in document order.
 
 A `Document` holds title, ordered `MarkdownCell`/`NotebookQuery` cells, data root, database,
 profile, captured source, givens, local files, remote URLs, extensions, and connection name. Query cells contain `name`, `sql`, and
-`kind` (`select` or `copy`). These `pymalloy.export.NotebookQuery` records describe notebook cells. Renderers preserve cell order and COPY dependencies.
+`kind` (`select` or `copy`). `pymalloy.export.NotebookQuery(name: str, sql: str, kind: Literal["select", "copy"])`
+is frozen and raises `ValueError` for any other kind. `pymalloy.analysis.MarkdownCell(*,
+text: str)` is re-exported as `pymalloy.export.MarkdownCell` for prose cells. Renderers preserve cell order and COPY dependencies.
+
+`Profile` is `pymalloy.export.Profile`, a string enum with `PRECOMPILED`,
+`HEADLESS`, and `WIDGET` members. Native profiles require file aliases resolving
+through `data_root`. A precompiled document has `source=None`. Headless and widget
+documents require a captured `ModelSource`. Invalid profiles, inconsistent source,
+file bindings, URLs, or extension settings raise `ValueError`.
+
+## Renderers
+
+[marimo](https://docs.marimo.io/) is a reactive Python notebook editor.
+[Jupyter](https://docs.jupyter.org/) hosts ordered notebook kernel cells.
 
 `marimo.render(document, *, output_path)` returns Python source. Running that
 notebook requires `marimo` plus the dependencies declared by its execution profile. `jupyter.render(document, *, output_path)` returns notebook JSON.
@@ -80,12 +109,13 @@ provide aliases for SQL readers through `file_search_path`.
 
 Explicit files are copied at export time, independently of the data seen during
 validation. Managed dataframe inputs are checked against their materialized
-Parquet hashes and cannot be replaced through `files`. Database state and
+[Parquet](https://parquet.apache.org/docs/) columnar-file hashes and cannot be replaced through `files`. Database state and
 undeclared reader dependencies remain requirements of the exported model.
 
 ### Return value and manifest
 
-`SourceBundle.model`, `.data_root`, and `.manifest` are filesystem paths.
+`pymalloy.export.SourceBundle(model: Path, data_root: Path, manifest: Path)` is a
+frozen result record. `SourceBundle.model`, `.data_root`, and `.manifest` are filesystem paths.
 Manifest paths are relative to the bundle directory. The current
 `bundle.json` uses `format_version: 3`:
 
@@ -100,19 +130,19 @@ Manifest paths are relative to the bundle directory. The current
 | `inputs`             | Managed input IDs, names, row counts, schemas, Arrow snapshot hashes, and Parquet paths/hashes |
 | `validation`         | `null` for `ModelSource`, otherwise success and each check's name, status, and SQL             |
 
-Capture IDs distinguish separate `pm.data` calls. They are not content hashes.
-The manifest has no whole-bundle identity, output dataset, expected result hash,
-or environment lock. Assertion definitions, diagnostics, and human review remain
-outside the manifest.
+Capture IDs distinguish separate `pm.data` origins. File hashes identify copied
+contents. The producing project retains assertion definitions, diagnostics, human
+review, environment specifications, and expected-output comparisons.
 
 ### Replay
 
 `replay.py` reads the manifest, loads the emitted Malloy with its data root, and
 runs the selected query using the recorded givens and connection name. It rejects
 a copied input alias shadowed by a different file in the current directory. It exposes `result` when loaded
-with `runpy.run_path` and closes its model before returning. It uses the installed
-runtime and does not check recorded hashes, enforce versions, or rerun assertions.
+with `runpy.run_path` and closes its connection before returning. It uses the installed
+runtime. The caller owns hash verification, version enforcement, and rerunning
+assertions when those are replay requirements.
 
-`model.py` reconstructs editable grammar against the bundled files. It does not
-recover the Python code that prepared an input dataframe. Retain that notebook or
-producer script separately, and verify results after relocation or environment changes.
+`model.py` reconstructs editable grammar against bundled files. Retain the
+producer notebook or script to rebuild dataframe inputs, and verify results after
+relocation or environment changes.

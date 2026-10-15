@@ -1,6 +1,8 @@
 # Malloy in the browser
 
-Run Malloy with a DuckDB WebAssembly worker and model-specific virtual files.
+Run [Malloy](https://docs.malloydata.dev/) with a
+[DuckDB WebAssembly](https://duckdb.org/docs/stable/clients/wasm/overview.html)
+browser SQL worker and model-specific virtual files.
 
 ```ts
 import { Session } from "@malloy-runtime/browser";

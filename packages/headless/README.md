@@ -1,6 +1,7 @@
 # Python compiler host
 
-`@pymalloy/headless` runs compiler jobs in Deno for Python models. It imports
+`@pymalloy/headless` runs [Malloy](https://docs.malloydata.dev/) compiler jobs in
+[Deno](https://docs.deno.com/), a JavaScript runtime, for Python models. It imports
 `@malloy-runtime/compiler`, shared DuckDB schema conversion, and
 `@pymalloy/protocol`.
 

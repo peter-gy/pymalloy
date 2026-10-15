@@ -1,6 +1,8 @@
 # Malloy for Node
 
-Run Malloy on native DuckDB with an owned or borrowed connection.
+Run [Malloy](https://docs.malloydata.dev/) on native
+[DuckDB](https://duckdb.org/docs/stable/), an embedded SQL engine, with an
+owned or borrowed connection.
 
 ```ts
 import { Session } from "@malloy-runtime/node";

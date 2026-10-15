@@ -75,5 +75,21 @@ including `Result`, `QueryDescriptor`, `Inspection`, and `ModelSource`.
 `@malloy-runtime/duckdb` provides `connection`, `fields`, `describeSQL`,
 `fileSearchPath`, and `stableResult` for [DuckDB](https://duckdb.org/), the SQL
 engine used by the adapters. `@malloy-runtime/duckdb/arrow` materializes Arrow
-tables into rows. The compiler takes connection identity and
+columnar tables into rows. [Arrow](https://arrow.apache.org/docs/) defines that
+columnar format. The compiler takes connection identity and
 dialect from its host and contains no database or filesystem APIs.
+
+## Tooling entry points
+
+| Import from `@malloy-runtime/compiler/tooling`                                  | Contract                                                                          |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `parseSource(source, {url?, documentKind?, position?})`                         | Synchronous syntax report, with diagnostics and import/table spans                |
+| `checkSource({source, url, connection, documentKind?, syntaxOnly?, position?})` | A job returning names, types, schema metadata, query descriptors, and diagnostics |
+| `formatSource(source)`                                                          | Synchronous `{source, diagnostics}` from Malloy's experimental formatter          |
+| `syntaxSource(source, url?)`                                                    | Parsed source with editable bindings and scalar operations                        |
+| `compilerVersion`                                                               | Installed Malloy compiler version string                                          |
+
+Application `session.format` methods throw `ToolingError` for formatter
+diagnostics. `formatSource` returns those diagnostics for hosts to handle.
+`jobs` exports `CompiledModel` and `Job`. `adapters` exports the host driver.
+Construct application models and queries through their session APIs.

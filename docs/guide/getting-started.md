@@ -1,80 +1,62 @@
-# Your first widget
+# Run your first Python query
 
-Run a Malloy query in Jupyter or marimo with Python 3.12 or newer. The widget
-uses [DuckDB](https://duckdb.org/docs/stable/) in your browser. For scripts, use
-[headless Python](/guide/headless-python).
-
-## Install
-
-Install PyMalloy into your notebook's Python environment:
+Install PyMalloy with native execution and [Polars](https://docs.pola.rs/), a
+columnar dataframe library. Use Python 3.12 or newer.
 
 ```sh
-pip install "pymalloy"
+pip install 'pymalloy[headless]' polars
 ```
 
-Use a [Jupyter](https://docs.jupyter.org/) notebook or install the
-[marimo](https://docs.marimo.io/) notebook editor with `pip install pymalloy marimo`.
+[Malloy](https://docs.malloydata.dev/) compiles a semantic model to SQL.
+[DuckDB](https://duckdb.org/docs/stable/), an embedded database engine, runs it.
+The `headless` extra supplies both DuckDB and [Deno](https://docs.deno.com/),
+the JavaScript runtime hosting the Malloy compiler.
 
-## Display a query
-
-```python
-from pymalloy import MalloyWidget
-
-query = MalloyWidget("""
-    run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }
-""")
-query
-```
-
-The widget shows `answer: 42`. Open the **SQL** tab to inspect the compiled query.
-Execution starts when the notebook's browser connection initializes the widget.
-First use downloads [DuckDB WebAssembly](https://duckdb.org/docs/current/clients/wasm/overview)
-from jsDelivr. The page must allow that download and browser workers.
-
-## Supply a file
-
-Pass file contents under the name used by the Malloy source:
+## Author and run
 
 ```python
-orders = MalloyWidget(
-    """
-    run: duckdb.table('orders.csv') -> {
-      select: region, amount
-      order_by: amount desc
-    }
-    """,
-    files={"orders.csv": "region,amount\nNorth,40\nSouth,30\nNorth,2\n"},
+import pymalloy as pm
+
+orders = pm.sql(
+    "SELECT * FROM (VALUES ('North', 20), ('North', 22), ('South', 30)) t(region, amount)"
 )
-orders
+model = (
+    pm.draft()
+    .sources(
+        orders=orders.measure(
+            revenue=pm.col("amount").sum().doc("Booked amount in USD.")
+        )
+    )
+    .queries(
+        by_region=pm.source("orders").pipe(
+            pm.view().group_by("region").aggregate("revenue").order_by("region")
+        )
+    )
+)
+with pm.connect() as con:
+    result = con.model(model).query("by_region").run()
+    print(result.to_polars())
 ```
 
-The table shows amounts `40`, `30`, and `2`. These are **virtual files**: the
-browser reads supplied contents under their assigned names. `files` accepts
-text, bytes, and [remote URLs](/guide/widget).
+Expected output:
 
-## Read results from Python
-
-Results arrive asynchronously from the displayed widget. Register an observer to
-consume completed rows:
-
-```python
-from pymalloy.analysis import to_dict
-
-
-def receive_result(change):
-    state = change["new"]
-    if state["status"] == "ready":
-        print(to_dict(state["rows"]))
-
-orders.observe(receive_result, names="state")
-orders.source = """
-    run: duckdb.table('orders.csv') -> { select: amount order_by: amount desc }
-"""
+```text
+shape: (2, 2)
+┌────────┬───────────────┐
+│ region ┆ revenue       │
+│ ---    ┆ ---           │
+│ str    ┆ decimal[38,0] │
+╞════════╪═══════════════╡
+│ North  ┆ 42            │
+│ South  ┆ 30            │
+└────────┴───────────────┘
 ```
 
-The callback prints `[{'amount': 40}, {'amount': 30}, {'amount': 2}]`. Read
-`orders.state` for the latest read-only snapshot. `to_dict` converts its nested
-mappings and tuples into dictionaries and lists. Call `orders.close()` when finished.
+`orders` is a source with a reusable `revenue` measure. The draft names that
+source and a `by_region` query. `con.model(model)` compiles the draft,
+`query("by_region")` selects the query, and `run()` materializes its result.
+The connection closes its models and database on exit. The result stays readable.
 
-Next: [change inputs](/guide/widget), [learn the concepts](/guide/concepts),
-or [troubleshoot](/guide/troubleshooting).
+Use `model.text` to inspect the generated Malloy. Continue with
+[authoring](authoring.md), [editing an existing file](editing.md), or
+[query selection and runtime lifetime](running.md).

@@ -1,6 +1,6 @@
 # Malloy compiler
 
-Compile Malloy with synchronous jobs and host-supplied source and schemas.
+Compile [Malloy](https://docs.malloydata.dev/) with synchronous jobs and host-supplied source and schemas.
 
 ```ts
 import { parseSource, formatSource } from "@malloy-runtime/compiler/tooling";

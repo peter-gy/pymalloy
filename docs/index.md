@@ -2,34 +2,67 @@
 layout: home
 hero:
   name: PyMalloy
-  text: Author, check, run, and share Malloy models.
-  tagline: Compose semantic models in Python, query with DuckDB, and carry models and inputs into notebooks or source bundles.
+  text: Author and run Malloy models from Python.
+  tagline: Define semantic models, query with DuckDB, and share models and inputs in notebooks or source bundles.
   actions:
     - theme: brand
-      text: Author a model
-      link: /guide/authoring
-    - theme: alt
-      text: Try a browser widget
+      text: Run your first query
       link: /guide/getting-started
-features:
-  - title: Compose with Python
-    details: Build symbolic expressions and reusable queries, or edit existing Malloy while preserving surrounding source.
-    link: /guide/authoring
-  - title: Check assumptions
-    details: Combine compiler diagnostics, optional documentation checks, and named counterexample queries.
-    link: /guide/authoring#check-and-save-a-revision
-  - title: Carry models and inputs
-    details: Capture prepared dataframes, bundle Malloy with copied data, or export an executable notebook.
-    link: /guide/bundles
+    - theme: alt
+      text: Show a widget
+      link: /guide/widget
 ---
 
-## Choose where to start
+[Malloy](https://docs.malloydata.dev/) defines sources, measures, joins, and queries
+and compiles them to SQL. [DuckDB](https://duckdb.org/docs/stable/) executes the SQL.
+Install `pymalloy[headless]` for Python execution:
 
-[Run queries from Python](/guide/headless-python) with `pymalloy[headless]`, or
-[display a browser widget](/guide/getting-started) with the base `pymalloy`
-package. Widgets run Malloy and DuckDB WebAssembly in the browser and require
-no Deno or headless extra.
+```sh
+pip install 'pymalloy[headless]'
+```
 
-[Choose a workflow](/guide/overview) for authoring, dataframe inputs, validation,
-source bundles, notebook export, and the Node and browser JavaScript APIs.
-[Concepts and boundaries](/guide/concepts) explains what each step captures and checks.
+```python
+import pymalloy as pm
+
+orders = pm.sql(
+    "SELECT * FROM (VALUES ('North', 20), ('North', 22), ('South', 30)) t(region, amount)"
+)
+model = (
+    pm.draft()
+    .sources(
+        orders=orders.measure(
+            revenue=pm.col("amount").sum().doc("Booked amount in USD.")
+        )
+    )
+    .queries(
+        by_region=pm.source("orders").pipe(
+            pm.view().group_by("region").aggregate("revenue").order_by("region")
+        )
+    )
+)
+print(model.text)
+with pm.connect() as con:
+    print(con.model(model).query("by_region").run().to_pylist())
+```
+
+The query returns North revenue `42` and South revenue `30` as exact decimal values.
+
+## Choose a task
+
+| Your goal                                        | Start here                                               |
+| ------------------------------------------------ | -------------------------------------------------------- |
+| Run your first Python query                      | [Getting started](/guide/getting-started)                |
+| Reuse a model, select queries, or inspect SQL    | [Run queries from Python](/guide/running)                |
+| Understand drafts, models, and captured evidence | [Concepts and boundaries](/guide/concepts)               |
+| Compose sources, measures, joins, and views      | [Author a model](/guide/authoring)                       |
+| Change an existing Malloy file                   | [Edit a model](/guide/editing)                           |
+| Connect files or catalog tables                  | [Data access](/guide/data)                               |
+| Bring prepared Python data into a model          | [Capture Python data](/guide/dataframes)                 |
+| Bind typed query parameters                      | [Givens](/guide/givens)                                  |
+| Display and update a notebook widget             | [Widgets](/guide/widget)                                 |
+| Inspect intermediate values in a notebook        | [Notebook editing](/guide/notebook-editing)              |
+| Share an executable notebook                     | [Export notebooks](/guide/export)                        |
+| Ship Malloy files and copied inputs              | [Source bundles](/guide/bundles)                         |
+| Diagnose a failure                               | [Troubleshooting](/guide/troubleshooting)                |
+| Use JavaScript                                   | [Node](/reference/node) or [browser](/reference/browser) |
+| Look up an exact contract                        | [Python API](/reference/python) or [CLI](/reference/cli) |

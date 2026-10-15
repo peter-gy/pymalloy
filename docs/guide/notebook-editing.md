@@ -1,7 +1,9 @@
-# Edit models in notebooks
+# Inspect models in notebooks
 
-Leave a PyMalloy value as a cell's final expression to inspect its Malloy source,
-references, annotations and captured inputs in marimo or Jupyter.
+Leave a PyMalloy value as a cell's final expression to inspect its
+[Malloy](https://docs.malloydata.dev/) source, references, annotations, and inputs.
+Use [marimo](https://docs.marimo.io/), a reactive Python notebook editor, or
+[Jupyter](https://docs.jupyter.org/), a notebook host.
 
 ```python
 import pymalloy as pm
@@ -10,15 +12,14 @@ revenue = pm.col("amount").sum().doc("Gross booked amount in USD.")
 revenue
 ```
 
-The **Source** tab displays `amount.sum()`. **Context** holds its documentation
-and references. The inspector waits for an explicit **Check** or **Run** action before compiling or executing.
-An isolated expression has no source scope, so execution controls appear when
-you compose it into a runnable source or model.
+**Source** shows `amount.sum()`. **Context** holds documentation and references.
+The inspector waits for an explicit **Check** or **Run** action. An isolated
+expression acquires execution context when composed into a source or model.
 
 ## Compose and inspect
 
-Install `pymalloy`, `pyarrow` and your dataframe library alongside your notebook
-host. This example captures two orders and defines a named query:
+Install `pymalloy`, [PyArrow](https://arrow.apache.org/docs/python/), the Python
+implementation of the Arrow columnar format, and your notebook host:
 
 ```python
 import pyarrow as pa
@@ -32,74 +33,61 @@ candidate = (
     .sources(orders=orders.measure(revenue=pm.col("amount").sum()))
     .queries(
         by_region=pm.source("orders").pipe(
-            pm.view().group_by(pm.col("region")).aggregate(pm.col("revenue"))
+            pm.view().group_by("region").aggregate("revenue")
         )
     )
 )
 candidate
 ```
 
-**Check** resolves the model and opens **Schema**, where icons distinguish dimensions, measures, views and relationships. Parameters remain in **Context** and diagnostics appear in **Issues**. Schema discovery can read input data. **Run**
-executes the selected query and opens **Result**. Its generated query is available in **SQL**. This query produces
-`North`, `42`. Draft execution uses Malloy and DuckDB WebAssembly in the browser.
-Captured inputs become Parquet bytes on the first Check or Run action.
+**Check** resolves schemas and opens **Schema**. Its icons distinguish dimensions,
+measures, views, and relationships. Schema discovery can read data. Parameters
+remain in **Context**, and diagnostics appear in **Issues**. **Run** executes the
+selected query and opens **Result**, showing North revenue `42`. **SQL** holds
+the generated query.
 
-Display intermediate values such as `orders`, `orders.measure(revenue=revenue)` or
-a reusable query block in separate cells. Each inspector shows the value's own
-structure. An unresolved reference stays unresolved until a containing model
-supplies its scope.
+Drafts use [DuckDB WebAssembly](https://duckdb.org/docs/stable/clients/wasm/overview.html),
+a browser SQL engine. First use downloads its assets and requires browser worker
+support. Captured inputs become Parquet bytes on the first Check or Run action.
+Put intermediate expressions, sources, and views in separate cells to inspect
+their scopes before composing them.
 
-| Cell output                                            | Available behavior                                                                                |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `Expr`, `Sort`, `View`, and unresolved `Source` values | Authored syntax, references and annotations                                                       |
-| Self-contained table, SQL or captured source           | Check and run a generated query selecting up to 20 rows                                           |
-| `Draft` or `ModelSource`                               | Check and run a selected query in the browser                                                     |
-| Native `Model` or `Query`                              | Inspect retained source, check schema and preview up to 20 rows on the existing Python connection |
-| `Result`                                               | Display up to 20 already materialized rows and SQL                                                |
+| Cell output                                   | Inspector behavior                                                               |
+| --------------------------------------------- | -------------------------------------------------------------------------------- |
+| `Expr`, `Sort`, `View`, unresolved `Source`   | Authored syntax, references, and annotations                                     |
+| Self-contained table, SQL, or captured source | Check and run a generated query selecting up to 20 rows                          |
+| `Draft` or `ModelSource`                      | Check and run a selected query in the browser                                    |
+| Native `Model` or `Query`                     | Inspect source, check schema, and preview up to 20 rows on its Python connection |
+| `Result`                                      | Display up to 20 retained rows and executed SQL                                  |
 
-Complete draft queries use their authored limits. A 20-row source or native
-preview bounds the returned rows, while aggregates can still scan the full input.
-Browser models need captured inputs, registered virtual files or browser-accessible
-URLs. Local Python filesystem paths and native database tables belong to native
-models.
+Complete draft queries use their authored limits. A bounded source or native
+preview can still scan the whole input for aggregation. Browser models need
+captured inputs, virtual files, or browser-accessible URLs. Native models use
+Python filesystem and database access.
 
 ## Preview a native query
 
-With `pymalloy[headless]`, a bound query retains its original connection:
+With `pymalloy[headless]`, retain the connection while using the inspector:
 
 ```python
 import pymalloy as pm
 
-model = pm.connect().model("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}")
+connection = pm.connect(timeout=30)
+model = connection.model("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
 query = model.query()
 query
 ```
 
-Choose **Preview** to return up to 20 rows using the model's timeout, inherited
-from its connection unless overridden. The preview uses `Query.preview`, which
-rejects write statements. Closing the inspector leaves
-`model` usable. Call `model.close()` when finished with its connection and compiler.
-A `Result` displayed after execution reads its retained Arrow data even after
-the producing model is closed.
+Choose **Preview** to return `answer: 42` using the model's timeout.
+`Query.preview` rejects write statements. Closing the inspector leaves the model
+usable. Call `connection.close()` when finished to close its models and database.
+Materialized results remain readable afterward.
 
-## Configure a retained widget
+Automatic inspectors follow their cell or view lifetime. Rerunning a marimo cell
+closes its previous inspector. Removing the final Jupyter view closes its implicit
+widget. Explicit `MalloyWidget` instances remain caller-owned and expose `close()`.
+Set `auto_run=False` for inspection before execution. See [widgets](widget.md)
+for retained inputs and asynchronous readback.
 
-Use an explicit widget when you need query selection, parameters, virtual files
-or asynchronous Python readback:
-
-```python
-widget = pm.MalloyWidget(candidate, query="by_region", auto_run=False)
-widget
-```
-
-Explicit `MalloyWidget` construction defaults to `auto_run=True`. Set it to
-`False` for the same inspection-first behavior as ordinary cell outputs.
-[Widget inputs and readback](widget.md) describes reactive updates and `state`.
-
-Automatic inspectors follow the cell/view lifetime. Rerunning a marimo cell
-closes its old inspector. Removing the final Jupyter view closes the implicit
-widget. Explicit widgets remain caller-owned and expose `close()`.
-
-The [notebook editing example](https://github.com/peter-gy/pymalloy/blob/main/examples/notebook_editing.py)
-walks through captured orders, intermediate grammar values, a regional query,
-and a scoped change from gross to net revenue.
+The [notebook example](https://github.com/peter-gy/pymalloy/blob/main/examples/notebook_editing.py)
+compares booked revenue with revenue after refunds using visible intermediate values.

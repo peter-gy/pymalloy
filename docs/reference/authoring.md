@@ -1,23 +1,27 @@
 # Python authoring API
 
-Individual constructors and expression methods include parameter explanations,
-examples, and related operations in their Python docstrings. IDE hovers and
-`help(pm.data)`, `help(pm.col)`, or `help(pm.Expr.filter)` show those contracts.
+`pymalloy.authoring` constructs sources, views, and editable drafts.
+`pymalloy.expressions` constructs scalar operations.
+[Malloy](https://docs.malloydata.dev/) resolves their language semantics.
+All edits return immutable values. Constructors build syntax before compilation.
+Python docstrings supply parameter examples for `help` and editor lookup.
 
 ```python
 import pymalloy as pm
 
 candidate = pm.draft().sources(
-    orders=pm.table("orders.parquet").measure(revenue=pm.col("amount").sum())
+    orders=pm.sql("SELECT 42 AS amount").measure(revenue=pm.col("amount").sum())
 )
-report = pm.connect(data_root="data").check(candidate)
+with pm.connect() as con:
+    report = con.check(candidate)
+print(report.ok)
 ```
 
 ## Scalar expressions
 
 `col(*path) -> Expr` quotes each field-path component. `col("orders", "amount")`
 references a joined field, while `col("orders.amount")` names one field containing
-a dot. `given(name)` references a declared given. `lit(value)` accepts a string,
+a dot. `given(name) -> Expr` references a declared given. `lit(value) -> Expr` accepts a string,
 integer, finite float or `Decimal`, boolean, `date`, `datetime`, or `None`.
 `pymalloy.expressions.number(text)` preserves the exact spelling of a finite numeric literal, including
 scientific notation and signed zero. Generated Python uses it when numeric spelling
@@ -66,7 +70,11 @@ expressions so temporal range and partial-filter semantics are preserved.
 `data(frame, *, name=None, connection="duckdb")`, and `source(name)` return
 immutable `Source` values. `view()` creates an empty `View`, and `view(name)`
 references a saved view for refinement. Construction builds
-Malloy text. `data` also captures an Arrow snapshot and requires PyArrow.
+Malloy text. `data` captures an [Arrow](https://arrow.apache.org/docs/) columnar
+snapshot and requires PyArrow. A `Path` table argument becomes an absolute file
+reference. A string retains native table/file spelling. `connection` names the
+Malloy connection, default `"duckdb"`. `data`'s `name` argument defaults to a generated input name.
+See [data capture](../guide/dataframes.md) for producer types and precision limits.
 
 | Source method                           | Behavior                                              |
 | --------------------------------------- | ----------------------------------------------------- |
@@ -81,7 +89,11 @@ Malloy text. `data` also captures an Arrow snapshot and requires PyArrow.
 | `.where(predicate: Expr)`               | Filter source rows                                    |
 
 Source declaration methods append clauses in authored order to one trailing
-`extend` block. Malloy checks keys, field types, and relationship semantics.
+`extend` block. Malloy checks field types and relationship syntax. Data assertions
+establish key uniqueness and null behavior. Each declaration method returns a
+`Source`, and each query clause returns a `View`. `limit` accepts a nonnegative
+integer and rejects booleans. Empty field clauses raise `ValueError`. Invalid
+argument types raise `TypeError`.
 
 | View method                    | Behavior                                      |
 | ------------------------------ | --------------------------------------------- |
@@ -115,13 +127,16 @@ views, and scalar expressions verbatim.
 `rename` maps each new name to an existing field:
 
 ```python
+import pymalloy as pm
+from pymalloy.expressions import call
+
 orders = pm.sql("SELECT * FROM (VALUES ('N', 6), ('S', 4)) t(region, amount)").rename(
     booked="amount"
 )
 summary = pm.view().group_by("region").aggregate(
     revenue=pm.col("booked").sum()
 ).order_by("region").calculate(
-    prior=pm.expressions.call("lag", pm.col("revenue"))
+    prior=call("lag", pm.col("revenue"))
 )
 with pm.connect() as con:
     result = con.model(pm.draft().queries(report=orders.pipe(summary))).query().run()
@@ -133,6 +148,8 @@ Use raw text for Malloy clauses such as `index`, `timezone`, `accept`, `except`,
 source arguments, and joins using `with`. Malloy checks their grammar and types:
 
 ```python
+import pymalloy as pm
+
 orders = pm.Source.raw(pm.sql("SELECT 2 amount, 9 extra"), " extend { accept: amount }")
 with pm.connect() as con:
     result = con.model(pm.draft().queries(report=orders.pipe(pm.view().select("*")))).query().run()
@@ -175,19 +192,19 @@ Strings mean Malloy text, `Path` means a local file, and `ModelSource` carries
 captured imports. Requires `pymalloy[headless]`. Parsing establishes named editing
 slots but does not resolve schemas or validate business meaning.
 
-| Member                                  | Behavior                                                                                 |
-| --------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `.text`, `.url`, `.imports`, `.names`   | Source text, identity, captured imports, and root declaration names                      |
-| `.inputs`                               | Captured input resources with names, row counts, fingerprints, and detached Arrow access |
-| `[name]`                                | Named source or query expression                                                         |
-| `.sources(**sources)`                   | Add or replace named source expressions                                                  |
-| `.queries(**queries)`                   | Add or replace named query expressions                                                   |
-| `.append(*parts)`                       | Append text, sources, views, or declarations from another draft                          |
-| `.include(url: str \| Path)`            | Add an import to a live draft                                                            |
-| `.diff(previous=None)`                  | Unified diff against another draft or the originally loaded file                         |
-| `.format()`                             | Format with Malloy and rebuild editable syntax                                           |
-| `.to_python(name="model", inputs=None)` | Executable Python reconstructing scalar operations, syntax, URL, and imports             |
-| `.save(path=None, *, overwrite=False)`  | Write root text and return its `Path`                                                    |
+| Member                                         | Behavior                                                                                 |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `.text`, `.url`, `.imports`, `.names`, `.path` | Source text, identity, captured imports, root names, and original loaded path            |
+| `.inputs`                                      | Captured input resources with names, row counts, fingerprints, and detached Arrow access |
+| `[name]`                                       | Named source or query expression                                                         |
+| `.sources(**sources)`                          | Add or replace named source expressions                                                  |
+| `.queries(**queries)`                          | Add or replace named query expressions                                                   |
+| `.append(*parts)`                              | Append text, sources, views, or declarations from another draft                          |
+| `.include(url: str \| Path)`                   | Add an import to a live draft                                                            |
+| `.diff(previous=None)`                         | Unified diff against another draft or the originally loaded file                         |
+| `.format()`                                    | Format with Malloy and rebuild editable syntax                                           |
+| `.to_python(name="model", inputs=None)`        | Executable Python reconstructing scalar operations, syntax, URL, and imports             |
+| `.save(path=None, *, overwrite=False)`         | Write root text and return its `Path`                                                    |
 
 `sources` and `queries` preserve surrounding text when replacing an existing
 right-hand side. Replacing a declaration of the wrong kind fails. New declarations
@@ -206,7 +223,10 @@ ownership of the originally loaded file.
 
 ## Validation
 
-`connection.validate(draft, checks, *, givens=None, documentation=None, timeout=None)` compiles once and executes a
+`pymalloy.validation.Validation` is produced by `Connection.validate`.
+`pymalloy.validation.DataCheck` is a named assertion outcome in `.checks`.
+
+`connection.validate(draft, checks=None, *, givens=None, documentation=None, timeout=None)` compiles once and executes a
 mapping of names to `Source` values, such as
 `source("orders").pipe(view().where(col("amount") < 0).select("id"))`. Zero rows passes. A failed
 check retains one row. The timeout budget covers compilation, metadata, and all
@@ -249,6 +269,11 @@ It reconstructs the model grammar, not the producer of the dataframe.
 
 ## Documentation policy
 
+`pymalloy.validation.DocumentationPolicy(routes=('"',),
+kinds=("source", "measure", "view"), severity="warning")` is frozen.
+Routes and kinds must be tuples of strings. Invalid types raise `TypeError`.
+Severity must be `"warning"` or `"error"`, otherwise `ValueError` is raised.
+
 `.doc(text)` emits Malloy's native `#"` description route. Use
 `.annotate("bar_chart")` for a renderer tag or
 `.annotate("unit=USD", route="business")` for an app annotation. Routed annotations
@@ -256,15 +281,31 @@ remain editable in imported models. `DocumentationPolicy` is imported from
 `pymalloy.validation`:
 
 ```python
+import pymalloy as pm
 from pymalloy.validation import DocumentationPolicy
 
 policy = DocumentationPolicy(
     routes=('"', "business"), kinds=("source", "measure"), severity="error"
 )
-report = pm.connect().check(candidate, documentation=policy)
+candidate = pm.draft().sources(
+    orders=pm.sql("SELECT 42 AS amount").measure(
+        revenue=pm.col("amount").sum().doc("Booked amount in USD.")
+    ).doc("One row per order.")
+)
+with pm.connect() as con:
+    report = con.check(candidate, documentation=policy)
+print(report.ok)
 ```
 
 Documentation lint is off by default. Passing `DocumentationPolicy()` checks
 sources, measures, and views for a nonempty native description and reports warnings.
 Compiler diagnostics remain enabled. Error-severity findings make `report.ok`
 false. `validate` accepts the same policy.
+
+## Input
+
+`pymalloy.authoring.Input` is produced by `pm.data`. It exposes read-only
+`id`, `name`, `rows`, `fingerprint`, and `reference` properties. `to_arrow()`
+returns detached Arrow values. `Source.inputs`, `View.inputs`, `Draft.inputs`,
+and `ModelSource.inputs` retain these owners. Verified Parquet materializes
+on demand and stays alive with its owner. Use `bundle` to persist it.

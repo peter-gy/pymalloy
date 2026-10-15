@@ -1,6 +1,7 @@
 # Parameterize queries with givens
 
-Givens are typed inputs declared in Malloy:
+Givens are typed parameters declared in [Malloy](https://docs.malloydata.dev/).
+The installed compiler requires its experimental givens flag:
 
 ```python
 import pymalloy as pm
@@ -10,20 +11,36 @@ given: minimum :: number is 10
 source: orders is duckdb.sql('SELECT 42 AS amount')
 run: orders -> { select: amount where: amount >= $minimum }
 """
-query = pm.connect().model(source).query()
-print(query.run(givens={"minimum": 20}).to_pylist())
-print(query.sql(givens={"minimum": 50}))
+with pm.connect() as con:
+    with con.model(source) as model:
+        query = model.query()
+        print(query.run(givens={"minimum": 20}).to_pylist())
+        print(query.run(givens={"minimum": 50}).to_pylist())
+        print(query.run().to_pylist())
 ```
 
-Bindings apply to one call. Defaults remain available to subsequent calls.
-Malloy validates types and required inputs. Python integers and JavaScript
-bigints preserve exact integer values. Python also accepts dates, datetimes,
-Decimals, arrays, and string-keyed mappings through the compiler value protocol.
-Dates and datetimes become ISO strings, and Decimals become exact decimal strings.
-Malloy still checks whether those values fit the declared given type.
+Expected output:
 
-Widgets accept finite JSON values, including Python integers larger than the
-JavaScript safe-integer range. Assign a complete `widget.givens` mapping to
-publish an update. Readback is immutable, so use
-`widget.givens = {**widget.givens, "minimum": 20}` to replace one binding.
-Exporters accept `givens=` and the CLI accepts `--givens JSON`.
+```text
+[{'amount': 42}]
+[]
+[{'amount': 42}]
+```
+
+Bindings apply to one call. Omitted bindings use declared defaults.
+Omit `is 10` in the declaration to require a binding. Malloy checks required
+inputs and their types when SQL is prepared. Use `pm.given("minimum")` in Python
+authoring to reference the declared parameter.
+
+Native Python accepts finite scalars, dates, datetimes, `Decimal`, arrays, and
+string-keyed mappings through the compiler value protocol. Integers stay exact.
+Dates and datetimes become ISO strings and decimals become exact decimal strings.
+Malloy checks compatibility with the declared given type.
+
+Widgets accept finite JSON values, including integers larger than JavaScript's
+safe-integer range. Assign a complete mapping, such as
+`widget.givens = {**widget.givens, "minimum": 20}`. Native `Decimal`, `date`, and
+`datetime` objects must be encoded as widget-compatible values first.
+
+Exporters accept `givens=`. The [CLI](../reference/cli.md) accepts `--givens JSON`.
+Validation captures one set of bindings for every supplied data check.

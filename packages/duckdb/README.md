@@ -1,6 +1,6 @@
 # Malloy DuckDB adapters
 
-Shared DuckDB type conversion, native search-path statements, Arrow materialization,
+Shared [DuckDB](https://duckdb.org/docs/stable/) SQL type conversion, native search-path statements, Arrow materialization,
 and Malloy stable result serialization for the Node, browser and Python hosts.
 
 `describeSQL(need)` builds a DuckDB DESCRIBE statement for a compiler schema
