@@ -361,6 +361,8 @@ def bundle(
             'connection = pm.connect(data_root=data_root, name=manifest["connection_name"])\nmodel = connection.model(root / manifest["model"])\n'
             "try:\n"
             '    result = model.query(manifest["query"]).run(givens=manifest["givens"])\n'
+            "    if __name__ == '__main__':\n"
+            "        print(json.dumps(result.to_pylist(), ensure_ascii=False, default=str, allow_nan=False))\n"
             "finally:\n    connection.close()\n",
             encoding="utf-8",
             newline="\n",
