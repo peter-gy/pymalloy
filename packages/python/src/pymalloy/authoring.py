@@ -105,8 +105,8 @@ class _Builder(_Syntax):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> pm.source("orders").pipe("by_region", pm.view().limit(3)).text
-        'orders -> by_region -> {\n  limit: 3\n}'
+        >>> pm.source("orders").pipe("by_region", pm.view().select("region")).text
+        'orders -> by_region -> {\n  select: region\n}'
         """
         if not stages:
             return self
@@ -786,8 +786,14 @@ def source(name: str) -> Source:
     return Source._from_syntax(construct("ref", identifier(name), arguments=(name,)))
 
 
-def view() -> View:
-    r"""Create an empty source-relative query stage.
+def view(name: str | None = None) -> View:
+    r"""Start a query stage, or reference a saved view to refine.
+
+    Parameters
+    ----------
+    name : str, optional
+        A saved view in the piped source, such as ``"by_region"``. Clauses added
+        to a named view refine it with ``+``. Omit to start an empty stage.
 
     Returns
     -------
@@ -799,8 +805,10 @@ def view() -> View:
     >>> import pymalloy as pm
     >>> pm.view().select("amount").text
     '{\n  select: amount\n}'
+    >>> pm.source("orders").pipe(pm.view("by_region").limit(3)).text
+    'orders -> by_region + {\n  limit: 3\n}'
     """
-    return View._from_syntax(block(()))
+    return View._from_syntax(block(())) if name is None else _view(name)
 
 
 from pymalloy._authoring.draft import Draft, draft, read_model

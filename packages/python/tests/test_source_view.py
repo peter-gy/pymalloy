@@ -31,7 +31,7 @@ def target_model():
     model = (
         pm.draft()
         .sources(customers=pm.table("customers.parquet"), orders=orders)
-        .queries(top_regions=pm.source("orders").pipe("by_region", pm.view().limit(3)))
+        .queries(top_regions=pm.source("orders").pipe(pm.view("by_region").limit(3)))
     )
     return model
 
@@ -51,7 +51,7 @@ source: orders is duckdb.table("orders.parquet") extend {
     order_by: revenue desc
   }
 }
-query: top_regions is orders -> by_region -> {
+query: top_regions is orders -> by_region + {
   limit: 3
 }
 """
@@ -101,7 +101,7 @@ def test_target_usage_renders_exact_malloy_and_executes(tmp_path, order_files):
 
 def test_saved_view_refinement_runs_the_region_pipeline(order_files):
     candidate = target_model().queries(
-        top_regions=pm.source("orders").pipe(pm.View.raw("by_region").limit(3))
+        top_regions=pm.source("orders").pipe(pm.view("by_region").limit(3))
     )
     with pm.connect(data_root=order_files) as con, con.model(candidate) as model:
         assert model.query("top_regions").run().to_pylist() == [
@@ -166,7 +166,7 @@ def test_view_methods_edit_the_final_stage_and_refine_saved_views():
         )
         .queries(
             staged=pm.source("orders").pipe(stages),
-            refined=pm.source("orders").pipe(pm.View.raw("summary").limit(1)),
+            refined=pm.source("orders").pipe(pm.view("summary").limit(1)),
         )
     )
     assert isinstance(candidate["orders"]["summary"], pm.View)
