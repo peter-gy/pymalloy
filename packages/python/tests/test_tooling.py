@@ -293,26 +293,27 @@ def test_invalid_tool_arguments_leave_model_available():
             assert model.query().run().to_polars().item() == 42
 
 
-def test_required_givens_leave_source_metadata_available_before_execution():
+def test_required_givens_keep_source_metadata_before_execution():
     source = """##! experimental.givens
 given: cutoff :: number
 source: numbers is duckdb.sql('SELECT 42 AS value')
 run: numbers -> { where: value > $cutoff select: value }
 """
-    report = pm.connect().check(source)
-    assert report.ok
-    assert report.model.model is None
-    assert [q.name for q in report.queries] == ["run:0"]
-    assert report.model.sources[0].name == "numbers"
-    native = pm.connect()
-    with closing(native.model(source)) as model:
-        inspection = to_dict(model.inspect())
-        assert inspection["model"]["model"] is None
-        assert inspection["model"]["sources"][0]["name"] == "numbers"
-        assert inspection["givens"][0]["name"] == "cutoff"
-        assert inspection["givens"][0]["default_text"] is None
-        sql = model.query().sql(givens={"cutoff": 10})
-        assert native.duckdb.sql(sql).fetchone() == (42,)
+    with pm.connect() as native:
+        report = native.check(source)
+        assert report.ok
+        assert [entry.name for entry in report.model.model.entries] == ["numbers"]
+        assert report.model.model.anonymous_queries == ()
+        assert [q.name for q in report.queries] == ["run:0"]
+        assert report.model.sources[0].name == "numbers"
+        with native.model(source) as model:
+            inspection = to_dict(model.inspect())
+            entries = inspection["model"]["model"]["entries"]
+            assert [entry["name"] for entry in entries] == ["numbers"]
+            assert inspection["givens"][0]["name"] == "cutoff"
+            assert inspection["givens"][0]["default_text"] is None
+            sql = model.query().sql(givens={"cutoff": 10})
+            assert native.duckdb.sql(sql).fetchone() == (42,)
 
 
 def test_cli_check_reports_database_setup_errors(tmp_path):
