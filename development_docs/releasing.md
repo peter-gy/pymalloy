@@ -35,9 +35,8 @@ and source archives. Hatch checks those files before packaging.
 
 `pnpm canary` packs and installs the four public TypeScript packages, checks their
 declarations in NodeNext and Bundler consumer projects, executes a Node query,
-and builds a browser consumer bundle. Run that bundle through the
-browser suite with `PYMALLOY_CONSUMER_CANARY=1 pnpm --filter @pymalloy/e2e exec
-playwright test --project browser`.
+builds a browser consumer bundle, and runs that bundle through the exact-value
+browser test. The browser server reads the bundle from `PYMALLOY_BROWSER_BUNDLE`.
 
 Test isolated installs of the wheel and a wheel rebuilt from the source archive.
 The base installation must support widgets and agent guidance without Deno or

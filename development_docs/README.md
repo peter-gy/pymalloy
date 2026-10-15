@@ -40,7 +40,8 @@ Keep workspace dependencies as package names with `workspace:*` versions.
 `vp pack` emits the public JavaScript and declarations referenced by package
 exports, including their runtime file extensions. `pnpm canary` checks installed
 packages under both NodeNext and Bundler resolution without skipping declaration
-checks, then executes Node and builds a browser consumer.
+checks, executes a Node query, and runs the packed browser bundle through the
+exact-value browser test.
 
 Explicit extensions remain on real assets, external package subpaths, and the
 scripts workspace and anti-slop tooling executed directly by Node/Oxlint. Those paths resolve actual
@@ -54,7 +55,9 @@ uv lock --check
 pnpm check
 pnpm test
 pnpm canary
+pnpm e2e
 uv run --frozen pytest
+uv run --frozen pytest -m e2e
 uv run --frozen ruff format --check packages/python examples apps/e2e scripts
 uv run --frozen ruff check packages/python examples apps/e2e scripts
 uv run --frozen ty check
