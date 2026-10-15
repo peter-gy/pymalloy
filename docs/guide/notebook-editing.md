@@ -68,7 +68,7 @@ With `pymalloy[headless]`, a bound query retains its original connection:
 ```python
 import pymalloy as pm
 
-model = pm.model("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}")
+model = pm.connect().model("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}")
 query = model.query()
 query
 ```

@@ -99,19 +99,21 @@ saving it unchanged preserves its exact source text.
 ## Check and execute
 
 ```python
-report = candidate.check(data_root="data")
+report = pm.connect(data_root="data").check(candidate)
 print(report.ok, report.diagnostics, report.model.sources)
-model = candidate.compile(data_root="data")
+model = pm.connect(data_root="data").model(candidate)
 try:
-    print(model.query(malloy="run: orders -> { select: * }").preview(limit=10).rows())
+    print(
+        model.query(malloy="run: orders -> { select: * }").preview(limit=10).to_pylist()
+    )
 finally:
     model.close()
 ```
 
-`.check`, `.compile`, and `.validate` accept the data connection options of
-`pm.model`. Reuse a compiled model for repeated previews. `connection=` borrows
-DuckDB and preserves caller ownership and settings. `.validate()` compiles once
-for all named assertions.
+`pm.connect(...)` owns native runtime settings. Call `connection.check(candidate)`,
+`connection.model(candidate)`, or `connection.validate(candidate, checks)`. Pass
+an existing DuckDB connection to `pm.connect(native)` to preserve caller ownership
+and settings. Reuse a model for repeated previews.
 
 Pass `documentation=DocumentationPolicy()` from `pymalloy.validation` to enable
 documentation checks. Their warnings are advisory. `Validation.save(warnings_as_errors=True)`

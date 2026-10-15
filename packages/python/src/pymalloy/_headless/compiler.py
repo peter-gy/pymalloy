@@ -5,7 +5,6 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from pymalloy._model.errors import CompilationError, CompilerError, SchemaError
 from pymalloy._model.source import DocumentKind, read_text, resolve_document_kind
 from pymalloy._protocol.records import (
     Column,
@@ -25,6 +24,7 @@ from pymalloy._protocol.records import (
     URLAnswer,
     URLValue,
 )
+from pymalloy.errors import CompilationError, CompilerError, SchemaError
 
 from .process import Process
 
@@ -114,7 +114,7 @@ class Compiler:
             for need in response.needs.schemas:
                 check_deadline()
                 try:
-                    schemas[need.key] = SchemaValue(value=describe(need))
+                    schemas[need.key] = SchemaValue(value=tuple(describe(need)))
                 except SchemaError as error:
                     schema_error = error
                     schemas[need.key] = HostError(error=str(error))

@@ -3,55 +3,43 @@
 ```python
 import pymalloy as pm
 
-result = pm.run("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
-print(result.rows())
+result = (
+    pm.connect()
+    .model("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
+    .query()
+    .run()
+)
+print(result.to_pylist())
 ```
 
 Install `pymalloy[headless]` for headless execution.
 
-## model
+## Connection
 
-`pm.model(source, *, url=None, data_root=None, database=None, connection=None,
-config=None, extensions=(), connection_name="duckdb", document_kind=None,
-read_only=False, timeout=120, compiler_memory_mb=256)` compiles a
-reusable `Model`.
+`pm.connect(database=":memory:", *, data_root=None, read_only=False, config=None,
+extensions=(), name="duckdb", timeout=120, compiler_memory_mb=256) -> Connection`
 
-- `source`: Malloy text, a `pathlib.Path`, `Draft`, or `ModelSource`. Strings always mean text.
-- `url`: identity and import base for inline source.
-- `document_kind`: `"model"` or `"notebook"`. Defaults to the source snapshot
-  kind, or infers notebooks from `.malloynb` and `.malloysql` identities.
-- `data_root`: data search directory for an owned DuckDB connection.
-- `database`: persistent DuckDB database path.
-- `connection`: caller-owned DuckDB connection. Configure its settings and extensions yourself.
-- `config`: native DuckDB configuration for an owned connection. Defaults include
-  UTC and a file search path rooted at `data_root` or the working directory.
-  Explicit timezone and file-search settings take precedence. `data_root` and
-  `config["file_search_path"]` are mutually exclusive.
-- `extensions`: sequence of extension names to install and load on an owned
-  connection. Installation, loading, and native credential initialization happen
-  before external-access restrictions and configuration locking are applied.
-  Startup work consumes the operation deadline.
-- `connection_name`: Malloy connection name served by this DuckDB connection.
-- `read_only`: open a persistent database for reading.
-- `timeout`: seconds available for construction and compilation, and the default for subsequent operations.
-- `compiler_memory_mb`: compiler V8 heap limit in MiB, independent of DuckDB memory.
+Pass a database path to own a native DuckDB connection, or pass an existing
+DuckDB connection to borrow it. Borrowed connections preserve caller settings,
+registrations, and transactions. They reject `data_root`, `read_only=True`,
+`config`, and nonempty `extensions`.
 
-A borrowed `connection` rejects `config`, nonempty `extensions`, `database`,
-`data_root`, and `read_only=True`. Capture Python dataframe inputs with
-`pm.data(frame)` in a draft.
+`name` is the Malloy connection name. `data_root` sets the owned connection's
+file search path. `config` supplies native DuckDB settings. `extensions` are
+installed and loaded before file-access restrictions. `timeout` is the default
+operation budget in seconds. `compiler_memory_mb` bounds each compiler's V8 heap.
 
-A model owns its compiler process and any connection it creates. Queries retain
-the model. Resources are released when the model becomes unreachable.
-`model.close()` releases them immediately and is idempotent. Models also support
-`with pm.model(source) as model:` for scoped ownership. Borrowed connections
-retain caller ownership, settings, and transactions.
+`connection.model(source, *, url=None, document_kind=None, timeout=None)` compiles
+Malloy text, a `Path`, `ModelSource`, or `Draft`. Paths and snapshots supply their
+identity. A conflicting `url` raises `ValueError`. `document_kind` selects model
+or notebook grammar and otherwise follows the source identity.
 
-## run
-
-`pm.run(source, *, givens=None, **model_options)` runs the default query and
-returns a materialized `Result`. It accepts the options of `pm.model` and closes
-its temporary model before returning, including on failure. Its timeout covers
-construction, compilation, and execution.
+`connection.duckdb` exposes the native connection. Coordinate direct engine use
+with runtime operations. `connection.name` and `connection.closed` report identity
+and lifetime. `connection.close()` settles work, closes every child model, then
+closes the owned engine. Context management scopes this lifetime. Models and
+queries retain their connection. Each model owns one compiler process and can
+close independently while sibling models remain usable.
 
 ## Model and Query
 
@@ -60,40 +48,36 @@ construction, compilation, and execution.
 source/query `Fragment`. Use `malloy=` for native Malloy query text.
 Omit both to select the final run or single available query.
 
-`model.run(*, givens=None, timeout=None)` and `model.sql(*, givens=None,
-timeout=None)` use that default query. Named selections expose the same methods
-through `query.run(...)` and `query.sql(...)`.
+`query.run(*, givens=None, timeout=None)` executes a selected query.
+`query.sql(*, givens=None, timeout=None)` prepares its SQL.
 `query.preview(*, limit=20, givens=None, timeout=None)` bounds top-level returned
 rows and rejects COPY. `limit` must be an integer from 1 to 10,000. Aggregation
 can still scan the full input, and nested
 results can contain additional rows.
 
 `model.inspect(*, position=None, url=None, timeout=None)` returns `Inspection`.
-`model.source(*, timeout=None)` returns `ModelSource`.
+`model.source()` returns `ModelSource`.
 `model.document(*, queries=None, all=False, givens=None, timeout=None)` returns an
 ordered tuple of typed `MarkdownCell` and `QueryCell` records. `queries=None` uses
 the default selection. `queries=[]` selects no query cells. Authored Markdown or a
 source inventory may remain.
 Passing query names together with `all=True` is invalid.
 `model.compiler_version` reports the compiler packaged with this runtime.
-`model.connection` exposes the DuckDB connection. Coordinate direct connection use
-with model operations. `model.closed` reports whether execution is available.
+`model.closed` reports whether execution is available.
 
 ## Language tools
 
-`pm.check(source, *, path=None, url=None, connection_name="duckdb", document_kind=None, syntax_only=False,
-position=None, data_root=None, database=None, connection=None, config=None,
-extensions=(), read_only=False, timeout=120, compiler_memory_mb=256)` returns a compiler `CheckReport` and
-closes any data connection it creates. Source accepts the same types as `pm.model`.
-`path` and `url` are mutually exclusive source-identity options. A draft supplies
-its own identity by default. `syntax_only=True` skips import and schema resolution.
-
-`pm.check` reports compiler diagnostics. Pass a documentation policy to
-`Draft.check(documentation=...)` to add
+`connection.check(source, *, url=None, document_kind=None, position=None,
+documentation=None, timeout=None)` returns a `CheckReport` with compiler diagnostics
+and schema metadata. Pass a documentation policy for
 [documentation lint](authoring.md#documentation-policy).
 
+`connection.validate(draft, checks=None, *, givens=None, documentation=None,
+timeout=None)` captures bindings once and executes counterexample queries.
+One deadline covers compilation, inspection, and all checks.
+
 `pm.format(source)` returns formatted source using the compiler.
-`pm.parse(source, *, url, document_kind=None)` returns a typed `ParseReport` with syntax metadata,
+`pm.parse(source, *, url=None, document_kind=None)` returns a typed `ParseReport` with `ok` derived from error diagnostics, syntax metadata,
 imports, and table references. It includes `compiler_version`. Each parsed import
 retains its statement location and a `reference` span locating its quoted URL
 in Unicode codepoints. `ParsedImport` and `SourceSpan` are available from
@@ -110,18 +94,21 @@ timeout includes waiting for the compiler lease. Formatting and parsing have a
 
 `result.sql` is the executed SQL. `columns` is a tuple of frozen
 `Column(name=..., type=...)` records shared with schema discovery.
-The engine materializes an Arrow table once. `arrow()` returns that table without
-copying its buffers. `rows()` materializes detached Python dictionaries.
-`polars()` requires a separately installed `polars` and preserves Arrow chunks where supported.
+The engine materializes an Arrow table once. `to_arrow()` returns that table without
+copying its buffers. `to_pylist()` materializes detached Python dictionaries.
+`to_polars()` requires a separately installed `polars` and preserves Arrow chunks where supported.
 Results remain readable after model cleanup.
 
 `PyMalloyError` is the common base for PyMalloy failures:
 
 - `CompilationError` carries diagnostics for invalid Malloy source or unresolved schemas.
-- `ModelError` identifies a closed model.
-- `CompilerError`, a `ModelError` subclass, identifies an internal compiler or transport failure.
+- `ClosedError` identifies a closed connection or model.
+- `CompilerError` identifies an internal compiler or transport failure.
 - `ExecutionError` retains the original DuckDB query exception in `__cause__`.
 - `SchemaError` retains the failed schema probe and engine exception.
+- `ValidationError` carries a rejected validation in `report`.
+
+Import these exceptions from `pymalloy.errors`. `PyMalloyError` is also available at the root.
 
 Invalid options raise `TypeError` or `ValueError`. Expired deadlines raise
 `TimeoutError`. A SQL timeout interrupts the statement and leaves a healthy model
@@ -132,10 +119,10 @@ crashes and heap exhaustion. Create a new model after compiler failure.
 `ExecutionError.context` is detached from the live model. It exposes `source`
 (the captured model and imports), `query` (`QueryDescriptor`), `malloy` (ad hoc
 query text, when supplied), generated `sql`, `givens`, `compiler_version`,
-`connection_name`, and `preview_limit`. Each `givens` read returns a detached dictionary of the bindings
-used by the compiler. The context remains readable after `pm.run()` closes its
-model. Replay with `pm.model(context.source, connection_name=context.connection_name)`
-against the same data and connection settings.
+`connection_name`, and `preview_limit`. The `givens` mapping is read-only and captures the bindings used by the compiler.
+The context remains readable after model closure. Replay with
+`pm.connect(name=context.connection_name).model(context.source)` against the same
+data and connection settings.
 
 Schema-discovery failures retain `SchemaError` as the cause of `CompilationError`.
 Its `sql` is the DESCRIBE statement, and its own cause is the original engine

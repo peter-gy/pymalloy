@@ -6,7 +6,11 @@ pymalloy format examples/orders.malloy --check
 pymalloy export examples/orders.malloy --format marimo --all -o report.py
 ```
 
-`check PATH` supports `--syntax-only`, `--json`, `--data-root`, and `--database`.
+`run PATH` executes the selected query and writes JSON records. Use `--query`,
+`--givens JSON`, `--data-root`, `--database`, and `--timeout`. Decimal and temporal
+values become strings. Exact integers remain JSON integers.
+
+`check PATH` supports `--syntax-only`, `--json`, `--data-root`, `--database`, and `--timeout`.
 It exits 1 for invalid source or runtime setup failure. JSON output uses Python
 field names. Diagnostic text includes source locations.
 
@@ -15,7 +19,7 @@ would change the file. It preserves the input file.
 
 `export MODEL --format {marimo,jupyter} -o OUTPUT` supports repeatable `--query`,
 `--all`, `--profile {precompiled,headless,widget}`, `--data-root`, `--database`,
-`--title`, `--givens JSON`, and `--files JSON`. Output extensions must match the
+`--title`, `--givens JSON`, `--files JSON`, and `--timeout`. Output extensions must match the
 format. Compilation and rendering finish before an existing output is replaced.
 
 Headless commands require `pymalloy[headless]`. Notebook rendering writes source

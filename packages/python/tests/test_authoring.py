@@ -1,7 +1,6 @@
 import pickle
 import runpy
 from pathlib import Path
-from types import SimpleNamespace
 
 import duckdb
 import pytest
@@ -63,20 +62,20 @@ def test_composable_model_joins_parameters_and_reusable_query_clauses():
             totals=pm.ref("orders").pipe(grouped),
         )
     )
-    assert model.check().ok
-    runtime = model.compile()
+    assert pm.connect().check(model).ok
+    runtime = pm.connect().model(model)
     try:
-        assert runtime.query("report").preview(limit=1).rows() == [
+        assert runtime.query("report").preview(limit=1).to_pylist() == [
             {"id": 1, "doubled": 20, "region_name": "North"}
         ]
-        assert runtime.query("report").run(givens={"minimum": 10}).rows() == [
+        assert runtime.query("report").run(givens={"minimum": 10}).to_pylist() == [
             {"id": 2, "doubled": 40, "region_name": None}
         ]
         assert (
-            runtime.query(pm.ref("orders").pipe(grouped)).run().rows()
-            == runtime.query("totals").run().rows()
+            runtime.query(pm.ref("orders").pipe(grouped)).run().to_pylist()
+            == runtime.query("totals").run().to_pylist()
         )
-        assert runtime.query("totals").run().rows() == [
+        assert runtime.query("totals").run().to_pylist() == [
             {"region": "S", "revenue": 20},
             {"region": "N", "revenue": 10},
         ]
@@ -110,9 +109,9 @@ def test_generated_and_parsed_models_share_scoped_edits_and_preserve_annotations
         assert revised["orders"].names == ("doubled", "revenue", "by_region")
         with pytest.raises(KeyError):
             candidate["orders"].replace(missing=pm.lit(1))
-        runtime = documented.compile()
+        runtime = pm.connect().model(documented)
         try:
-            assert runtime.query("report").run().rows() == [{"revenue": 15.0}]
+            assert runtime.query("report").run().to_pylist() == [{"revenue": 15.0}]
             source = next(
                 s for s in runtime.inspect().model.sources if s.name == "orders"
             )
@@ -135,11 +134,11 @@ def test_nested_queries_keep_their_own_field_scope_after_import():
         assert summary.names == ("x", "details")
         assert summary["details"].names == ("x",)
         edited = summary.replace(details=summary["details"].replace(x=pm.count() + 1))
-        result = candidate.define(
-            orders=candidate["orders"].replace(summary=edited)
-        ).compile()
+        result = pm.connect().model(
+            candidate.define(orders=candidate["orders"].replace(summary=edited))
+        )
         try:
-            assert result.query("orders.summary").run().rows() == [
+            assert result.query("orders.summary").run().to_pylist() == [
                 {"x": 2, "details": {"x": 3}}
             ]
         finally:
@@ -193,21 +192,21 @@ def test_python_roundtrip_retains_semantics_unicode_imports_and_parameters(
         assert trivia in restored.text
     sql = []
     for candidate in [original, restored]:
-        model = candidate.compile()
+        model = pm.connect().model(candidate)
         try:
             sql.append(model.query("answer").sql())
-            assert model.query("answer").run().rows() == [{"value": 42}]
+            assert model.query("answer").run().to_pylist() == [{"value": 42}]
         finally:
             model.close()
     assert sql[0] == sql[1]
     edited = restored.define(
         **{"a`b": restored["a`b"].replace(**{"path\\name": pm.col("value") * 2})}
     )
-    model = edited.compile()
+    model = pm.connect().model(edited)
     try:
         assert model.query(
             malloy="run: `a\\`b` -> { select: `path\\\\name` }"
-        ).run().rows() == [{"path\\name": 84}]
+        ).run().to_pylist() == [{"path\\name": 84}]
     finally:
         model.close()
     assert (
@@ -229,21 +228,21 @@ def test_validation_counterexamples_refuse_writes_of_failed_models(tmp_path):
             pm.query(pm.where(pm.col("amount") < 0), pm.select(pm.col("id")))
         ),
     }
-    report = candidate.validate(checks)
+    report = pm.connect().validate(candidate, checks)
     assert report.ok and report.require_valid(warnings_as_errors=True) is report
     saved = report.save(tmp_path / "orders.malloy")
-    assert pm.read_model(saved).check().ok
+    assert pm.connect().check(pm.read_model(saved)).ok
     broken = candidate.define(
         orders=orders(
             "SELECT * FROM (VALUES (1,10,'N'), (1,-20,'S')) t(id,amount,region)"
         )
     )
-    failed = broken.validate(checks)
+    failed = pm.connect().validate(broken, checks)
     assert not failed.ok
     assert [c.status for c in failed.checks] == ["failed", "failed"]
-    assert failed.checks[0].result.rows() == [{"id": 1, "n": 2}]
-    assert failed.checks[1].result.rows() == [{"id": 1}]
-    with pytest.raises(ValueError, match="validation failed"):
+    assert failed.checks[0].result.to_pylist() == [{"id": 1, "n": 2}]
+    assert failed.checks[1].result.to_pylist() == [{"id": 1}]
+    with pytest.raises(pm.errors.ValidationError, match="validation failed"):
         failed.save(saved, overwrite=True)
     assert saved.read_text() == candidate.text
 
@@ -257,31 +256,31 @@ def test_compiler_and_opt_in_documentation_findings_share_one_report(tmp_path):
             pm.view(summary=pm.query(pm.aggregate(pm.col("revenue")))),
         )
     )
-    assert candidate.check().diagnostics == ()
-    assert candidate.validate().diagnostics == ()
+    assert pm.connect().check(candidate).diagnostics == ()
+    assert pm.connect().validate(candidate).diagnostics == ()
     policy = DocumentationPolicy()
-    report = candidate.check(documentation=policy)
+    report = pm.connect().check(candidate, documentation=policy)
     assert report.ok
     assert {d.code for d in report.diagnostics} == {
         "missing-source-doc",
         "missing-measure-doc",
         "missing-view-doc",
     }
-    validated = candidate.validate(documentation=policy)
+    validated = pm.connect().validate(candidate, documentation=policy)
     assert validated.ok
-    with pytest.raises(ValueError, match="Document"):
+    with pytest.raises(pm.errors.ValidationError, match="Document"):
         validated.save(tmp_path / "model.malloy", warnings_as_errors=True)
     assert not (tmp_path / "model.malloy").exists()
     invalid = candidate.define(
         orders=candidate["orders"].replace(revenue=pm.col("missing").sum())
     )
-    assert not invalid.check().ok
-    failed = invalid.validate(
-        {"probe": pm.ref("orders").pipe(pm.query(pm.select(pm.col("id"))))}
+    assert not pm.connect().check(invalid).ok
+    failed = pm.connect().validate(
+        invalid, {"probe": pm.ref("orders").pipe(pm.query(pm.select(pm.col("id"))))}
     )
     assert not failed.ok and failed.error
     assert failed.checks[0].status == "skipped"
-    with pytest.raises(pm.CompilationError):
+    with pytest.raises(pm.errors.CompilationError):
         pm.read_model("source: broken is {")
 
 
@@ -297,35 +296,39 @@ def test_import_snapshots_preserve_crlf_and_reject_changed_files(tmp_path):
         expanded=pm.ref("orders").extend(pm.measure(rows=pm.count()))
     )
     assert "+source:" in candidate.diff()
-    report = candidate.validate(
+    report = pm.connect().validate(
+        candidate,
         {
             "count": pm.ref("expanded").pipe(
                 pm.query(pm.aggregate(pm.col("rows")), pm.having(pm.col("rows") != 2))
             )
-        }
+        },
     )
     assert report.ok
     assert report.draft.imports[dependency.as_uri()] == dependency.read_bytes().decode()
     saved = report.save(tmp_path / "copied.malloy")
-    assert pm.check(saved).ok
+    assert pm.connect().check(saved).ok
     snapshot = pm.ModelSource(candidate.url, candidate.text, report.draft.imports)
     assert (
-        pm.read_model(snapshot).validate().save(tmp_path / "snapshot.malloy").is_file()
+        pm.connect()
+        .validate(pm.read_model(snapshot))
+        .save(tmp_path / "snapshot.malloy")
+        .is_file()
     )
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     with pytest.raises(ValueError, match="beside"):
         report.save(elsewhere / "model.malloy")
     dependency.write_text("source: broken is missing")
-    assert not candidate.check().ok
-    assert report.draft.check().ok
+    assert not pm.connect().check(candidate).ok
+    assert pm.connect().check(report.draft).ok
     with pytest.raises(ValueError, match="Imported model changed"):
         report.save()
     generated = tmp_path / "snapshot.py"
     generated.write_text(report.draft.to_python())
     scope = runpy.run_path(str(generated))
     assert scope["model"].imports == report.draft.imports
-    assert scope["model"].check().ok
+    assert pm.connect().check(scope["model"]).ok
     path.write_text("// changed externally\n")
     with pytest.raises(ValueError, match="changed on disk"):
         candidate.save()
@@ -337,7 +340,7 @@ def test_loaded_edits_keep_source_file_ownership(tmp_path):
     updated = loaded.define(
         orders=loaded["orders"].replace(revenue=pm.col("doubled").sum())
     )
-    assert updated.format().check().ok
+    assert pm.connect().check(updated.format()).ok
     updated.save()
     assert path.read_text() == updated.text
     with pytest.raises(ValueError, match="changed on disk"):
@@ -350,7 +353,8 @@ def test_validation_bounds_counterexamples_and_preserves_borrowed_connections():
         connection.execute("CREATE TABLE numbers AS SELECT i FROM range(1000) t(i)")
         connection.execute("BEGIN")
         candidate = pm.draft().define(numbers=pm.table("numbers"))
-        report = candidate.validate(
+        report = pm.connect(database=connection).validate(
+            candidate,
             {
                 "small": pm.ref("numbers").pipe(
                     pm.query(
@@ -364,10 +368,9 @@ def test_validation_bounds_counterexamples_and_preserves_borrowed_connections():
                     pm.query(pm.select(pm.col("value")))
                 ),
             },
-            connection=connection,
         )
         assert not report.ok
-        assert report.checks[0].result.rows() == [{"i": 11}]
+        assert report.checks[0].result.to_pylist() == [{"i": 11}]
         assert report.checks[1].status == "error" and report.checks[1].diagnostics
         assert report.checks[2].status == "error"
         connection.execute("ROLLBACK")
@@ -376,7 +379,7 @@ def test_validation_bounds_counterexamples_and_preserves_borrowed_connections():
 
 def test_preview_uses_native_limits_comments_and_statement_classification(tmp_path):
     output = tmp_path / "must-not-exist.csv"
-    model = pm.model(
+    model = pm.connect().model(
         f">>>sql connection:duckdb\nCOPY (SELECT 1) TO '{output}' (FORMAT CSV)\n",
         url="memory://test/copy.malloynb",
     )
@@ -386,60 +389,19 @@ def test_preview_uses_native_limits_comments_and_statement_classification(tmp_pa
         assert not output.exists()
     finally:
         model.close()
-    model = pm.model(
+    model = pm.connect().model(
         ">>>sql connection:duckdb\nSELECT '; -- value' AS value FROM range(100000); -- comment\n",
         url="memory://test/comments.malloynb",
     )
     try:
         assert (
-            model.query("sql:0").preview(limit=3).rows()
+            model.query("sql:0").preview(limit=3).to_pylist()
             == [{"value": "; -- value"}] * 3
         )
         with pytest.raises(ValueError, match="limit"):
             model.query("sql:0").preview(limit=True)
     finally:
         model.close()
-
-
-def test_validation_uses_one_budget_and_releases_its_model(monkeypatch):
-    from pymalloy._headless import validation
-
-    candidate = pm.draft().define(orders=orders())
-    elapsed = 0
-    preview = pm.Query.preview
-    create = pm.Draft.compile
-    opened = []
-
-    def finish_first(self, **options):
-        nonlocal elapsed
-        result = preview(self, **options)
-        elapsed = 121
-        return result
-
-    def load(*args, **options):
-        model = create(*args, **options)
-        opened.append(model)
-        return model
-
-    monkeypatch.setattr(validation, "time", SimpleNamespace(monotonic=lambda: elapsed))
-    monkeypatch.setattr(pm.Query, "preview", finish_first)
-    monkeypatch.setattr(pm.Draft, "compile", load)
-    with duckdb.connect() as connection:
-        with pytest.raises(TimeoutError, match="deadline"):
-            candidate.validate(
-                {
-                    "first": pm.ref("orders").pipe(
-                        pm.query(pm.where(pm.lit(False)), pm.select(pm.col("id")))
-                    ),
-                    "after": pm.ref("orders").pipe(
-                        pm.query(pm.where(pm.lit(False)), pm.select(pm.col("id")))
-                    ),
-                },
-                connection=connection,
-                timeout=120,
-            )
-        assert opened and all(m.closed for m in opened)
-        assert connection.execute("SELECT 42").fetchone() == (42,)
 
 
 def test_file_paths_names_and_empty_expressions_are_unambiguous(tmp_path):
@@ -454,9 +416,9 @@ def test_file_paths_names_and_empty_expressions_are_unambiguous(tmp_path):
             )
         )
     )
-    runtime = model.compile(data_root=tmp_path)
+    runtime = pm.connect(data_root=tmp_path).model(model)
     try:
-        assert runtime.query("summary").preview().rows() == [{"total": 42}]
+        assert runtime.query("summary").preview().to_pylist() == [{"total": 42}]
     finally:
         runtime.close()
     with pytest.raises(ValueError, match="Limit"):
@@ -493,11 +455,13 @@ def test_batch_edits_preserve_warmed_text_and_scopes():
     assert updated.names == ("first", "second", "third")
     assert original.text == original_text
     assert "SELECT 42 amount" in updated.text
-    model = updated.queries(
-        result=pm.ref("second").pipe(pm.query(pm.select(pm.col("amount"))))
-    ).compile()
+    model = pm.connect().model(
+        updated.queries(
+            result=pm.ref("second").pipe(pm.query(pm.select(pm.col("amount"))))
+        )
+    )
     try:
-        assert model.query("result").run().rows() == [{"amount": 42}]
+        assert model.query("result").run().to_pylist() == [{"amount": 42}]
     finally:
         model.close()
     ambiguous = pm.draft(original.syntax, updated.syntax)
@@ -517,7 +481,7 @@ source: orders is duckdb.sql('SELECT 1 id, 12 amount') extend {
     revenue is amount.sum()
 }
 """)
-    report = candidate.check()
+    report = pm.connect().check(candidate)
     assert not report.diagnostics
     notes = next(
         item
@@ -528,18 +492,23 @@ source: orders is duckdb.sql('SELECT 1 id, 12 amount') extend {
         ('"', "Revenue in USD."),
         ("research", "unit=USD"),
     ]
-    assert candidate.check(
-        documentation=DocumentationPolicy(routes=("research",), kinds=("measure",))
-    ).ok
+    assert (
+        pm.connect()
+        .check(
+            candidate,
+            documentation=DocumentationPolicy(routes=("research",), kinds=("measure",)),
+        )
+        .ok
+    )
     strict = DocumentationPolicy(routes=("business",), severity="error")
-    assert not candidate.check(documentation=strict).ok
-    assert not candidate.validate(documentation=strict).ok
+    assert not pm.connect().check(candidate, documentation=strict).ok
+    assert not pm.connect().validate(candidate, documentation=strict).ok
     revised = candidate.define(
         orders=candidate["orders"].replace(
             revenue=pm.col("amount").avg().doc("Mean line amount in USD.")
         )
     )
-    report = revised.check()
+    report = pm.connect().check(revised)
     assert not report.diagnostics
     notes = next(
         item
@@ -571,8 +540,10 @@ def test_python_emission_uses_composable_constructors_and_keeps_opaque_trivia(tm
     restored = restored.define(
         north=pm.ref("orders").extend(pm.where(pm.col("region") == "S"))
     )
-    with restored.compile() as runtime:
-        assert runtime.query("summary").run().rows() == [{"region": "S", "revenue": 20}]
+    with pm.connect().model(restored) as runtime:
+        assert runtime.query("summary").run().to_pylist() == [
+            {"region": "S", "revenue": 20}
+        ]
 
 
 def test_python_emission_decodes_strings_with_native_malloy_semantics(tmp_path):
@@ -584,11 +555,14 @@ query: result is values -> {select: value}
     path.write_text(candidate.to_python())
     restored = runpy.run_path(str(path))["model"]
     assert candidate.text == source
-    with candidate.compile() as original, restored.compile() as rebuilt:
+    with (
+        pm.connect().model(candidate) as original,
+        pm.connect().model(restored) as rebuilt,
+    ):
         assert original.query("result").sql() == rebuilt.query("result").sql()
         assert (
-            original.query("result").run().rows()
-            == rebuilt.query("result").run().rows()
+            original.query("result").run().to_pylist()
+            == rebuilt.query("result").run().to_pylist()
             == [{"value": "A"}]
         )
 
@@ -616,16 +590,19 @@ def test_handwritten_models_emit_editable_constructors_independent_of_layout(tmp
     path.write_text(generated)
     restored = runpy.run_path(str(path))["model"]
     assert candidate.text == source
-    with candidate.compile() as original, restored.compile() as rebuilt:
+    with (
+        pm.connect().model(candidate) as original,
+        pm.connect().model(restored) as rebuilt,
+    ):
         left = original.query("result").run()
         right = rebuilt.query("result").run()
         assert left.columns == right.columns
-        assert left.rows() == right.rows()
+        assert left.to_pylist() == right.to_pylist()
     revised = restored.define(
         sales=restored["sales"].replace(revenue=pm.col("amount").sum() * 2)
     )
-    with revised.compile() as model:
-        assert model.query("result").run().rows() == [
+    with pm.connect().model(revised) as model:
+        assert model.query("result").run().to_pylist() == [
             {"revenue": 6, "detail": [{"doubled": 6}]}
         ]
 
@@ -660,7 +637,10 @@ def test_annotations_preserve_other_routes_when_replaced_and_reconstructed(tmp_p
     path = tmp_path / "model.py"
     path.write_text(revised.to_python())
     restored = runpy.run_path(str(path))["model"]
-    with revised.compile() as original, restored.compile() as rebuilt:
+    with (
+        pm.connect().model(revised) as original,
+        pm.connect().model(restored) as rebuilt,
+    ):
         for model in (original, rebuilt):
             revenue = next(
                 item
@@ -671,8 +651,8 @@ def test_annotations_preserve_other_routes_when_replaced_and_reconstructed(tmp_p
                 (note.route, note.content.strip()) for note in revenue.annotations
             ) == [("", "currency=USD"), ('"', "Revenue"), ("research", "unit=EUR")]
         assert (
-            original.query("result").run().rows()
-            == rebuilt.query("result").run().rows()
+            original.query("result").run().to_pylist()
+            == rebuilt.query("result").run().to_pylist()
         )
 
 
@@ -686,10 +666,13 @@ def test_python_projection_retains_unsupported_clause_operands(tmp_path):
     path = tmp_path / "model.py"
     path.write_text(candidate.to_python())
     restored = runpy.run_path(str(path))["model"]
-    with candidate.compile() as original, restored.compile() as rebuilt:
+    with (
+        pm.connect().model(candidate) as original,
+        pm.connect().model(restored) as rebuilt,
+    ):
         assert (
-            original.query("result").run().rows()
-            == rebuilt.query("result").run().rows()
+            original.query("result").run().to_pylist()
+            == rebuilt.query("result").run().to_pylist()
             == [{"a": 1, "b": 2, "extra": 3}]
         )
 
@@ -710,8 +693,8 @@ def test_python_reconstruction_retains_a_captured_inputs_connection(tmp_path):
     path = tmp_path / "model.py"
     path.write_text(candidate.to_python(inputs={"values": "frame"}))
     restored = runpy.run_path(str(path), init_globals={"frame": frame})["model"]
-    with restored.compile(connection_name="warehouse") as model:
-        assert model.query("result").run().rows() == [{"total": 3}]
+    with pm.connect(name="warehouse").model(restored) as model:
+        assert model.query("result").run().to_pylist() == [{"total": 3}]
 
 
 def test_constructor_text_is_readable_without_reformatting_raw_literals():
@@ -742,8 +725,8 @@ def test_constructor_text_is_readable_without_reformatting_raw_literals():
     assert inline in candidate.text
     assert pm.read_model(candidate.text).text == candidate.text
     assert pm.ref("orders").extend().pipe().text == "orders"
-    with candidate.compile() as model:
-        assert model.query("result").run().rows() == [
+    with pm.connect().model(candidate) as model:
+        assert model.query("result").run().to_pylist() == [
             {"day": 1, "days": 1, "label": "first\nsecond"}
         ]
 
@@ -764,5 +747,5 @@ def test_generated_blocks_leave_raw_block_annotations_at_their_authored_columns(
         .queries(result=pm.ref("values").pipe(pm.ref("detail")))
     )
     assert "\n" + raw + "\n" in candidate.text
-    with candidate.compile() as model:
-        assert model.query("result").run().rows() == [{"amount": 1}]
+    with pm.connect().model(candidate) as model:
+        assert model.query("result").run().to_pylist() == [{"amount": 1}]

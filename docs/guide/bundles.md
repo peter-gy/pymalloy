@@ -15,24 +15,34 @@ from pymalloy.export import bundle
 
 candidate = (
     pm.draft()
-    .define(orders=pm.sql(
-        "SELECT * FROM (VALUES ('North', 20), ('South', 30), ('North', 22)) t(region, amount)"
-    ).extend(
-        pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
-    ).doc("One row per order."))
-    .queries(by_region=pm.ref("orders").pipe(pm.query(
-        pm.group_by(pm.col("region")),
-        pm.aggregate(pm.col("revenue")),
-        pm.order_by(pm.col("region")),
-    )))
+    .define(
+        orders=pm.sql(
+            "SELECT * FROM (VALUES ('North', 20), ('South', 30), ('North', 22)) t(region, amount)"
+        )
+        .extend(
+            pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
+        )
+        .doc("One row per order.")
+    )
+    .queries(
+        by_region=pm.ref("orders").pipe(
+            pm.query(
+                pm.group_by(pm.col("region")),
+                pm.aggregate(pm.col("revenue")),
+                pm.order_by(pm.col("region")),
+            )
+        )
+    )
 )
 checks = {
-    "known_revenue": pm.ref("orders").pipe(pm.query(
-        pm.aggregate(pm.col("revenue")),
-        pm.having(pm.col("revenue") != 72),
-    )),
+    "known_revenue": pm.ref("orders").pipe(
+        pm.query(
+            pm.aggregate(pm.col("revenue")),
+            pm.having(pm.col("revenue") != 72),
+        )
+    ),
 }
-accepted = candidate.validate(checks).require_valid()
+accepted = pm.connect().validate(candidate, checks).require_valid()
 artifact = bundle(accepted, "regional-sales", query="by_region")
 ```
 
@@ -94,7 +104,7 @@ result in Python:
 import runpy
 
 result = runpy.run_path("regional-sales/replay.py")["result"]
-print(result.rows())
+print(result.to_pylist())
 # [{'region': 'North', 'revenue': Decimal('42')},
 #  {'region': 'South', 'revenue': Decimal('30')}]
 ```

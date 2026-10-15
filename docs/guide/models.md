@@ -6,11 +6,11 @@ Compile a model once and run its queries against current data:
 from pathlib import Path
 import pymalloy as pm
 
-model = pm.model(Path("examples/orders.malloy"), data_root="examples")
+model = pm.connect(data_root="examples").model(Path("examples/orders.malloy"))
 for query in model.queries:
     print(query.name, query.kind, query.location)
 result = model.query("orders.by_region").run()
-print(result.rows())
+print(result.to_pylist())
 ```
 
 `model.queries` contains typed `QueryDescriptor` records. Kinds are `run`, `named`,
@@ -30,5 +30,5 @@ early. Other models remain usable.
 
 `model.source()` returns a `ModelSource` with the root URL, text, and captured
 imports. This is a source snapshot, independent of table data.
-`pm.model(snapshot)` hydrates it in Python. TypeScript uses
+`connection.model(snapshot)` hydrates it in Python. TypeScript uses
 `session.model({ source: snapshot })`. Pass data options when hydrating a snapshot.

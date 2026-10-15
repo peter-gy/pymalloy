@@ -38,13 +38,13 @@ def benchmark(rows: int, samples: int) -> dict:
         return result
 
     # Warm imports/codecs separately from the measured data sizes.
-    pm.data(frame.head(1)).inputs[0].materialize()
+    pm.data(frame.head(1)).inputs[0]._materialize()
     with tempfile.TemporaryDirectory(prefix="pymalloy-input-benchmark-") as directory:
         root = Path(directory)
         for index in range(samples):
             for label, data in (("contiguous", contiguous), ("fragmented", fragmented)):
                 source = measure(f"snapshot_{label}", lambda data=data: pm.data(data))
-                measure(f"parquet_{label}", source.inputs[0].materialize)
+                measure(f"parquet_{label}", source.inputs[0]._materialize)
             for count in (100, 1000, 5000):
                 lines = [
                     f"source: s_{i} is duckdb.table('rows.csv')" for i in range(count)

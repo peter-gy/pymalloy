@@ -13,10 +13,10 @@ draft, read_model
     Compose a new model or parse existing Malloy for scoped edits.
 query, group_by, aggregate, select
     Build reusable query syntax. These constructors do not execute it.
-model, run
-    Retain a compiled model or execute once and release runtime resources.
-parse, check, format
-    Inspect syntax, check schemas/types, or format Malloy source.
+connect
+    Own native execution and compile models through Connection.model.
+parse, format
+    Inspect syntax or format Malloy source.
 MalloyWidget
     Execute in a notebook browser and observe revision-bound results.
 
@@ -25,7 +25,7 @@ Notes
 The base package includes symbolic authoring, browser widgets, and agent guidance.
 Native execution and compiler tooling require ``pymalloy[headless]``. Widgets
 run without Deno. Install PyArrow directly for Python dataframe capture and
-Polars directly for ``Result.polars()``. The headless extra already includes PyArrow.
+Polars directly for ``Result.to_polars()``. The headless extra already includes PyArrow.
 
 Examples
 --------
@@ -34,7 +34,7 @@ Examples
 >>> candidate = candidate.queries(answer=pm.ref("values").pipe(
 ...     pm.query(pm.select(pm.col("amount")))
 ... ))
->>> pm.run(candidate).rows()
+>>> pm.connect().model(candidate).query().run().to_pylist()
 [{'amount': 42}]
 """
 
@@ -43,15 +43,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pymalloy._authoring.draft import Draft, draft, read_model
-from pymalloy._model.errors import (
-    CompilationError,
-    CompilerError,
-    ModelError,
-    PyMalloyError,
-    SchemaError,
-)
 from pymalloy._model.source import ModelSource
-from pymalloy.analysis import QueryDescriptor
 from pymalloy.authoring import (
     Fragment,
     aggregate,
@@ -74,7 +66,7 @@ from pymalloy.authoring import (
     view,
     where,
 )
-from pymalloy.execution import ExecutionContext, ExecutionError
+from pymalloy.errors import PyMalloyError
 from pymalloy.expressions import (
     Expr,
     Sort,
@@ -90,33 +82,27 @@ from pymalloy.expressions import (
 from pymalloy.result import Result
 
 if TYPE_CHECKING:
-    from pymalloy._headless.api import Model, Query, check, model, run
+    from pymalloy._headless.api import Connection, Model, Query, connect
     from pymalloy._headless.tooling import format, parse
     from pymalloy.widget import MalloyWidget
 
 __all__ = [
-    "CompilationError",
-    "CompilerError",
+    "Connection",
     "Draft",
-    "ExecutionContext",
-    "ExecutionError",
     "Expr",
     "Fragment",
     "MalloyWidget",
     "Model",
-    "ModelError",
     "ModelSource",
     "PyMalloyError",
     "Query",
-    "QueryDescriptor",
     "Result",
-    "SchemaError",
     "Sort",
     "aggregate",
     "call",
     "case",
-    "check",
     "col",
+    "connect",
     "count",
     "data",
     "dimension",
@@ -129,7 +115,6 @@ __all__ = [
     "limit",
     "lit",
     "measure",
-    "model",
     "nest",
     "number",
     "order_by",
@@ -139,7 +124,6 @@ __all__ = [
     "raw_expr",
     "read_model",
     "ref",
-    "run",
     "select",
     "sql",
     "syntax",
@@ -158,7 +142,7 @@ def __getattr__(name: str):
         from pymalloy.widget import MalloyWidget
 
         return MalloyWidget
-    if name in {"model", "run", "check", "Model", "Query"}:
+    if name in {"connect", "Connection", "Model", "Query"}:
         from pymalloy._headless import load_api
 
         return getattr(load_api(), name)

@@ -30,10 +30,12 @@ For a new model, start with the smallest source that exposes the data:
 
 ```python
 candidate = pm.draft().define(orders=pm.table("orders.parquet"))
-model = candidate.compile(data_root="data")
+model = pm.connect(data_root="data").model(candidate)
 try:
     print(model.inspect().model.sources)
-    print(model.query(malloy="run: orders -> { select: * }").preview(limit=5).rows())
+    print(
+        model.query(malloy="run: orders -> { select: * }").preview(limit=5).to_pylist()
+    )
 finally:
     model.close()
 ```
@@ -54,7 +56,8 @@ orders = (
     .doc("One row per order.")
 )
 candidate = pm.draft().define(orders=orders)
-report = candidate.validate(
+report = pm.connect(data_root="data", timeout=30).validate(
+    candidate,
     {
         "unique_order_id": pm.ref("orders").pipe(
             pm.query(
@@ -69,8 +72,6 @@ report = candidate.validate(
             )
         ),
     },
-    data_root="data",
-    timeout=30,
 )
 if report.ok:
     report.save("orders.malloy", warnings_as_errors=True)
@@ -85,12 +86,12 @@ else:
    attached documentation route. Use `.annotate(text, route=...)` for other
    owned routes. Shared statement tags stay intact.
    Review `.diff()` and update affected assertions.
-2. Call `.check(**connection_options)` for compiler diagnostics and metadata. Supply `documentation=DocumentationPolicy()` when
+2. Call `connection.check(candidate)` for compiler diagnostics and metadata. Supply `documentation=DocumentationPolicy()` when
    documentation completeness is part of the acceptance criteria. Fix errors
    using their authored locations.
-3. Call `.validate(checks, **connection_options)` for named business assertions.
+3. Call `connection.validate(candidate, checks)` for named business assertions.
    Each check is a source/query fragment returning counterexamples. Zero rows
-   passes. A failed check retains one example in `check.result.rows()`. Query errors also fail validation.
+   passes. A failed check retains one example in `check.result.to_pylist()`. Query errors also fail validation.
 4. Inspect diagnostics and checks, then revise the candidate. Compiler success
    alone does not establish correct grain, cardinality, or metric meaning.
 5. Save the accepted revision with `report.save(path)`. Failed validation blocks
@@ -102,7 +103,7 @@ else:
 
 `query.preview(limit=20, timeout=...)` limits returned rows and rejects COPY.
 Aggregation may still scan the input. Validation shares one timeout budget across
-compilation and assertions, and closes owned resources. Borrowed connections
+compilation and assertions, and closes the validation compiler. Borrowed connections
 remain caller-owned.
 
 ## Use explicit expressions

@@ -87,12 +87,12 @@ its inferred type.
 
 ## Validation and persistence
 
-`Draft.check` returns compiler diagnostics in `CheckReport`. A supplied
+`Connection.check` returns compiler diagnostics in `CheckReport`. A supplied
 `DocumentationPolicy` adds checks from compiled annotation metadata for missing
 descriptions on the selected objects. Documentation lint is opt-in. Business meaning,
 keys, and join cardinality require executable evidence and review.
 
-`Draft.validate` compiles once, captures imports, runs named source/query
+`Connection.validate` compiles once, captures imports, runs named source/query
 fragments as counterexample queries under one timeout budget, and closes the model on every path. Failed
 compilation skips assertions. A failed assertion retains one counterexample.
 Borrowed connections remain caller-owned, including transaction recovery after

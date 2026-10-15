@@ -4,7 +4,7 @@ import json
 import textwrap
 from pathlib import Path
 
-from pymalloy.export._document import Document, Markdown
+from pymalloy.export._document import Document, MarkdownCell
 from pymalloy.export._plan import SQL, plan
 from pymalloy.export._python import literal
 
@@ -33,7 +33,7 @@ def render(document: Document, *, output_path: str | Path) -> str:
         cells.append(cell)
 
     for cell in notebook.cells:
-        if isinstance(cell, Markdown):
+        if isinstance(cell, MarkdownCell):
             append("markdown", cell.text)
         elif isinstance(cell, SQL):
             code = (

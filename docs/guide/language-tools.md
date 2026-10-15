@@ -4,9 +4,11 @@
 import pymalloy as pm
 from pymalloy.analysis import SourcePosition, to_dict
 
-report = pm.check("run: missing", path="draft.malloy")
+report = pm.connect().check("run: missing", url="draft.malloy".resolve().as_uri())
 print(to_dict(report))
-model = pm.model("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
+model = pm.connect().model(
+    "run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }"
+)
 inspection = model.inspect(position=SourcePosition(line=0, character=5))
 ```
 
@@ -16,7 +18,7 @@ snake case. TypeScript fields use camel case. `to_dict` produces detached Python
 records for JSON output while preserving user-authored dictionary keys.
 
 Positions are zero-based code-point offsets. `path` establishes source identity
-and the base for imports. `syntax_only=True` checks syntax before imports or
+and the base for imports. `pm.parse(source)` checks syntax before imports or
 schemas are requested. Pass `data_root`, `database`, or `connection` to configure semantic checking.
 
 `model.inspect()` includes givens, annotations, dependencies, and upstream model

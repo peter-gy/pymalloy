@@ -5,9 +5,10 @@ import threading
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
+from pathlib import Path
 
-from pymalloy._model.errors import CompilationError
-from pymalloy._model.source import DocumentKind
+from pymalloy._authoring.draft import Draft
+from pymalloy._model.source import DocumentKind, ModelSource, open_source
 from pymalloy._protocol.records import (
     FormatReady,
     FormatRequest,
@@ -16,6 +17,7 @@ from pymalloy._protocol.records import (
     SyntaxReady,
     SyntaxRequest,
 )
+from pymalloy.errors import CompilationError
 
 from .compiler import Compiler
 
@@ -151,7 +153,10 @@ def format(source: str) -> str:
 
 
 def parse(
-    source: str, *, url: str, document_kind: DocumentKind | None = None
+    source: str | Path | ModelSource | Draft,
+    *,
+    url: str | None = None,
+    document_kind: DocumentKind | None = None,
 ) -> ParseReport:
     """Parse source and return locations, symbols, imports and table references.
 
@@ -181,14 +186,15 @@ def parse(
     >>> report = pm.parse("run: missing_source", url="memory://tour/model.malloy")
     >>> len(report.diagnostics)
     0
-    >>> pm.check("run: missing_source").ok
+    >>> pm.connect().check('run: missing_source').ok
     False
     """
     deadline = time.monotonic() + 30
+    identity, text, _, kind = open_source(
+        source, url=url, document_kind=document_kind, root=Path.cwd()
+    )
     with compiler_lease(deadline) as compiler:
-        return compiler.parse(
-            source, url=url, document_kind=document_kind, deadline=deadline
-        )
+        return compiler.parse(text, url=identity, document_kind=kind, deadline=deadline)
 
 
 def parse_syntax(source: str, *, url: str, format: bool = False) -> SyntaxNode:

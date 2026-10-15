@@ -3,16 +3,16 @@ from pathlib import Path
 from typing import Any
 
 from pymalloy._model import DEFAULT_CONNECTION
-from pymalloy._model.errors import CompilationError, SchemaError
 from pymalloy._model.selection import query_names
+from pymalloy.errors import CompilationError, SchemaError
 from pymalloy.export._bundle import SourceBundle, bundle
-from pymalloy.export._document import Document, Markdown, Profile, QueryCell
+from pymalloy.export._document import Document, MarkdownCell, NotebookQuery, Profile
 
 __all__ = [
     "Document",
-    "Markdown",
+    "MarkdownCell",
+    "NotebookQuery",
     "Profile",
-    "QueryCell",
     "SourceBundle",
     "bundle",
     "prepare",
@@ -20,7 +20,7 @@ __all__ = [
 
 
 def prepare(
-    model: str | Path,
+    path: str | Path,
     *,
     profile: Profile | str = Profile.PRECOMPILED,
     connection_name: str = DEFAULT_CONNECTION,
@@ -42,7 +42,7 @@ def prepare(
     """
     from pymalloy.export._compile import compile_document
 
-    path = Path(model).resolve()
+    path = Path(path).resolve()
     root = Path(data_root).resolve() if data_root is not None else path.parent
     selected = query_names(queries, all=all)
     db = Path(database).resolve() if database is not None else None

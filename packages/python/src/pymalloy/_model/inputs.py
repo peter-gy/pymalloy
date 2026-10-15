@@ -16,7 +16,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class MaterializedInput:
-    """Verified Parquet artifact owned by a DataInput.
+    """Verified Parquet artifact owned by a Input.
 
     Attributes
     ----------
@@ -47,7 +47,7 @@ class _Storage:
 
 
 @dataclass(frozen=True, eq=False)
-class DataInput:
+class Input:
     """An immutable Python-data capture retained by a fragment or draft.
 
     Obtain through Fragment.inputs or Draft.inputs after calling data. Direct
@@ -83,7 +83,7 @@ class DataInput:
         """Return the SHA-256 digest of the immutable captured Arrow IPC bytes."""
         return hashlib.sha256(self._ipc).hexdigest()
 
-    def arrow(self) -> Any:
+    def to_arrow(self) -> Any:
         """Read the captured values as an Arrow table.
 
         Returns
@@ -96,38 +96,14 @@ class DataInput:
         >>> import pymalloy as pm
         >>> import pyarrow as pa
         >>> source = pm.data(pa.table({"n": [1, 2]}), name="numbers")
-        >>> source.inputs[0].arrow().to_pylist()
+        >>> source.inputs[0].to_arrow().to_pylist()
         [{'n': 1}, {'n': 2}]
         """
         import pyarrow as pa
 
         return pa.ipc.open_stream(pa.py_buffer(self._ipc)).read_all()
 
-    def materialize(self) -> MaterializedInput:
-        """Write and verify an owned Parquet file once, then reuse it.
-
-        Returns
-        -------
-        MaterializedInput
-            Path, SHA-256 file digest, schemas and row count. The path remains valid
-            while its DataInput owner is alive. Concurrent calls share the same file.
-
-        Notes
-        -----
-        Runtime and export APIs manage this automatically. Verification checks exact
-        values, schema and row count before publishing the materialization.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> import pyarrow as pa
-        >>> source = pm.data(pa.table({"n": [1, 2]}), name="numbers")
-        >>> captured = source.inputs[0]
-        >>> captured.materialize().rows
-        2
-        >>> captured.materialize().path.is_file()
-        True
-        """
+    def _materialize(self) -> MaterializedInput:
         import pyarrow.parquet as pq
 
         with self._storage.lock:
@@ -135,7 +111,7 @@ class DataInput:
                 directory = tempfile.TemporaryDirectory(prefix="pymalloy-input-")
                 path = Path(directory.name) / "data.parquet"
                 try:
-                    table = self.arrow()
+                    table = self.to_arrow()
                     pq.write_table(
                         table,
                         path,
@@ -180,7 +156,7 @@ class DataInput:
             return self._storage.artifact
 
 
-def snapshot_data(value: Any, *, name: str | None = None) -> DataInput:
+def snapshot_data(value: Any, *, name: str | None = None) -> Input:
     try:
         import pyarrow as pa
     except ModuleNotFoundError as error:
@@ -227,7 +203,7 @@ def snapshot_data(value: Any, *, name: str | None = None) -> DataInput:
     with pa.ipc.new_stream(sink, table.schema) as writer:
         writer.write_table(table)
     identity = uuid.uuid4().hex
-    return DataInput(
+    return Input(
         name or f"input_{identity}",
         identity,
         table.num_rows,

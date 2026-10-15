@@ -23,7 +23,8 @@ orders = (
     .doc("One row per order, with amounts in USD.")
 )
 candidate = pm.draft().define(orders=orders)
-report = candidate.validate(
+report = pm.connect().validate(
+    candidate,
     {
         "unique_order_id": pm.ref("orders").pipe(
             pm.query(
@@ -40,7 +41,7 @@ report = candidate.validate(
                 pm.aggregate(pm.col("revenue")), pm.having(pm.col("revenue") != 42)
             )
         ),
-    }
+    },
 )
 with TemporaryDirectory() as directory:
     path = report.save(Path(directory) / "orders.malloy", warnings_as_errors=True)
@@ -56,11 +57,11 @@ with TemporaryDirectory() as directory:
         )
     )
     assert "average_order" not in loaded["orders"].names
-    model = updated.compile()
+    model = pm.connect().model(updated)
     try:
-        assert model.query("orders.by_region").preview().rows() == [
+        assert model.query("orders.by_region").preview().to_pylist() == [
             {"region": "North", "revenue": 42}
         ]
-        print(model.query("orders.by_region").preview().rows())
+        print(model.query("orders.by_region").preview().to_pylist())
     finally:
         model.close()

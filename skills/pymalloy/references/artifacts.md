@@ -26,45 +26,80 @@ with tempfile.TemporaryDirectory() as temporary:
     data.write_text("id,region,amount\n1,North,12\n2,South,20\n3,North,8\n")
     candidate = (
         pm.draft("##! experimental.givens\ngiven: minimum :: number is 0\n")
-        .define(orders=pm.table(data).extend(
-            pm.primary_key("id"),
-            pm.measure(revenue=pm.col("amount").sum().doc("Booked value in source price units.")),
-        ).doc("One order per id in this captured input."))
-        .define(selected=pm.ref("orders").extend(
-            pm.where(pm.col("amount") >= pm.given("minimum")),
-        ).doc("Orders meeting the selected minimum amount."))
-        .queries(by_region=pm.ref("selected").pipe(pm.query(
-            pm.group_by(pm.col("region")),
-            pm.aggregate(pm.col("revenue")),
-            pm.order_by(pm.col("region")),
-        )))
+        .define(
+            orders=pm.table(data)
+            .extend(
+                pm.primary_key("id"),
+                pm.measure(
+                    revenue=pm.col("amount")
+                    .sum()
+                    .doc("Booked value in source price units.")
+                ),
+            )
+            .doc("One order per id in this captured input.")
+        )
+        .define(
+            selected=pm.ref("orders")
+            .extend(
+                pm.where(pm.col("amount") >= pm.given("minimum")),
+            )
+            .doc("Orders meeting the selected minimum amount.")
+        )
+        .queries(
+            by_region=pm.ref("selected").pipe(
+                pm.query(
+                    pm.group_by(pm.col("region")),
+                    pm.aggregate(pm.col("revenue")),
+                    pm.order_by(pm.col("region")),
+                )
+            )
+        )
     )
     parameters = {"minimum": 10}
     checks = {
-        "nonempty": pm.ref("orders").pipe(pm.query(
-            pm.aggregate(rows=pm.count()), pm.having(pm.col("rows") == 0),
-        )),
-        "unique_id": pm.ref("orders").pipe(pm.query(
-            pm.group_by(pm.col("id")), pm.aggregate(rows=pm.count()),
-            pm.having(pm.col("rows") > 1),
-        )),
-        "non_null_id": pm.ref("orders").pipe(pm.query(
-            pm.where(pm.col("id").is_null()), pm.select(pm.col("id")),
-        )),
+        "nonempty": pm.ref("orders").pipe(
+            pm.query(
+                pm.aggregate(rows=pm.count()),
+                pm.having(pm.col("rows") == 0),
+            )
+        ),
+        "unique_id": pm.ref("orders").pipe(
+            pm.query(
+                pm.group_by(pm.col("id")),
+                pm.aggregate(rows=pm.count()),
+                pm.having(pm.col("rows") > 1),
+            )
+        ),
+        "non_null_id": pm.ref("orders").pipe(
+            pm.query(
+                pm.where(pm.col("id").is_null()),
+                pm.select(pm.col("id")),
+            )
+        ),
     }
-    accepted = candidate.validate(checks, givens=parameters).require_valid()
+    accepted = (
+        pm.connect().validate(candidate, checks, givens=parameters).require_valid()
+    )
     artifact = bundle(
-        accepted, workspace / "export", files={data: data},
-        query="by_region", givens=parameters,
+        accepted,
+        workspace / "export",
+        files={data: data},
+        query="by_region",
+        givens=parameters,
     )
     manifest = json.loads(artifact.manifest.read_text())
     data.unlink()
     relocated = workspace / "relocated"
     artifact.model.parent.rename(relocated)
-    model = pm.model(relocated / manifest["model"], data_root=relocated / manifest["data_root"])
+    model = pm.connect(data_root=relocated / manifest["data_root"]).model(
+        relocated / manifest["model"]
+    )
     try:
-        rows = model.query(manifest["query"]).run(givens=manifest["givens"]).rows()
-        assert rows == [{"region": "North", "revenue": 12}, {"region": "South", "revenue": 20}]
+        rows = model.query(manifest["query"]).run(givens=manifest["givens"]).to_pylist()
+        assert rows == [
+            {"region": "North", "revenue": 12},
+            {"region": "South", "revenue": 20},
+        ]
     finally:
         model.close()
 ```

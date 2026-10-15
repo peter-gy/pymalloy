@@ -60,10 +60,10 @@ def benchmark(samples: int) -> dict:
             cold_command = [
                 sys.executable,
                 "-c",
-                "import sys, pathlib, pymalloy as pm; pm.run(pathlib.Path(sys.argv[1]))",
+                "import sys, pathlib, pymalloy as pm; pm.connect().model(pathlib.Path(sys.argv[1])).query().run()",
                 str(source),
             ]
-            model = candidate.compile(connection=connection)
+            model = pm.connect(database=connection).model(candidate)
             try:
                 sql = model.query("totals").sql()
                 for index in range(samples):
@@ -76,11 +76,13 @@ def benchmark(samples: int) -> dict:
                     measure("parse_to_draft", lambda: pm.read_model(source))
                     measure("format_draft", candidate.format)
                     measure(
-                        "check_draft", lambda: candidate.check(connection=connection)
+                        "check_draft",
+                        lambda: pm.connect(database=connection).check(candidate),
                     )
                     measure(
                         "validate_draft",
-                        lambda: candidate.validate(
+                        lambda: pm.connect(database=connection).validate(
+                            candidate,
                             {
                                 "no_negative_revenue": pm.ref("orders").pipe(
                                     pm.query(
@@ -89,12 +91,11 @@ def benchmark(samples: int) -> dict:
                                     )
                                 )
                             },
-                            connection=connection,
                         ),
                     )
                     compiled = measure(
                         "compile_draft",
-                        lambda: candidate.compile(connection=connection),
+                        lambda: pm.connect(database=connection).model(candidate),
                     )
                     compiled.close()
                     edited = pm.ref("orders").pipe(

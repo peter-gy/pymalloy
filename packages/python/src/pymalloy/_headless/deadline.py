@@ -33,15 +33,13 @@ def interrupt_at(
 
     timer = threading.Timer(remaining, interrupt)
     timer.start()
-    user_interrupt = False
     try:
         yield
-    except (KeyboardInterrupt, SystemExit):
-        user_interrupt = True
+    except duckdb.InterruptException as error:
+        if expired.is_set():
+            raise TimeoutError(message) from error
         raise
     finally:
         completed.set()
         timer.cancel()
         timer.join()
-        if not user_interrupt and (expired.is_set() or time.monotonic() >= deadline):
-            raise TimeoutError(message)

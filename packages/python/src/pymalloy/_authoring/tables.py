@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pymalloy._authoring.identifiers import identifier
-from pymalloy._model.inputs import DataInput
+from pymalloy._model.inputs import Input
 
 
 def table_path(path: str | Path) -> str:
@@ -23,11 +23,11 @@ class TableReference:
     connection: str
     path: str
     source: str | None = None
-    data: DataInput | None = None
+    data: Input | None = None
 
     def render(self, *, materialize: bool = False) -> str:
         if self.data is not None and materialize:
-            path = table_path(self.data.materialize().path)
+            path = table_path(self.data._materialize().path)
         elif self.source is not None:
             return self.source
         else:

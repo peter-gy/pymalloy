@@ -127,7 +127,7 @@ def worker(
             duckdb.connect(
                 config={"memory_limit": "1GB", "threads": "1"}
             ) as connection,
-            closing(pm.model(model, data_root=data_root)) as loaded,
+            closing(pm.connect(data_root=data_root).model(model)) as loaded,
         ):
             connection.execute("SET VARIABLE data_root = ?", [str(data_root)])
             connection.execute("SET file_search_path = ?", [str(data_root)])
@@ -178,7 +178,7 @@ def worker(
                 item["verified"].append("reference")
                 if runtime:
                     actual = summarize_result(
-                        loaded.query(query.name).run().polars(), **policy
+                        loaded.query(query.name).run().to_polars(), **policy
                     )
                     compare_results(
                         expected, actual, sampled=query.name in sampled_queries
@@ -244,7 +244,7 @@ def main():
     parser.add_argument("--worker", type=Path)
     parser.add_argument("--match", default="")
     parser.add_argument(
-        "--runtime", action="store_true", help="also compare public Model.run results"
+        "--runtime", action="store_true", help="also compare public Query.run results"
     )
     parser.add_argument(
         "--execute-writes",

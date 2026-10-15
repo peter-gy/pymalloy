@@ -11,7 +11,7 @@ from pymalloy._authoring.annotations import annotation_text
 from pymalloy._authoring.identifiers import identifier
 from pymalloy._authoring.operations import normalize
 from pymalloy._authoring.tables import TableReference
-from pymalloy._model.inputs import DataInput
+from pymalloy._model.inputs import Input
 from pymalloy._notebook import NotebookDisplay
 from pymalloy._protocol.records import (
     ScalarSyntax,
@@ -42,7 +42,7 @@ class Fragment(NotebookDisplay):
         Rendered Malloy with logical references for captured data.
     names : tuple of str
         Bindings in this scope, excluding the contents of named child scopes.
-    inputs : tuple of DataInput
+    inputs : tuple of Input
         Captured data retained by this fragment and its children.
     kind : str
         Grammar category. Public constructors select the appropriate category.
@@ -170,9 +170,9 @@ class Fragment(NotebookDisplay):
         return "".join(parts)
 
     @cached_property
-    def inputs(self) -> tuple[DataInput, ...]:
+    def inputs(self) -> tuple[Input, ...]:
         """Return distinct captured input owners ordered by logical name."""
-        found: dict[str, DataInput] = {}
+        found: dict[str, Input] = {}
         pending: list[Fragment] = [self]
         while pending:
             node = pending.pop()
@@ -578,7 +578,7 @@ def named_clause(
 
 
 def from_wire(
-    node: SyntaxNode, inputs: Mapping[str, DataInput] | None = None
+    node: SyntaxNode, inputs: Mapping[str, Input] | None = None
 ) -> Fragment | Expr | TableReference:
     if isinstance(node, TableSyntax):
         data = (inputs or {}).get(node.path)

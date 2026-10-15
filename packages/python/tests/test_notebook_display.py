@@ -83,12 +83,12 @@ def test_expression_and_fragment_outputs_expose_authored_structure():
 def test_captured_source_inspection_and_retry_publish_valid_parquet(monkeypatch):
     source = pm.data(pa.table({"amount": [20, 22]}), name="orders")
     captured = source.inputs[0]
-    materialize = type(captured).materialize
+    materialize = type(captured)._materialize
 
     def fail_capture(_self):
         raise OSError("Capture storage unavailable")
 
-    monkeypatch.setattr(type(captured), "materialize", fail_capture)
+    monkeypatch.setattr(type(captured), "_materialize", fail_capture)
     widget = source._display_()
     try:
         assert to_dict(widget._definition["notebook"])["inputs"] == [
@@ -103,7 +103,7 @@ def test_captured_source_inspection_and_retry_publish_valid_parquet(monkeypatch)
         assert widget.state["error"] == "Capture storage unavailable"
         assert widget._definition == definition
         assert widget._input == inputs
-        monkeypatch.setattr(type(captured), "materialize", materialize)
+        monkeypatch.setattr(type(captured), "_materialize", materialize)
         widget.set_state({"_request": request})
         assert widget.state["status"] == "idle"
         assert widget._input["action"] == "run"
@@ -124,8 +124,8 @@ def test_native_query_display_uses_the_borrowed_connection_and_preserves_exact_v
         connection.execute(
             "CREATE TABLE values_table AS SELECT 9007199254740993::BIGINT AS id, 1.2300::DECIMAL(12,4) AS amount, [1, NULL, 3] AS nested FROM range(30)"
         )
-        model = pm.model(
-            "run: duckdb.table('values_table') -> {select: *}", connection=connection
+        model = pm.connect(database=connection).model(
+            "run: duckdb.table('values_table') -> {select: *}"
         )
         try:
             widget = model.query()._display_()
@@ -193,8 +193,13 @@ def test_transient_views_close_after_the_last_view_and_can_be_displayed_again():
 
 
 def test_materialized_result_display_requires_no_live_model(notebook_request):
-    result = pm.run(
-        "run: duckdb.sql('SELECT 42 AS answer FROM range(30)') -> {select: answer}"
+    result = (
+        pm.connect()
+        .model(
+            "run: duckdb.sql('SELECT 42 AS answer FROM range(30)') -> {select: answer}"
+        )
+        .query()
+        .run()
     )
     widget = result._display_()
     try:
@@ -205,6 +210,32 @@ def test_materialized_result_display_requires_no_live_model(notebook_request):
             pa.ipc.open_stream(buffers[0]).read_all().to_pylist()
             == [{"answer": 42}] * 20
         )
-        assert result.arrow().num_rows == 30
+        assert result.to_arrow().num_rows == 30
     finally:
         widget.close()
+
+
+@pytest.mark.parametrize("selection", ["model", "query"])
+def test_native_preview_uses_model_timeout(notebook_request, selection):
+    source = "run: duckdb.sql('SELECT i FROM range(100000000000) t(i)') -> {aggregate: total is i.sum()}"
+    with pm.connect() as connection:
+        model = connection.model(source, timeout=2)
+        subject = model if selection == "model" else model.query()
+        widget = pm.MalloyWidget(subject, auto_run=False)
+        try:
+            widget.set_state(
+                {
+                    "_request": {
+                        "revision": widget.get_state()["_input"]["revision"],
+                        "action": "run",
+                    }
+                }
+            )
+            response, _ = notebook_request(widget)
+            assert response["kind"] == "error"
+            assert "deadline" in response["message"]
+            assert model.query(
+                malloy="run: duckdb.sql('SELECT 42 AS value') -> {select: value}"
+            ).run().to_pylist() == [{"value": 42}]
+        finally:
+            widget.close()

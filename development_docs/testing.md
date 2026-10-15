@@ -95,7 +95,7 @@ uv run python packages/python/tests/check_samples.py /path/to/malloy-samples \
 `results.json` records the checkout revision and per-source outcomes. The checker
 verifies deterministic exports, executes marimo and Jupyter notebooks, and
 compares results by query selector against headless-model SQL. `--runtime` also
-compares `Model.run()`. Each query records which consumers passed.
+compares `Query.run()`. Each query records which consumers passed.
 
 Comparisons preserve column names, row and nested-list order, and exact floats.
 `--unordered` compares top-level rows as a multiset, preserving duplicates and

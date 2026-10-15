@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from difflib import unified_diff
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Unpack
+from typing import ClassVar, Literal
 
 from pymalloy._authoring.syntax import (
     Fragment,
@@ -15,7 +15,7 @@ from pymalloy._authoring.syntax import (
     named_clause,
     syntax,
 )
-from pymalloy._model.inputs import DataInput
+from pymalloy._model.inputs import Input
 from pymalloy._model.persistence import write_text
 from pymalloy._model.source import (
     DEFAULT_SOURCE_FILENAME,
@@ -27,13 +27,6 @@ from pymalloy._model.source import (
     validate_url,
 )
 from pymalloy._notebook import NotebookDisplay
-from pymalloy.validation import DocumentationPolicy
-
-if TYPE_CHECKING:
-    from pymalloy._headless.api import _RuntimeOptions
-    from pymalloy._headless.runtime import Model
-    from pymalloy.analysis import CheckReport
-    from pymalloy.validation import Validation
 
 
 @dataclass(frozen=True, eq=False)
@@ -53,7 +46,7 @@ class Draft(NotebookDisplay):
         Absolute source identity and base for relative imports.
     imports : mapping or None
         Closed imported source text, or None for live resolution at compile time.
-    inputs : tuple of DataInput
+    inputs : tuple of Input
         Immutable Python data captures retained by this draft.
     path : pathlib.Path or None
         Original file path when loaded with read_model(Path(...)).
@@ -316,7 +309,7 @@ class Draft(NotebookDisplay):
         return replace(self, syntax=formatted)
 
     @property
-    def inputs(self) -> tuple[DataInput, ...]:
+    def inputs(self) -> tuple[Input, ...]:
         """Return captured data owners, deduplicated and ordered by input name."""
         return self.syntax.inputs
 
@@ -326,118 +319,6 @@ class Draft(NotebookDisplay):
             text
             if self.imports is None
             else ModelSource(self.url, text, self.imports, self.document_kind)
-        )
-
-    def check(
-        self,
-        *,
-        documentation: DocumentationPolicy | None = None,
-        **options: Unpack[_RuntimeOptions],
-    ) -> CheckReport:
-        """Check names, types and schemas, with optional documentation lint.
-
-        Parameters
-        ----------
-        documentation : DocumentationPolicy, optional
-            Opt-in policy from pymalloy.validation. None performs compiler checks
-            alone. Documentation presence is not evidence of business correctness.
-        **options
-            Runtime options accepted by model, including data_root, connection,
-            connection_name, config, extensions, timeout and compiler_memory_mb.
-
-        Returns
-        -------
-        CheckReport
-            ok, diagnostics, source metadata, query inventory and tooling context.
-            Invalid Malloy is reported. Infrastructure failures still raise exceptions.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> candidate = pm.draft().define(values=pm.sql("SELECT 42 AS n"))
-        >>> candidate.check().ok
-        True
-        """
-        from pymalloy._headless import load_api
-        from pymalloy.validation import _checked
-
-        return _checked(load_api().check(self, url=self.url, **options), documentation)
-
-    def compile(self, **options: Unpack[_RuntimeOptions]) -> Model:
-        """Compile this revision into a reusable runtime model.
-
-        Parameters
-        ----------
-        **options
-            Runtime options accepted by model. The draft supplies its own identity,
-            imports and captured inputs. Requires pymalloy[headless].
-
-        Returns
-        -------
-        Model
-            A retained compiler and owned or borrowed engine connection. Reuse it
-            for repeated query preparation/execution, then call close.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> candidate = pm.draft().define(values=pm.sql("SELECT 42 AS n"))
-        >>> candidate = candidate.queries(answer=pm.ref("values").pipe(pm.query(pm.select(pm.col("n")))))
-        >>> model = candidate.compile()
-        >>> model.query("answer").run().rows()
-        [{'n': 42}]
-        >>> model.close()
-        """
-        from pymalloy._headless import load_api
-
-        return load_api().model(self, url=self.url, **options)
-
-    def validate(
-        self,
-        checks: Mapping[str, Fragment] | None = None,
-        *,
-        givens: Mapping[str, Any] | None = None,
-        documentation: DocumentationPolicy | None = None,
-        **options: Unpack[_RuntimeOptions],
-    ) -> Validation:
-        """Compile once and run named counterexample queries against the input data.
-
-        Parameters
-        ----------
-        checks : mapping of str to Fragment, optional
-            Assertion names mapped to source/query expressions that return bad rows.
-            Zero rows passes. A failing check retains one counterexample. No checks
-            means compilation alone, not a general proof of data quality.
-        givens : mapping, optional
-            Typed parameter values used by every check and retained in the report.
-        documentation : DocumentationPolicy, optional
-            Opt-in description-presence policy.
-        **options
-            Runtime options accepted by model. One timeout covers all validation work.
-
-        Returns
-        -------
-        Validation
-            Captured source and per-check evidence. Failed compilation/assertions
-            make ok false. Infrastructure errors propagate. Owned resources close
-            before return, while borrowed connections stay caller-owned.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> candidate = pm.draft().define(orders=pm.sql("SELECT 42 AS amount"))
-        >>> accepted = candidate.validate({
-        ...     "nonnegative_amount": pm.ref("orders").pipe(pm.query(
-        ...         pm.where(pm.col("amount") < 0), pm.select(pm.col("amount")),
-        ...     )),
-        ... })
-        >>> accepted.ok, accepted.checks[0].status
-        (True, 'passed')
-        """
-        from pymalloy._headless import load_api
-
-        return load_api().validate(
-            self, checks or {}, givens=givens, documentation=documentation, **options
         )
 
     def save(self, path: str | Path | None = None, *, overwrite: bool = False) -> Path:
@@ -476,7 +357,7 @@ class Draft(NotebookDisplay):
         """
         if self.inputs:
             raise ValueError(
-                "Drafts with captured data require bundle(draft.validate(), directory)"
+                "Drafts with captured data require bundle(connection.validate(draft), directory)"
             )
         target = Path(path).resolve() if path is not None else self.path
         if target is None:

@@ -20,12 +20,13 @@ from pymalloy._authoring.syntax import (
 )
 from pymalloy._authoring.tables import TableReference, table_path
 from pymalloy._model import DEFAULT_CONNECTION
-from pymalloy._model.inputs import snapshot_data
+from pymalloy._model.inputs import Input, snapshot_data
 from pymalloy._protocol.records import SyntaxOperationKind
 from pymalloy.expressions import Expr, Sort
 
 __all__ = [
     "Fragment",
+    "Input",
     "aggregate",
     "data",
     "dimension",
@@ -131,7 +132,7 @@ def data(
     >>> source = pm.data(frame, name="orders")
     >>> source.inputs[0].rows
     2
-    >>> source.inputs[0].arrow().to_pylist() == frame.to_dicts()
+    >>> source.inputs[0].to_arrow().to_pylist() == frame.to_dicts()
     True
     """
     captured = snapshot_data(frame, name=name)
@@ -166,7 +167,7 @@ def sql(text: str, *, connection: str = DEFAULT_CONNECTION) -> Fragment:
     >>> candidate = candidate.queries(answer=pm.ref("values").pipe(
     ...     pm.query(pm.select(pm.col("answer")))
     ... ))
-    >>> pm.run(candidate).rows()
+    >>> pm.connect().model(candidate).query().run().to_pylist()
     [{'answer': 42}]
     """
     return construct(

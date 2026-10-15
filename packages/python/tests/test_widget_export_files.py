@@ -1,7 +1,7 @@
 import pytest
 from test_compile import run_notebook
 
-from pymalloy import CompilationError
+from pymalloy.errors import CompilationError
 from pymalloy.export import marimo, prepare
 
 

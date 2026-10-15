@@ -20,11 +20,11 @@ import pymalloy as pm
 source = """source: values is duckdb.sql("SELECT 'invalid' AS value")
 query: numeric is values -> { select: value is value::number }
 """
-model = pm.model(source)
+model = pm.connect().model(source)
 try:
     try:
         model.query("numeric").run()
-    except pm.ExecutionError as error:
+    except pm.errors.ExecutionError as error:
         context = error.context
         assert isinstance(error.__cause__, duckdb.ConversionException)
         assert context.query.name == "numeric"
@@ -36,11 +36,11 @@ finally:
     model.close()
 
 # Replay after the original runtime has closed.
-replay = pm.model(context.source, connection_name=context.connection_name)
+replay = pm.connect(name=context.connection_name).model(context.source)
 try:
     try:
         replay.query(context.query.name).run(givens=context.givens)
-    except pm.ExecutionError as repeated:
+    except pm.errors.ExecutionError as repeated:
         assert repeated.context.sql == context.sql
 finally:
     replay.close()
