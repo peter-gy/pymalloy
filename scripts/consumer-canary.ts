@@ -23,6 +23,7 @@ try {
   await writeFile(
     join(directory, "package.json"),
     JSON.stringify({
+      packageManager: JSON.parse(await readFile(join(root, "package.json"), "utf8")).packageManager,
       private: true,
       type: "module",
       dependencies,
@@ -44,12 +45,30 @@ try {
   await writeFile(
     join(directory, "consumer.ts"),
     `
-    export * as compiler from '@malloy-runtime/compiler';
-    export * as tooling from '@malloy-runtime/compiler/tooling';
-    export * as duckdb from '@malloy-runtime/duckdb';
-    export * as arrow from '@malloy-runtime/duckdb/arrow';
-    export * as native from '@malloy-runtime/node';
-    export * as browser from '@malloy-runtime/browser';
+    import {Session, Model, Query, ToolingError, type Result, type ModelSource, type QueryOptions} from '@malloy-runtime/node';
+    import {Session as BrowserSession, type Files} from '@malloy-runtime/browser';
+    import {parseSource, formatSource} from '@malloy-runtime/compiler/tooling';
+    import {type Inspection, type DocumentOptions} from '@malloy-runtime/compiler';
+    export async function native(source: ModelSource, options: QueryOptions): Promise<Result> {
+      const session = await Session.open();
+      try {
+        const model: Model = await session.model({source});
+        const query: Query = model.query();
+        const inspection: Inspection = model.inspect();
+        const document: DocumentOptions = {all: true};
+        await model.document(document);
+        parseSource(formatSource(model.source().text).source);
+        return await query.run(options);
+      } catch (error) {
+        if (error instanceof ToolingError) console.error(error.diagnostics);
+        throw error;
+      } finally {await session.close();}
+    }
+    export async function browser(files: Files) {
+      const session = await BrowserSession.open();
+      try {return await session.run('run: duckdb.sql("SELECT 42 AS answer") -> {select:*}', {files});}
+      finally {await session.close();}
+    }
   `,
   );
   for (const [module, moduleResolution] of [
@@ -77,6 +96,12 @@ try {
     `
     import {strict as assert} from 'node:assert';
     import {Session} from '@malloy-runtime/node';
+    import {Worker} from 'node:worker_threads';
+    import * as compiler from '@malloy-runtime/compiler';
+    globalThis.Worker = Worker;
+    const browser = await import('@malloy-runtime/browser');
+    for (const name of ['Model', 'Query', 'ToolingError']) assert.equal(browser[name], compiler[name]);
+    assert.ok(new browser.ToolingError('fixture') instanceof compiler.ToolingError);
     import {parseSource} from '@malloy-runtime/compiler/tooling';
     const session=await Session.open();
     try {
@@ -90,10 +115,18 @@ try {
   execFileSync("node", ["native.mjs"], { cwd: directory, stdio: "inherit" });
   await writeFile(
     join(directory, "browser.mjs"),
-    "export {Session} from '@malloy-runtime/browser';",
+    `
+    import * as browser from '@malloy-runtime/browser';
+    import * as compiler from '@malloy-runtime/compiler';
+    for (const name of ['Model', 'Query', 'ToolingError']) {
+      if (browser[name] !== compiler[name]) throw new Error(name + ' class identity differs');
+    }
+    export {Session, Model, Query, ToolingError} from '@malloy-runtime/browser';
+    `,
   );
   await build({
     configFile: false,
+    define: { "process.env": "{}", global: "globalThis" },
     root: directory,
     build: {
       lib: {
@@ -101,12 +134,33 @@ try {
         formats: ["es"],
         fileName: () => "browser.mjs",
       },
-      outDir: join(root, "nogit/consumer-canary"),
+      outDir: join(directory, "dist"),
       emptyOutDir: true,
     },
   });
+  execFileSync(
+    "pnpm",
+    [
+      "--filter",
+      "@pymalloy/e2e",
+      "exec",
+      "playwright",
+      "test",
+      "--project=browser",
+      "--reporter=list",
+      "--output",
+      join(directory, "test-results"),
+      "--grep",
+      "retained models own competing file mappings and preserve exact result values",
+    ],
+    {
+      cwd: root,
+      stdio: "inherit",
+      env: { ...process.env, PYMALLOY_BROWSER_BUNDLE: join(directory, "dist", "browser.mjs") },
+    },
+  );
   console.log(
-    "Installed declarations passed NodeNext and Bundler typechecks. Node executed exact results. Browser consumer bundle built.",
+    "Installed declarations passed NodeNext and Bundler typechecks. Node executed exact results. Packed browser executed exact results and shared compiler classes.",
   );
 } finally {
   await rm(directory, { recursive: true, force: true });

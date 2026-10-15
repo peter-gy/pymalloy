@@ -21,6 +21,7 @@ try {
 Models accept text, a URL, or `ModelSource` plus virtual files. URL descriptors
 require CORS. Models share the compiler's Model/Query/Result contract with Node, including
 class identity. The application bundler resolves the browser package's runtime
-dependencies.
+dependencies. `pnpm canary` installs packed packages, checks their declarations,
+and executes the packed browser bundle through the browser acceptance test.
 
 [Browser API](https://peter-gy.github.io/pymalloy/reference/browser)
