@@ -114,7 +114,7 @@ class Compiler:
             for need in response.needs.schemas:
                 check_deadline()
                 try:
-                    schemas[need.key] = SchemaValue(value=describe(need))
+                    schemas[need.key] = SchemaValue(value=tuple(describe(need)))
                 except SchemaError as error:
                     schema_error = error
                     schemas[need.key] = HostError(error=str(error))
