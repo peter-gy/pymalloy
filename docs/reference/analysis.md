@@ -6,9 +6,10 @@ Language tools return typed Python records generated from the compiler schema:
 import pymalloy as pm
 from pymalloy.analysis import SourcePosition, to_dict
 
-report = pm.connect().check(
-    "run: missing", position=SourcePosition(line=0, character=5)
-)
+with pm.connect() as connection:
+    report = connection.check(
+        "run: missing", position=SourcePosition(line=0, character=5)
+    )
 print(report.ok, to_dict(report.diagnostics))
 ```
 
@@ -30,11 +31,17 @@ Coordinates are zero-based code-point offsets. `SourcePosition` uses named
 
 `Inspection` contains typed givens, annotations, dependencies, imports, queries,
 diagnostics and upstream model schemas. Positional inspection also includes
-`reference` and `import_` when requested. Optional fields may be absent.
+`reference` and `import_` when requested. Optional record fields default to `None`.
 
-`QueryDescriptor` contains `name`, `kind`, and `location`. `NativeMetadata.model`
-and `.sources` retain upstream Malloy schema records. Required givens may defer
-the whole-model schema while source schemas remain available.
+`QueryDescriptor` contains `name`, `kind`, `location`, and `schema`. Each compiled
+run or named query carries its own output schema. A query with required unbound
+givens has `schema=None`. For `run:0`, `run:1`, and `run:2`, each descriptor keeps
+its authored ordinal even when `run:1` requires givens. Source views and SQL
+document cells resolve their output during preparation or execution.
+
+`NativeMetadata.model` and `.sources` retain upstream Malloy schema records.
+Source schemas remain available when queries require givens. Read query output
+from `QueryDescriptor.schema`. The upstream model's `anonymous_queries` is empty.
 
 Records are immutable. `to_dict(value)` converts records, mappings, and sequences
 into detached dictionaries and lists. Record fields use Python names, including

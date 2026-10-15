@@ -665,14 +665,16 @@ test("inspection retains independent query outputs when a query requires givens"
     source: numbers is duckdb.sql('SELECT 42 AS value')
     query: filtered is numbers -> {select: value where: value > $cutoff}
     query: ready is numbers -> {select: doubled is value * 2}
+    run: numbers -> {select: first is value}
     run: numbers -> {select: value where: value > $cutoff}
-    run: numbers -> {select: value}
+    run: numbers -> {select: last is value * 2}
   `,
   });
   const inspection = model.inspect();
   expect(inspection.queries.map((query) => query.name)).toEqual([
     "run:0",
     "run:1",
+    "run:2",
     "filtered",
     "ready",
   ]);
@@ -681,8 +683,17 @@ test("inspection retains independent query outputs when a query requires givens"
       { name: "numbers", schema: { fields: [{ name: "value", type: { kind: "number_type" } }] } },
       { name: "ready", schema: { fields: [{ name: "doubled", type: { kind: "number_type" } }] } },
     ],
-    anonymous_queries: [{ schema: { fields: [{ name: "value", type: { kind: "number_type" } }] } }],
+    anonymous_queries: [],
   });
+  expect(inspection.queries).toMatchObject([
+    { name: "run:0", schema: { fields: [{ name: "first", type: { kind: "number_type" } }] } },
+    { name: "run:1", schema: null },
+    { name: "run:2", schema: { fields: [{ name: "last", type: { kind: "number_type" } }] } },
+    { name: "filtered", schema: null },
+    { name: "ready", schema: { fields: [{ name: "doubled", type: { kind: "number_type" } }] } },
+  ]);
+  expect(model.queries).toEqual(inspection.queries);
+  expect(model.query("run:2").schema?.fields.map((field) => field.name)).toEqual(["last"]);
   expect((await model.query("filtered").run({ givens: { cutoff: 0 } })).rows).toEqual([
     { value: 42 },
   ]);

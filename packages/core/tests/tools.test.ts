@@ -337,7 +337,10 @@ test("inspection keeps source schemas distinct from named query outputs and call
   await drive(uninspected.prepare(adhoc));
   const firstAfterQuery = uninspected.inspect();
   expect(firstAfterQuery.model.sources).toEqual(retained.model.sources);
-  expect(firstAfterQuery.queries).toEqual(retained.queries);
+  expect(firstAfterQuery.queries).toMatchObject([
+    { name: "run:0", kind: "run", schema: { fields: [{ name: "value" }] } },
+    { name: "projected", kind: "named", schema: { fields: [{ name: "renamed" }] } },
+  ]);
 });
 
 test("query name collisions remain explainable in check reports", async () => {

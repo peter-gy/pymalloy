@@ -108,6 +108,7 @@ export class Query implements QueryDescriptor {
   readonly name: string;
   readonly kind: QueryDescriptor["kind"];
   readonly location: QueryDescriptor["location"];
+  readonly schema: QueryDescriptor["schema"];
   private constructor(
     info: QueryDescriptor,
     private readonly compile: (options: QueryOptions) => Promise<string>,
@@ -116,6 +117,7 @@ export class Query implements QueryDescriptor {
     this.name = info.name;
     this.kind = info.kind;
     this.location = info.location;
+    this.schema = info.schema;
   }
   static {
     createQuery = (info, compile, execute) => new Query(info, compile, execute);
