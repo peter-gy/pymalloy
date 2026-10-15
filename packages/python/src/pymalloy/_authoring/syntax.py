@@ -53,7 +53,7 @@ class Syntax(NotebookDisplay):
                 raise ValueError("A binding requires a name")
             if sum(_is_expression(p) for p in self.parts) != 1 or any(
                 child.kind not in {"expression", "annotation", "clause"}
-                for child in self._fragments
+                for child in self._children
             ):
                 raise ValueError(
                     "A binding requires one expression and optional annotations"
@@ -69,7 +69,7 @@ class Syntax(NotebookDisplay):
             raise ValueError("Only a binding has a name")
 
     @cached_property
-    def _fragments(self) -> tuple[Syntax, ...]:
+    def _children(self) -> tuple[Syntax, ...]:
         return tuple(p for p in self.parts if isinstance(p, Syntax))
 
     @cached_property
@@ -127,7 +127,7 @@ class Syntax(NotebookDisplay):
                     and part._operation.kind == "block"
                 ):
                     pending.append(("  " * depth + "}", depth))
-                    for clause in reversed(part._fragments):
+                    for clause in reversed(part._children):
                         pending.extend(
                             (
                                 ("\n", depth),
@@ -193,13 +193,13 @@ class Syntax(NotebookDisplay):
         return ""
 
     def _bindings(self) -> Iterator[Syntax]:
-        pending = list(reversed(self._fragments))
+        pending = list(reversed(self._children))
         while pending:
             child = pending.pop()
             if child.kind in {"source", "query", "field"}:
                 yield child
             elif child.kind != "annotation":
-                pending.extend(reversed(child._fragments))
+                pending.extend(reversed(child._children))
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -318,7 +318,7 @@ class Syntax(NotebookDisplay):
                     )
                 )
                 return replace(node, parts=(*notes, *parts))
-            if not node._fragments:
+            if not node._children:
                 return node
             return replace(
                 node,
@@ -401,11 +401,9 @@ def _listed_keyword(clause: Syntax) -> str | None:
     if clause._operation is None:
         return None
     keyword = clause._operation.kind
-    bindings = [
-        child for child in clause._fragments if child.kind in {"field", "query"}
-    ]
+    bindings = [child for child in clause._children if child.kind in {"field", "query"}]
     annotated = any(
-        note.kind == "annotation" for child in bindings for note in child._fragments
+        note.kind == "annotation" for child in bindings for note in child._children
     )
     if keyword in {"dimension", "measure", "view", "nest", "calculate"}:
         return keyword if annotated or len(bindings) > 1 else None
@@ -444,12 +442,16 @@ def _is_expression(value: object) -> bool:
 
 def expression(value: Syntax | Expr) -> Syntax:
     if not isinstance(value, Syntax) or value.kind != "expression":
-        raise TypeError("Use a source or query syntax fragment")
+        raise TypeError("Use a Source or View value")
     return value
 
 
 def scalar_expression(value: Syntax | Expr) -> Expr:
     if not isinstance(value, Expr):
+        if isinstance(value, str):
+            raise TypeError(
+                f"Write pm.col({value!r}) for a field or pm.lit({value!r}) for text"
+            )
         raise TypeError("Use col(), lit(), or Expr.raw() for scalar expressions")
     return value
 
@@ -473,7 +475,7 @@ def _notes(value: Syntax | Expr) -> tuple[tuple[Syntax, ...], Syntax | Expr]:
             isinstance(p, Syntax) and p.kind == "annotation" for p in value.parts[:-1]
         )
     ):
-        return value._fragments[:-1], value._fragments[-1]
+        return value._children[:-1], value._children[-1]
     return (), value
 
 

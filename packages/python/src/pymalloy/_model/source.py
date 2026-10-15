@@ -120,6 +120,13 @@ def resolve_source(
     if isinstance(source, ModelSource):
         return source.url, source.text, source.imports
     if isinstance(source, str):
+        name = source.strip()
+        if name.endswith((".malloy", ".malloynb", ".malloysql")) and not any(
+            character.isspace() for character in name
+        ):
+            raise TypeError(
+                f"A string is Malloy source text. Pass Path({name!r}) to read a file."
+            )
         return url or (root / DEFAULT_SOURCE_FILENAME).as_uri(), source, None
     raise TypeError("source must be Malloy text, a Path, or ModelSource")
 

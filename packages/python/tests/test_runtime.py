@@ -379,7 +379,9 @@ def test_model_rejects_ambiguous_query_selection():
     model = pm.connect().model(ONE)
     with pytest.raises(ValueError, match="query selection or Malloy text"):
         model.query("run:0", malloy=ONE).run().to_polars()
-    with pytest.raises(ValueError, match="Choose a query"):
+    with pytest.raises(
+        ValueError, match="Unknown query 'missing'. Choose one of: run:0"
+    ):
         model.query("missing").run().to_polars()
     assert model.query().run().to_polars().item() == 1
 
@@ -762,3 +764,28 @@ def test_extension_initialization_shares_the_startup_deadline(monkeypatch, opera
     assert len(connections) == 1
     with pytest.raises(duckdb.ConnectionException, match="closed"):
         connections[0].execute("SELECT 1")
+
+
+def test_query_selection_errors_name_the_next_step():
+    source = pm.sql("SELECT 1 AS value")
+    with pm.connect() as con:
+        with pytest.raises(ValueError, match="has no queries"):
+            con.model(pm.draft().sources(values=source)).query()
+        several = (
+            pm.draft()
+            .sources(values=source)
+            .queries(
+                a=pm.source("values").pipe(pm.view().select("value")),
+                b=pm.source("values").pipe(pm.view().select("value")),
+            )
+        )
+        with pytest.raises(ValueError, match="several queries. Choose one of: a, b"):
+            con.model(several).query()
+
+
+def test_file_name_text_points_to_path():
+    with (
+        pm.connect() as con,
+        pytest.raises(TypeError, match=r"Pass Path\('orders.malloy'\)"),
+    ):
+        con.model("orders.malloy")

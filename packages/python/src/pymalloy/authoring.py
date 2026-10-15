@@ -47,7 +47,7 @@ __all__ = [
 
 def _append_clause(node: _Syntax, clause: _Syntax) -> _Syntax:
     if node._layout:
-        return block((*node._fragments, clause))
+        return block((*node._children, clause))
     parts = list(node.parts)
     if not parts or not isinstance(parts[-1], str) or "}" not in parts[-1]:
         raise ValueError("A query block requires a closing brace")
@@ -154,7 +154,7 @@ class Source(_Builder):
     def _add(self, clause: _Syntax) -> Source:
         notes, value = _notes(self)
         assert isinstance(value, _Syntax)
-        children = value._fragments
+        children = value._children
         if (
             value._operation
             and value._operation.kind == "extend"
@@ -465,7 +465,7 @@ class View(_Builder):
                 and clause._operation.kind == "limit"
                 and any(
                     child._operation and child._operation.kind == "limit"
-                    for child in value._fragments
+                    for child in value._children
                 )
             ):
                 raise ValueError("Query operation already limited")

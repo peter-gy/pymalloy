@@ -428,12 +428,12 @@ def draft(
     url: str | None = None,
     imports: Mapping[str, str] | None = None,
 ) -> Draft:
-    """Create an immutable model draft from syntax fragments or literal text.
+    """Create an immutable model draft from Source values or literal text.
 
     Parameters
     ----------
     *parts : str, Source, or View
-        Ordered source text and fragments, concatenated without parsing.
+        Ordered source text and Source values, concatenated without parsing.
         Use sources and queries to introduce editable named declarations.
     url : str, optional
         Absolute model identity used to resolve imports and report locations.

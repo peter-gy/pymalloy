@@ -370,9 +370,17 @@ class Model(NotebookDisplay):
             )
         info = next((q for q in self.queries if q.name == name), None)
         if info is None:
-            raise ValueError(
-                f"Choose a query from: {', '.join(q.name for q in self.queries)}"
-            )
+            available = ", ".join(q.name for q in self.queries)
+            if not available:
+                raise ValueError(
+                    "This model has no queries. Bind one with Draft.queries "
+                    "or pass malloy= query text."
+                )
+            if name is None:
+                raise ValueError(
+                    f"This model has several queries. Choose one of: {available}"
+                )
+            raise ValueError(f"Unknown query {name!r}. Choose one of: {available}")
         return Query(self, info, info.name)
 
     def source(self) -> ModelSource:

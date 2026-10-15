@@ -229,7 +229,7 @@ def test_symbolic_values_cannot_be_used_as_python_conditions_or_implicit_code():
         lambda: pm.view().where("amount > 0"),
         lambda: pm.view().order_by(42),
     ]:
-        with pytest.raises(TypeError, match="symbolic|scalar"):
+        with pytest.raises(TypeError, match="pm.col|symbolic|scalar"):
             operation()
     for invalid in [float("nan"), float("inf"), decimal.Decimal("NaN")]:
         with pytest.raises(TypeError):

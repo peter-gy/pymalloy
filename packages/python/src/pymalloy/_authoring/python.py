@@ -88,7 +88,7 @@ class _Emitter:
         rendered = (
             self._stage(values[0], depth)
             if category == "Nest" and not suffix and isinstance(values[0], Syntax)
-            else self._fragment(
+            else self._child(
                 values[0],
                 depth,
                 "View" if node.kind == "query" and category != "Draft" else "Source",
@@ -122,7 +122,7 @@ class _Emitter:
                 ):
                     args.append(repr(".".join(part._node.path)))
                 else:
-                    args.append(self._fragment(part, depth))
+                    args.append(self._child(part, depth))
             elif isinstance(part, Syntax) and part.kind in {
                 "source",
                 "query",
@@ -192,10 +192,10 @@ class _Emitter:
             value = str(int(values[0])) if kind == "limit" else repr(values[0])
             return f".{method}({value})"
         if kind == "order_by":
-            args = [self._fragment(child, depth + 1) for child in children]
+            args = [self._child(child, depth + 1) for child in children]
         elif kind in {"where", "having"}:
             args = (
-                [self._fragment(child, depth + 1) for child in children]
+                [self._child(child, depth + 1) for child in children]
                 if len(children) == 1 and isinstance(children[0], Expr)
                 else None
             )
@@ -211,10 +211,10 @@ class _Emitter:
         keyword = node.parts[0].strip().removesuffix(":")
         if (
             keyword not in {"join_one", "join_many", "join_cross"}
-            or len(node._fragments) != 1
+            or len(node._children) != 1
         ):
             return None
-        bound = node._fragments[0]
+        bound = node._children[0]
         if bound.kind != "source" or bound.name is None:
             return None
         values = [
@@ -234,11 +234,11 @@ class _Emitter:
         ):
             return None
         suffix = _annotation_suffix(
-            [part for part in bound._fragments if part.kind == "annotation"]
+            [part for part in bound._children if part.kind == "annotation"]
         )
         if suffix is None:
             return None
-        args = [repr(bound.name), self._fragment(values[0], depth + 1) + suffix]
+        args = [repr(bound.name), self._child(values[0], depth + 1) + suffix]
         if conditions:
             condition = conditions[0]
             if (
@@ -247,7 +247,7 @@ class _Emitter:
                 or not isinstance(condition.parts[0], Expr)
             ):
                 return None
-            args.append("on=" + self._fragment(condition.parts[0], depth + 1))
+            args.append("on=" + self._child(condition.parts[0], depth + 1))
         elif keyword != "join_cross":
             return None
         return _call("." + keyword, args, depth)
@@ -281,7 +281,7 @@ class _Emitter:
             and isinstance(node.parts[2], Syntax)
         ):
             return self._chain(
-                node.parts[2], self._fragment(node.parts[0], depth, "View"), depth
+                node.parts[2], self._child(node.parts[0], depth, "View"), depth
             )
         operation = node._operation
         if operation is None:
@@ -311,11 +311,11 @@ class _Emitter:
             and len(children) == 1
             and isinstance(children[0], Expr)
         ):
-            return self._fragment(children[0], depth) + f".{constructor}()"
+            return self._child(children[0], depth) + f".{constructor}()"
         if kind == "block":
             return self._chain(node, "pm.view()", depth)
         if kind == "extend" and len(children) == 2 and isinstance(children[1], Syntax):
-            return self._chain(children[1], self._fragment(children[0], depth), depth)
+            return self._chain(children[1], self._child(children[0], depth), depth)
         if kind == "pipe" and len(children) >= 2:
             stages: list[Syntax] = []
             separator = ""
@@ -338,7 +338,7 @@ class _Emitter:
             if base is None or separator.strip():
                 return None
             args = [self._stage(stage, depth + 1) for stage in stages]
-            return _call(self._fragment(base, depth, category) + ".pipe", args, depth)
+            return _call(self._child(base, depth, category) + ".pipe", args, depth)
         return None
 
     def _stage(self, node: Syntax | Expr, depth: int) -> str:
@@ -347,9 +347,9 @@ class _Emitter:
                 return self._stage(node.parts[0], depth)
             if node._operation and node._operation.kind == "ref":
                 return repr(node._operation.arguments[0])
-        return self._fragment(node, depth, "View")
+        return self._child(node, depth, "View")
 
-    def _fragment(
+    def _child(
         self, node: Syntax | Expr | TableReference, depth: int, category: str = "Source"
     ) -> str:
         if isinstance(node, TableReference):
@@ -380,7 +380,7 @@ class _Emitter:
             return constructor
         if node.kind == "expression":
             if len(node.parts) == 1 and not isinstance(node.parts[0], str):
-                return self._fragment(node.parts[0], depth, category)
+                return self._child(node.parts[0], depth, category)
             notes = [
                 part
                 for part in node.parts[:-1]
@@ -393,13 +393,13 @@ class _Emitter:
             ):
                 suffix = _annotation_suffix(notes)
                 if suffix is not None:
-                    return self._fragment(node.parts[-1], depth, category) + suffix
+                    return self._child(node.parts[-1], depth, category) + suffix
         return _call(
             f"pm.{category}.raw",
             [
                 repr(part)
                 if isinstance(part, str)
-                else self._fragment(part, depth + 1, category)
+                else self._child(part, depth + 1, category)
                 for part in node.parts
             ],
             depth,
@@ -430,7 +430,7 @@ class _Emitter:
                     )
                 value = _call("pm.read_model", [source, f"url={draft.url!r}"], 1)
             elif node.inputs:
-                value = self._fragment(node, 1)
+                value = self._child(node, 1)
             else:
                 value = repr(node.text)
             calls.append(_call(".append", [value], 0))
@@ -499,8 +499,8 @@ def python_source(
     connections: dict[str, set[str]] = {}
     pending = [draft.syntax]
     while pending:
-        fragment = pending.pop()
-        for part in fragment.parts:
+        node = pending.pop()
+        for part in node.parts:
             if isinstance(part, Syntax):
                 pending.append(part)
             elif isinstance(part, TableReference) and part.data is not None:
