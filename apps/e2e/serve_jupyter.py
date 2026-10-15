@@ -15,8 +15,7 @@ from jupyterlab.handlers.announcements import NeverCheckForUpdate
 from jupyterlab.labapp import LabApp
 
 CELLS = [
-    f"""import asyncio
-import json
+    f"""import json
 from IPython.display import display
 from pymalloy import MalloyWidget
 from pymalloy.analysis import to_dict
@@ -24,26 +23,20 @@ from pymalloy.analysis import to_dict
 source = {SOURCE!r}
 widget = MalloyWidget(source, files={{"sales.csv": {SALES!r}}}, query="sales.by_region")
 
-async def ready(expected_rows):
-    event = asyncio.Event()
-    def changed(change):
-        if widget.state.get("status") == "ready" and to_dict(widget.state["rows"]) == expected_rows:
-            event.set()
-    widget.observe(changed, names="state")
-    try:
-        changed(None)
-        await asyncio.wait_for(event.wait(), timeout=30)
-        return to_dict(widget.state)
-    finally:
-        widget.unobserve(changed, names="state")
+# The kernel applies browser state between cells, so a cell reads the state the
+# browser published before it started.
+def ready(expected_rows):
+    state = to_dict(widget.state)
+    assert state["status"] == "ready" and state["rows"] == expected_rows, state
+    return state
 
 display(widget)""",
-    """state = await ready([{"region": "North", "revenue": 42}, {"region": "South", "revenue": 30}])
+    """state = ready([{"region": "North", "revenue": 42}, {"region": "South", "revenue": 30}])
 print("Python rows:", json.dumps(state["rows"], sort_keys=True))""",
     """widget.givens = {"region_filter": "South"}
 widget.query = "sales.filtered"
 print("South selected in Python")""",
-    """state = await ready([{"revenue": 30}])
+    """state = ready([{"revenue": 30}])
 print("Python filtered:", json.dumps(state["rows"], sort_keys=True))""",
     """widget.query = "sales.by_region"
 display(widget)""",
@@ -54,7 +47,7 @@ print("Invalid model supplied")""",
 widget.source = source
 widget.query = "sales.by_region"
 print("Model and data replaced")""",
-    """state = await ready([{"region": "North", "revenue": 70}, {"region": "South", "revenue": 10}])
+    """state = ready([{"region": "North", "revenue": 70}, {"region": "South", "revenue": 10}])
 print("Python replacement:", json.dumps(state["rows"], sort_keys=True))""",
     """widget.close()
 print("Analysis closed")""",
