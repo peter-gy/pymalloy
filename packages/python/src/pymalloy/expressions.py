@@ -77,7 +77,7 @@ class Expr(NotebookDisplay):
 
     See Also
     --------
-    col, lit, given, measure, dimension
+    col, lit, given, Source.measure, Source.dimension
 
     Examples
     --------
@@ -573,8 +573,8 @@ class Expr(NotebookDisplay):
 
         See Also
         --------
-        where : Filter input rows for the whole source/query.
-        having : Filter aggregate output groups.
+        Source.where, View.where : Filter input rows for the whole source/query.
+        View.having : Filter aggregate output groups.
 
         Examples
         --------

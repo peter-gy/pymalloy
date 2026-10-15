@@ -238,7 +238,8 @@ class Validation:
     def source(self) -> ModelSource:
         """Return the accepted closed source snapshot for export.
 
-        Raises ValueError for failed validation or missing captured imports.
+        Raises ValidationError for failed validation and ValueError for missing
+        captured imports.
         Captured data owners accompany their logical references.
         """
         self.require_valid()

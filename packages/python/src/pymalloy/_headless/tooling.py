@@ -162,10 +162,11 @@ def parse(
 
     Parameters
     ----------
-    source : str
-        Malloy model or notebook-document text.
-    url : str
-        Absolute identity used in source locations and import URLs.
+    source : str, pathlib.Path, ModelSource, or Draft
+        Malloy text, a local file, a closed source graph, or an authored revision.
+    url : str, optional
+        Absolute identity for inline text, otherwise supplied by the source.
+        Inline text defaults to model.malloy in the current directory.
     document_kind : {"model", "notebook"}, optional
         Override extension-based classification of the supplied URL.
 
