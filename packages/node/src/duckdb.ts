@@ -60,11 +60,14 @@ export class DuckDBBackend {
         result.statementType === StatementType.COPY
           ? []
           : (result.convertRowObjects(convert) as Row[]);
+      const connectionName = this.connectionName;
       return {
         sql,
         columns,
         rows,
-        malloy: stableResult(sql, columns, rows, template, this.connectionName),
+        get malloy() {
+          return stableResult(sql, columns, rows, template, connectionName);
+        },
       };
     } finally {
       prepared.destroySync();

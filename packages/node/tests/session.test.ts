@@ -606,3 +606,52 @@ test("a rejected active query allows an immediate new selection on its retained 
   expect((await model.query("fast").run()).rows).toEqual([{ answer: 42 }]);
   expect(runtime.closed).toBe(false);
 });
+
+test("Session.run preserves TIME, INTERVAL and bigint MAP values through rendering", async () => {
+  const runtime = await session();
+  const result = await runtime.run(`run: duckdb.sql("""
+    SELECT TIME '12:34:56.123456' AS clock,
+      INTERVAL '14 months 3 days 1234567 microseconds' AS duration,
+      MAP([9007199254740993::BIGINT], [9007199254740995::BIGINT]) AS mapping,
+      {'clock': TIME '00:00:00.000001',
+       'durations': [INTERVAL '1 microsecond', NULL],
+       'maps': [MAP([9007199254740997::BIGINT], [9007199254740999::BIGINT])]} AS nested
+  """) -> { select: * }`);
+  expect(result.rows).toEqual([
+    {
+      clock: 45296123456n,
+      duration: { months: 14, days: 3, micros: 1234567n },
+      mapping: [{ key: 9007199254740993n, value: 9007199254740995n }],
+      nested: {
+        clock: 1n,
+        durations: [{ months: 0, days: 0, micros: 1n }, null],
+        maps: [[{ key: 9007199254740997n, value: 9007199254740999n }]],
+      },
+    },
+  ]);
+  expect(result.malloy.data).toEqual({
+    kind: "array_cell",
+    array_value: [
+      {
+        kind: "record_cell",
+        record_value: [
+          { kind: "string_cell", string_value: "12:34:56.123456" },
+          {
+            kind: "sql_native_cell",
+            sql_native_value: '{"months":14,"days":3,"micros":"1234567"}',
+          },
+          {
+            kind: "sql_native_cell",
+            sql_native_value: '[{"key":"9007199254740993","value":"9007199254740995"}]',
+          },
+          {
+            kind: "sql_native_cell",
+            sql_native_value:
+              '{"clock":"1","durations":[{"months":0,"days":0,"micros":"1"},null],"maps":[[{"key":"9007199254740997","value":"9007199254740999"}]]}',
+          },
+        ],
+      },
+    ],
+  });
+  expect(() => JSON.stringify(result.malloy)).not.toThrow();
+});

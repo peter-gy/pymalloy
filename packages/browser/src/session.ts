@@ -193,11 +193,14 @@ export class Session {
             if (schemas.size === 32) schemas.delete(schemas.keys().next().value!);
             schemas.set(sql, { signature, columns });
           }
+          const connectionName = this.connectionName;
           return {
             sql,
             rows: data.rows,
             columns: structuredClone(columns),
-            malloy: stableResult(sql, columns, data.rows, template, this.connectionName),
+            get malloy() {
+              return stableResult(sql, columns, data.rows, template, connectionName);
+            },
           };
         },
         submit: (task, options) =>
