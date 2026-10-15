@@ -789,3 +789,15 @@ def test_file_name_text_points_to_path():
         pytest.raises(TypeError, match=r"Pass Path\('orders.malloy'\)"),
     ):
         con.model("orders.malloy")
+
+
+def test_missing_given_error_shows_the_python_binding():
+    source = """##! experimental.givens
+given: minimum :: number
+run: duckdb.sql('SELECT 1 AS value') -> { where: value > $minimum select: value }
+"""
+    with pm.connect() as con, con.model(source) as model:
+        with pytest.raises(CompilationError, match=r"Query.run\(givens=") as error:
+            model.query().run()
+        assert error.value.diagnostics[0].code == "compiler-given-no-value"
+        assert model.query().run(givens={"minimum": 0}).to_pylist() == [{"value": 1}]

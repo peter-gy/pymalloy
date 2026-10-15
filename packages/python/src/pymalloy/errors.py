@@ -51,11 +51,16 @@ class CompilationError(PyMalloyError):
 
     See Also
     --------
-    check : Receive authored diagnostics in a CheckReport.
+    Connection.check : Receive authored diagnostics in a CheckReport.
     CompilerError : Distinguish infrastructure failure from invalid source.
     """
 
     def __init__(self, message: str, *, diagnostics: Sequence[Diagnostic] = ()) -> None:
+        if any(item.code == "compiler-given-no-value" for item in diagnostics):
+            message += (
+                "\nIn Python, bind values with Query.run(givens={...}) or declare"
+                " a default in the model."
+            )
         super().__init__(message)
         self.diagnostics = tuple(diagnostics)
 
