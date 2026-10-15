@@ -36,7 +36,8 @@ def target_model():
     return model
 
 
-TARGET_TEXT = """source: customers is duckdb.table("customers.parquet"), orders is duckdb.table("orders.parquet") extend {
+TARGET_TEXT = """source: customers is duckdb.table("customers.parquet")
+source: orders is duckdb.table("orders.parquet") extend {
   primary_key: order_id
   dimension: net is (amount - refund)
   measure:

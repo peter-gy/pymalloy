@@ -173,8 +173,12 @@ def _malloy_parts(node: Scalar) -> Sequence[str | Scalar]:
             return ("(", value, (":::" if safe else "::") + target + ")")
         case ScalarNullTest(value=value, negated=negated):
             return ("(", value, " is not null)" if negated else " is null)")
+        case ScalarTruncate(value=ScalarField() as value, unit=unit):
+            return (value, "." + unit)
         case ScalarTruncate(value=value, unit=unit):
             return ("(", value, ")." + unit)
+        case ScalarFilter(value=ScalarField() as value, predicate=predicate):
+            return (value, " { where: ", predicate, " }")
         case ScalarFilter(value=value, predicate=predicate):
             return ("(", value, ") { where: ", predicate, " }")
         case ScalarCase(branches=branches, otherwise=otherwise):

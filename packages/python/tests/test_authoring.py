@@ -700,7 +700,7 @@ def test_constructor_text_is_readable_without_reformatting_raw_literals():
         .queries(result=pm.source("orders").pipe("details"))
     )
     assert candidate.text.startswith("source: orders is duckdb.sql(")
-    assert "  dimension: `day` is value, `days` is value" in candidate.text
+    assert "  dimension:\n    `day` is value\n    `days` is value\n" in candidate.text
     assert (
         "  view: details is {\n    select: `day`, `days`, labels.label\n  }"
         in candidate.text

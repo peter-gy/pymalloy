@@ -170,11 +170,9 @@ class Draft(NotebookDisplay):
             name: value for name, value in values.items() if name not in existing
         }
         if additions:
-            parts: list[str | Syntax] = [
-                result._line_break,
-                named_clause(kind, additions, kind=kind),
-                "\n",
-            ]
+            parts: list[str | Syntax] = [result._line_break]
+            for name, value in additions.items():
+                parts.extend((named_clause(kind, {name: value}, kind=kind), "\n"))
             result = syntax(*result.parts, *parts, kind="document")
         return replace(self, syntax=result)
 

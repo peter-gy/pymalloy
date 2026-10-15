@@ -108,25 +108,7 @@ class Syntax(NotebookDisplay):
                         keepends=True
                     )
                     parts.append(("  " * depth).join(lines))
-                elif (
-                    part._layout
-                    and part._operation is not None
-                    and part._operation.kind
-                    in {
-                        "dimension",
-                        "measure",
-                        "view",
-                        "nest",
-                        "group_by",
-                        "aggregate",
-                        "select",
-                    }
-                    and any(
-                        child.kind in {"field", "query"}
-                        and any(note.kind == "annotation" for note in child._fragments)
-                        for child in part._fragments
-                    )
-                ):
+                elif part._layout and (keyword := _listed_keyword(part)):
                     children = tuple(
                         child
                         for child in part.parts
@@ -138,7 +120,7 @@ class Syntax(NotebookDisplay):
                             pending.append(("\n", depth))
                         pending.append((child, depth + 1))
                         pending.append(("  " * (depth + 1), depth))
-                    pending.append((part._operation.kind + ":\n", depth))
+                    pending.append((keyword + ":\n", depth))
                 elif (
                     part._layout
                     and part._operation is not None
@@ -412,6 +394,26 @@ class Syntax(NotebookDisplay):
         True
         """
         return self.annotate(text, route='"')
+
+
+def _listed_keyword(clause: Syntax) -> str | None:
+    """Return the keyword of a named clause that renders one binding per line."""
+    if clause._operation is None:
+        return None
+    keyword = clause._operation.kind
+    bindings = [
+        child for child in clause._fragments if child.kind in {"field", "query"}
+    ]
+    annotated = any(
+        note.kind == "annotation" for child in bindings for note in child._fragments
+    )
+    if keyword in {"dimension", "measure", "view", "nest", "calculate"}:
+        return keyword if annotated or len(bindings) > 1 else None
+    return (
+        keyword
+        if annotated and keyword in {"group_by", "aggregate", "select"}
+        else None
+    )
 
 
 def syntax(
