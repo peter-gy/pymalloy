@@ -74,6 +74,9 @@ class Draft(NotebookDisplay):
     path: Path | None = field(default=None, repr=False, compare=False)
     _original: str | None = field(default=None, repr=False, compare=False)
 
+    def __repr__(self) -> str:
+        return f"Draft({self.text!r})"
+
     def __post_init__(self) -> None:
         if self.syntax.kind != "document":
             raise ValueError("A draft requires document syntax")
@@ -114,13 +117,15 @@ class Draft(NotebookDisplay):
         """
         return self.syntax[name]
 
-    def append(self, *parts: str | Source | View) -> Draft:
+    def append(self, *parts: str | Source | View | Draft) -> Draft:
         r"""Append complete declarations or other syntax verbatim.
 
         Parameters
         ----------
-        *parts : str, Source, or View
-            Text/fragments to concatenate. Include needed whitespace or newlines.
+        *parts : str, Source, View, or Draft
+            Text or authored syntax to concatenate. Include needed whitespace or
+            newlines. A Draft contributes its named editing slots and captured
+            inputs. Source identity and import resolution follow the receiver.
             Literal declarations are not parsed into named editing slots.
 
         Returns
@@ -139,7 +144,14 @@ class Draft(NotebookDisplay):
         >>> candidate.text
         '// model notes\n'
         """
-        return replace(self, syntax=syntax(*self.syntax.parts, *parts, kind="document"))
+        pieces = [
+            piece
+            for part in parts
+            for piece in (part.syntax.parts if isinstance(part, Draft) else (part,))
+        ]
+        return replace(
+            self, syntax=syntax(*self.syntax.parts, *pieces, kind="document")
+        )
 
     def _define(
         self, kind: Literal["source", "query"], values: Mapping[str, Source]
@@ -154,15 +166,15 @@ class Draft(NotebookDisplay):
             if target.kind != kind:
                 raise ValueError(f"{name!r} is not a {kind} declaration")
         result = self.syntax.replace(**updates) if updates else self.syntax
-        additions = [
-            named_clause(kind, {name: value}, kind=kind)
-            for name, value in values.items()
-            if name not in existing
-        ]
+        additions = {
+            name: value for name, value in values.items() if name not in existing
+        }
         if additions:
-            parts: list[str | Syntax] = [result._line_break]
-            for addition in additions:
-                parts.extend((addition, "\n"))
+            parts: list[str | Syntax] = [
+                result._line_break,
+                named_clause(kind, additions, kind=kind),
+                "\n",
+            ]
             result = syntax(*result.parts, *parts, kind="document")
         return replace(self, syntax=result)
 
@@ -502,7 +514,12 @@ def read_model(source: str | Path | ModelSource, *, url: str | None = None) -> D
     if kind != "model":
         raise ValueError("Structured authoring requires a .malloy document")
     path = source.resolve() if isinstance(source, Path) else None
-    parsed = from_wire(parse_syntax(text, url=identity))
+    parsed = from_wire(
+        parse_syntax(text, url=identity),
+        {value.reference: value for value in source.inputs}
+        if isinstance(source, ModelSource)
+        else None,
+    )
     if not isinstance(parsed, Syntax):
         raise TypeError("Compiler returned a scalar for a model document")
     return Draft(parsed, identity, imports, path, text if path is not None else None)

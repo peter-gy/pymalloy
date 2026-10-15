@@ -12,19 +12,21 @@ leaves. Scalars own their operations independently of source/query composition.
 Their immutable operation records are shared with the compiler projection.
 Operators reuse existing records, while decoding freezes incoming sequences once.
 Construction validates source metadata independently of rendering. Bulk definitions
-and replacements resolve their named bindings together. Each immutable fragment
-owns its lazy scope index and rendered-text cache, and new fragments start with
+and replacements resolve their named bindings together. Each immutable node
+owns its lazy scope index and rendered-text cache, and new nodes start with
 fresh caches. Malloy text rendering uses an explicit work stack and joins emitted
 pieces once, so long expressions do not consume the Python call stack.
 Constructor-owned blocks carry layout metadata for nested indentation. Literal
 SQL, comments and imported source text retain their own whitespace.
 Named bindings have one expression child and optional owned annotation leaves. Binding
 prefixes and suffixes retain names, other annotations, comments, and punctuation.
-Anonymous fragments compose expressions and clauses. A `Draft` owns the document fragment, source URL, captured imports,
+Anonymous nodes compose expressions and clauses. A `Draft` owns the document node, source URL, captured imports,
 and the original file revision used for persistence checks.
 
-`table`, `sql`, and `source` construct source expressions. `dimension`, `measure`,
-`view`, and query clauses construct fragments. `extend` and `pipe` compose them.
+`Source` and `View` wrap the private `Syntax` node. Source declarations append to
+the trailing `extend` block. View clauses append to the final stage, including
+the block in a saved-view refinement. `pipe` starts another stage. Annotations
+must reach a named binding before a view enters a pipeline.
 `Draft.sources` and `Draft.queries` assign declaration names. A binding is the
 editing boundary, so replacing a field in a source cannot silently change a
 same-named field inside a nested view or join.
@@ -61,7 +63,7 @@ independent of the compiler process.
 Scalar `.annotate()` retains the scalar type and attaches pending routed metadata.
 `.doc()` selects the native documentation route. Binding consumes that metadata
 into owned annotation syntax once. Source/query
-fragments carry annotations as syntax. Python emission walks the resulting tree.
+nodes carry annotations as syntax. Python emission walks the resulting tree.
 
 Reading and saving unchanged source preserves its exact text, including line
 endings and comments. Imported scalar nodes keep their authored spelling until
@@ -92,7 +94,7 @@ descriptions on the selected objects. Documentation lint is opt-in. Business mea
 keys, and join cardinality require executable evidence and review.
 
 `Connection.validate` compiles once, captures imports, runs named source/query
-fragments as counterexample queries under one timeout budget, and closes the model on every path. Failed
+expressions as counterexample queries under one timeout budget, and closes the model on every path. Failed
 compilation skips assertions. A failed assertion retains one counterexample.
 Borrowed connections remain caller-owned, including transaction recovery after
 engine errors. Preview limits bound returned rows, not scan cost or nested values.
@@ -164,8 +166,9 @@ counts. A native table-reference node carries its optional input owner through
 composition. The compiler sees an ordinary DuckDB path and has no Arrow dependency.
 
 Runtime models, queries, execution evidence, and validations retain input owners
-independently of connection lifetime. Extracting `ModelSource` retains source
-text only. Widget definitions pair logical paths with Parquet bytes without loading
+independently of connection lifetime. `ModelSource.inputs` retains those owners
+alongside logical source text. Compilation materializes table-call spans identified
+by the same compiler process. Widget definitions pair logical paths with Parquet bytes without loading
 the headless adapter.
 
 The producer notebook or script owns dataframe preparation and its dependency

@@ -93,8 +93,9 @@ class MalloyWidget(BundledWidget):
         Authored syntax, a complete model, a bound native query, or materialized
         results. Syntax shows its Malloy text, references and annotations.
         Complete drafts run in the browser. Native models and queries preview
-        at most 20 rows on their existing Python connection, with a 30-second
-        timeout. Results show up to 20 retained rows without executing SQL.
+        at most 20 rows on their existing Python connection, using the model's
+        timeout, inherited from its connection unless overridden. Results show
+        up to 20 retained rows without executing SQL.
     files : mapping, optional
         Browser virtual names mapped to UTF-8 text, bytes, or {"url": "https://..."}.
         Remote files require browser-accessible URLs with suitable CORS headers.

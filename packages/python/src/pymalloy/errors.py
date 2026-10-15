@@ -19,6 +19,17 @@ from pymalloy.analysis import Diagnostic, QueryDescriptor
 if TYPE_CHECKING:
     from pymalloy.validation import Validation
 
+__all__ = [
+    "ClosedError",
+    "CompilationError",
+    "CompilerError",
+    "ExecutionContext",
+    "ExecutionError",
+    "PyMalloyError",
+    "SchemaError",
+    "ValidationError",
+]
+
 
 class PyMalloyError(RuntimeError):
     """Base exception for PyMalloy domain failures.

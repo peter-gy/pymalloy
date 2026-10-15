@@ -238,8 +238,8 @@ class Validation:
     def source(self) -> ModelSource:
         """Return the accepted closed source snapshot for export.
 
-        Raises ValueError for failed validation or missing captured imports. Source
-        contains code, not table data. Use export.bundle to publish managed inputs too.
+        Raises ValueError for failed validation or missing captured imports.
+        Captured data owners accompany their logical references.
         """
         self.require_valid()
         if self.draft.imports is None:
@@ -249,6 +249,7 @@ class Validation:
             self.draft.text,
             self.draft.imports,
             self.draft.document_kind,
+            inputs=self.draft.inputs,
         )
 
     def save(

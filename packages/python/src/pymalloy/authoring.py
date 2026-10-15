@@ -54,13 +54,24 @@ def _append_clause(node: _Syntax, clause: _Syntax) -> _Syntax:
     closing = parts.pop()
     assert isinstance(closing, str)
     before, brace, after = closing.rpartition("}")
+    newline = "\r\n" if "\r\n" in closing else "\n"
+    separator = "" if before.endswith("\n") else newline
     return _Syntax(
-        (*parts, before, "\n  ", clause, "\n" + brace + after),
+        (
+            *parts,
+            before,
+            separator + "  ",
+            clause,
+            newline + brace + after,
+        ),
         _operation=node._operation,
     )
 
 
 class _Builder(_Syntax):
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self.text!r})"
+
     @classmethod
     def raw(cls, *parts: str | Source | View | Expr) -> Self:
         r"""Concatenate trusted Malloy text and authored values verbatim.
@@ -95,7 +106,8 @@ class _Builder(_Syntax):
         ----------
         *stages : View or str
             Views in pipeline order. A string names a saved view. With no stages,
-            return this value unchanged.
+            return this value unchanged. Bind annotated views with Source.view,
+            and annotate a complete query before binding it with Draft.queries.
 
         Returns
         -------
@@ -113,7 +125,12 @@ class _Builder(_Syntax):
         notes, value = _notes(self)
         parts: list[str | _Syntax] = []
         for stage in stages:
-            parts.extend((" -> ", _view(stage)))
+            stage = _view(stage)
+            if _notes(stage)[0]:
+                raise ValueError(
+                    "Pipeline stages cannot carry annotations. Bind the view with Source.view(name=...) or the query with Draft.queries(name=...)."
+                )
+            parts.extend((" -> ", stage))
         result = construct("pipe", value, *parts)
         return self._from_syntax(
             _Syntax((*notes, result), _layout=True) if notes else result
@@ -201,6 +218,39 @@ class Source(_Builder):
         ('revenue',)
         """
         return self._add(named_clause("measure", fields))
+
+    def rename(self, /, **names: str) -> Source:
+        """Rename source fields.
+
+        Parameters
+        ----------
+        **names : str
+            New names mapped to existing field names, each a single identifier.
+
+        Returns
+        -------
+        Source
+            A new source with ``rename: new is old`` declarations.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> orders = pm.sql("SELECT 2 amount").rename(booked="amount")
+        >>> with pm.connect() as con:
+        ...     rows = con.model(pm.draft().queries(q=orders.pipe(pm.view().select("booked")))).query().run().to_pylist()
+        >>> rows
+        [{'booked': 2}]
+        """
+        if not names:
+            raise ValueError("rename requires field names")
+        parts: list[str | _Syntax] = ["rename: "]
+        for index, (name, old) in enumerate(names.items()):
+            if index:
+                parts.append(", ")
+            if not isinstance(old, str):
+                raise TypeError("rename requires existing field names as strings")
+            parts.append(binding("field", name, col(old)))
+        return self._add(_Syntax(tuple(parts), _layout=True))
 
     def view(self, /, **views: View) -> Source:
         r"""Declare reusable source-relative views.
@@ -369,8 +419,9 @@ class View(_Builder):
     r"""An immutable source-relative query stage.
 
     Construct with view or View.raw. Clauses append to the final stage. Calling
-    pipe starts a new stage. Positional strings in group_by, aggregate, select,
-    and order_by name field paths split on dots. Keyword values require Expr.
+    pipe starts a new stage. Positional strings in group_by, aggregate, and select
+    name field paths split on dots. order_by strings name output columns.
+    Keyword values require Expr.
     col(*path) preserves explicit components, including literal dots.
 
     Examples
@@ -396,7 +447,28 @@ class View(_Builder):
             result = _Syntax(
                 tuple(parts), _operation=value._operation, _layout=value._layout
             )
+        elif (
+            len(value.parts) >= 3
+            and isinstance(value.parts[-2], str)
+            and value.parts[-2].strip() == "+"
+            and isinstance(value.parts[-1], _Syntax)
+            and value.parts[-1]._operation
+            and value.parts[-1]._operation.kind == "block"
+        ):
+            result = _Syntax(
+                (*value.parts[:-1], View._from_syntax(value.parts[-1])._add(clause)),
+                _layout=value._layout,
+            )
         elif value._operation and value._operation.kind == "block":
+            if (
+                clause._operation
+                and clause._operation.kind == "limit"
+                and any(
+                    child._operation and child._operation.kind == "limit"
+                    for child in value._fragments
+                )
+            ):
+                raise ValueError("Query operation already limited")
             result = _append_clause(value, clause)
         else:
             result = _Syntax((value, " + ", block((clause,))), _layout=True)
@@ -460,6 +532,7 @@ class View(_Builder):
         *fields : Expr or str
             Expressions or field paths. Strings split on dots, so "customer.name"
             means col("customer", "name"). Use col("customer.name") for a literal dot.
+            The string "*" selects every field.
         **named : Expr
             Output names mapped to expressions. At least one field is required.
 
@@ -475,6 +548,40 @@ class View(_Builder):
         '{\n  select: region\n}'
         """
         return self._add(_fields("select", fields, named))
+
+    def calculate(self, /, **fields: Expr) -> View:
+        """Calculate window values in the current query stage.
+
+        Parameters
+        ----------
+        **fields : Expr
+            Output names mapped to window expressions. Malloy resolves functions
+            and ordering against the stage's output.
+
+        Returns
+        -------
+        View
+            A new view with a ``calculate:`` clause in its final stage.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> stage = pm.view().group_by("amount").order_by("amount").calculate(
+        ...     prior=pm.expressions.call("lag", pm.col("amount"))
+        ... )
+        >>> with pm.connect() as con:
+        ...     rows = con.model(pm.draft().queries(q=pm.sql("SELECT 2 amount").pipe(stage))).query().run().to_pylist()
+        >>> rows
+        [{'amount': 2, 'prior': None}]
+        """
+        if not fields:
+            raise ValueError("calculate requires a named expression")
+        parts: list[str | _Syntax] = ["calculate: "]
+        for index, (name, value) in enumerate(fields.items()):
+            if index:
+                parts.append(", ")
+            parts.append(binding("field", name, _scalar(value)))
+        return self._add(_Syntax(tuple(parts), _layout=True))
 
     def where(self, predicate: Expr) -> View:
         r"""Filter rows before aggregation.
@@ -551,8 +658,10 @@ class View(_Builder):
         Parameters
         ----------
         *fields : Expr, Sort, or str
-            Expressions, asc/desc values, or field paths split on dots. At least
+            Expressions, asc/desc values, or single output-column names. At least
             one field is required. A bare field uses Malloy's default direction.
+            Strings containing dots raise ValueError. After group_by("customer.name"),
+            use order_by("name") to order its output column.
 
         Returns
         -------
@@ -576,6 +685,12 @@ class View(_Builder):
                 parts.append(
                     construct(direction, _scalar(field.expression), " " + direction)
                 )
+            elif isinstance(field, str):
+                if "." in field:
+                    raise ValueError(
+                        f"order_by takes the name of a field in the query output, not a path ({field!r})"
+                    )
+                parts.append(col(field))
             else:
                 parts.append(_field(field))
         return self._add(construct("order_by", *parts))
@@ -622,7 +737,12 @@ def _field(value: Expr | str) -> Expr:
 def _fields(
     keyword: SyntaxOperationKind, fields: tuple[Expr | str, ...], named: dict[str, Expr]
 ) -> _Syntax:
-    values: list[_Syntax | Expr] = [_field(field) for field in fields]
+    values: list[_Syntax | Expr] = [
+        Expr.raw("*")
+        if keyword == "select" and isinstance(field, str) and field == "*"
+        else _field(field)
+        for field in fields
+    ]
     values.extend(binding("field", name, value) for name, value in named.items())
     if not values:
         raise ValueError(f"{keyword} requires fields")

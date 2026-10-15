@@ -13,6 +13,28 @@ from pymalloy.errors import CompilationError
 from pymalloy.export import jupyter, marimo, prepare
 
 
+@pytest.mark.parametrize("catalog", [False, True])
+def test_export_file_probe_matches_compiler_identifier_and_catalog_precedence(
+    tmp_path, catalog
+):
+    filename = 'main."orders.csv"' if catalog else "orders-2024.csv"
+    (tmp_path / filename).write_text("amount\n2\n")
+    database = tmp_path / "data.duckdb"
+    with duckdb.connect(str(database)) as native:
+        if catalog:
+            native.execute('CREATE TABLE main."orders.csv" AS SELECT 1 amount')
+    source = tmp_path / "model.malloy"
+    source.write_text(
+        pm.draft().queries(q=pm.table(filename).pipe(pm.view().select("amount"))).text
+    )
+    document = prepare(source, database=database, data_root=tmp_path)
+    assert dict(document.files) == ({} if catalog else {filename: tmp_path / filename})
+    output = tmp_path / "export.py"
+    output.write_text(marimo.render(document, output_path=output))
+    values = run_notebook(output)
+    assert values["q"].to_dicts() == [{"amount": 1 if catalog else 2}]
+
+
 @pytest.mark.parametrize("renderer,suffix", [(marimo, ".py"), (jupyter, ".ipynb")])
 def test_hydrated_notebook_preserves_full_model_after_sources_are_removed(
     tmp_path, renderer, suffix

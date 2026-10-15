@@ -75,8 +75,9 @@ query = model.query()
 query
 ```
 
-Choose **Preview** to return up to 20 rows with a 30-second timeout. The preview uses
-`Query.preview`, which rejects write statements. Closing the inspector leaves
+Choose **Preview** to return up to 20 rows using the model's timeout, inherited
+from its connection unless overridden. The preview uses `Query.preview`, which
+rejects write statements. Closing the inspector leaves
 `model` usable. Call `model.close()` when finished with its connection and compiler.
 A `Result` displayed after execution reads its retained Arrow data even after
 the producing model is closed.

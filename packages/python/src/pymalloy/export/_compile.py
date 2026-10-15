@@ -1,4 +1,5 @@
 import math
+import re
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import ExitStack, closing
@@ -99,16 +100,30 @@ def compile_document(
                         catalog = resources.enter_context(
                             duckdb.connect(str(database), read_only=True)
                         )
-                    (identifier,) = catalog.get_table_names(
-                        "SELECT * FROM " + table.path, qualified=True
-                    )
+                    # Malloy preserves identifier paths and quotes convenience file paths.
+                    segment = r'(?:[A-Za-z_][A-Za-z_0-9]*|"(?:[^"]|"")*")'
+                    spelling = table.path
+                    if not spelling.startswith("'") and not re.fullmatch(
+                        segment + r"(?:\." + segment + r")*", spelling
+                    ):
+                        spelling = "'" + spelling.replace("'", "''") + "'"
                     try:
-                        catalog.execute(
-                            "SELECT * FROM pragma_table_info(?)", [identifier]
+                        identifiers = catalog.get_table_names(
+                            "SELECT * FROM " + spelling, qualified=True
                         )
-                    except duckdb.CatalogException:
-                        pass
-                    else:
+                    except duckdb.ParserException:
+                        identifiers = set()
+                    found = False
+                    for identifier in identifiers:
+                        try:
+                            catalog.execute(
+                                "SELECT * FROM pragma_table_info(?)", [identifier]
+                            )
+                        except (duckdb.CatalogException, duckdb.ParserException):
+                            continue
+                        found = True
+                        break
+                    if found:
                         continue
                 registered[alias] = location.resolve()
             for imported in parsed.imports:
