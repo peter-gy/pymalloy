@@ -26,13 +26,6 @@ interface ModelDriver {
   release(): void;
 }
 
-let createModel: (compiled: CompiledModel, driver: ModelDriver) => Model;
-let createQuery: (
-  info: QueryDescriptor,
-  compile: (options: QueryOptions) => Promise<string>,
-  execute: (options: QueryOptions) => Promise<Result>,
-) => Query;
-
 export class Model {
   readonly queries: readonly Readonly<QueryDescriptor>[];
   private compiled?: CompiledModel;
@@ -42,8 +35,8 @@ export class Model {
     this.driver = driver;
     this.queries = compiled.queries;
   }
-  static {
-    createModel = (compiled, driver) => new Model(compiled, driver);
+  static create(compiled: CompiledModel, driver: ModelDriver): Model {
+    return new Model(compiled, driver);
   }
   private current() {
     if (!this.compiled || !this.driver) throw new Error("Model is closed");
@@ -82,7 +75,7 @@ export class Model {
         return finish(prepared, driver);
       }, options);
     };
-    return createQuery(
+    return Query.create(
       info,
       (options) => execute(options, (prepared) => prepared.sql),
       (options) =>
@@ -108,6 +101,7 @@ export class Query implements QueryDescriptor {
   readonly name: string;
   readonly kind: QueryDescriptor["kind"];
   readonly location: QueryDescriptor["location"];
+  readonly schema: QueryDescriptor["schema"];
   private constructor(
     info: QueryDescriptor,
     private readonly compile: (options: QueryOptions) => Promise<string>,
@@ -116,9 +110,14 @@ export class Query implements QueryDescriptor {
     this.name = info.name;
     this.kind = info.kind;
     this.location = info.location;
+    this.schema = info.schema;
   }
-  static {
-    createQuery = (info, compile, execute) => new Query(info, compile, execute);
+  static create(
+    info: QueryDescriptor,
+    compile: (options: QueryOptions) => Promise<string>,
+    execute: (options: QueryOptions) => Promise<Result>,
+  ): Query {
+    return new Query(info, compile, execute);
   }
   async sql(options: QueryOptions = {}): Promise<string> {
     return this.compile(options);
@@ -131,9 +130,9 @@ export class Query implements QueryDescriptor {
 interface Execution {
   host(): Host;
   run(sql: string, malloy?: Result["malloy"]): Promise<Result>;
-  submit?<T>(task: () => Promise<T>, options?: QueryOptions): Promise<T>;
-  assertAvailable?(): void;
-  release?(): void;
+  submit<T>(task: () => Promise<T>, options?: QueryOptions): Promise<T>;
+  assertAvailable(): void;
+  release(): void;
 }
 
 export class Runtime {
@@ -174,21 +173,29 @@ export class Runtime {
     return new Promise<T>((resolve, reject) => {
       let controller: AbortController | undefined;
       let interrupted: Promise<void> | undefined;
+      let abortReason: unknown;
       let settled = false;
       const aborted = () => {
         if (settled) return;
-        settled = true;
         const reason =
           signal?.reason ??
           controller?.signal.reason ??
           new DOMException("Operation was aborted", "AbortError");
-        reject(reason);
-        if (controller) {
-          controller.abort(reason);
-          interrupted = Promise.resolve().then(() => this.interrupt());
-          // The queue observes this promise after the active task settles.
-          void interrupted.catch(() => undefined);
+        if (!controller) {
+          settled = true;
+          reject(reason);
+          return;
         }
+        if (interrupted) return;
+        abortReason = reason;
+        controller.abort(reason);
+        try {
+          interrupted = Promise.resolve(this.interrupt());
+        } catch (error) {
+          interrupted = Promise.reject(error);
+        }
+        // The active operation observes interruption before publishing its outcome.
+        void interrupted.catch(() => undefined);
       };
       signal?.addEventListener("abort", aborted, { once: true });
       this.pending = this.pending.then(async () => {
@@ -199,22 +206,27 @@ export class Runtime {
         controller = new AbortController();
         this.active = controller;
         this.abortActive = aborted;
+        let outcome: { value: T } | { error: unknown };
         try {
           this.assertActive();
-          const result = await task();
-          if (!settled) resolve(result);
+          outcome = { value: await task() };
         } catch (error) {
-          if (!settled) reject(error);
+          outcome = { error };
         } finally {
           settled = true;
           signal?.removeEventListener("abort", aborted);
           try {
             await interrupted;
+          } catch (error) {
+            this.failure = error instanceof Error ? error : new Error(String(error));
+            this.accepting = false;
           } finally {
             this.active = undefined;
             this.abortActive = undefined;
           }
         }
+        if ("value" in outcome) resolve(outcome.value);
+        else reject(this.failure ?? (interrupted ? abortReason : outcome.error));
       });
       // A failed interrupt is terminal. Ordinary operation errors leave the queue healthy.
       this.pending = this.pending.catch((error) => {
@@ -230,15 +242,12 @@ export class Runtime {
       this.active?.abort(new DOMException("Session is closed", "AbortError"));
       this.abortActive?.();
     }
-    return this.pending;
-  }
-  compile<T>(job: Job<T>, host: Host): Promise<T> {
-    return drive(job, host);
+    return this.pending.then(() => this.assertHealthy());
   }
   model(compiled: CompiledModel, execution: Execution): Model {
-    const model = createModel(compiled, {
+    const model = Model.create(compiled, {
       assertAvailable: () => {
-        execution.assertAvailable?.();
+        execution.assertAvailable();
         this.assertHealthy();
       },
       compile: (job) => drive(job, execution.host()),
@@ -246,11 +255,10 @@ export class Runtime {
         this.assertActive();
         return execution.run(sql, template);
       },
-      submit: (task, options) =>
-        execution.submit ? execution.submit(task, options) : this.run(task, options),
+      submit: (task, options) => execution.submit(task, options),
       release: () => {
         this.models.delete(model);
-        execution.release?.();
+        execution.release();
       },
     });
     this.models.add(model);

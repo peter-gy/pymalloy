@@ -108,9 +108,9 @@ export function SchemaPanel({
 }) {
   const [selected, setSelected] = useState("");
   const sources = inspection?.model.sources ?? [];
-  const querySchemas = inspection?.model.model?.anonymous_queries ?? [];
+  const querySchema = inspection?.queries.find((query) => query.schema)?.schema;
   const source = sources.find((item) => item.name === selected) ?? sources[0];
-  const schema = source?.schema ?? output ?? querySchemas[0]?.schema;
+  const schema = source?.schema ?? output ?? querySchema;
   if (schema)
     return (
       <div aria-label="Model schemas">

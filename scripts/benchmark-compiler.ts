@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 import type * as CompilerAPI from "@malloy-runtime/compiler/jobs";
 import type * as ToolingAPI from "@malloy-runtime/compiler/tooling";
 import type { Job } from "@malloy-runtime/compiler/jobs";
-import { Runtime } from "@malloy-runtime/compiler/adapters";
+import { drive } from "@malloy-runtime/compiler/adapters";
 import { connection, fields } from "@malloy-runtime/duckdb";
 
 const root = resolve(import.meta.dirname, "..");
@@ -36,9 +36,8 @@ const host = {
     throw new Error("Fixture imports must be closed");
   },
 };
-const runtime = new Runtime(() => undefined);
 const execute = <T>(job: Job<T>) =>
-  runtime.compile(job, {
+  drive(job, {
     readURL: host.readURL,
     schema: async () => fields(await host.describe()),
   });

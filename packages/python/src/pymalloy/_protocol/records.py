@@ -221,49 +221,6 @@ class CompilerFailure(
     message: str
 
 
-class ModelSource(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    document_kind: DocumentKind = field(name="documentKind")
-    url: str
-    text: str
-    imports: Mapping[str, str]
-
-
-class QueryReady(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="query",
-):
-    name: str
-    sql: str
-    line: float | None = None
-
-
-class MarkdownCell(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="markdown",
-):
-    text: str
-
-
-class QueryCell(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="query",
-):
-    name: str
-    sql: str
-
-
 class AtomicTypeWithStringType(
     Struct,
     frozen=True,
@@ -429,6 +386,49 @@ class ViewOperationWithLimit(
     tag="limit",
 ):
     limit: float
+
+
+class ModelSource(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    document_kind: DocumentKind = field(name="documentKind")
+    url: str
+    text: str
+    imports: Mapping[str, str]
+
+
+class QueryReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="query",
+):
+    name: str
+    sql: str
+    line: float | None = None
+
+
+class MarkdownCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="markdown",
+):
+    text: str
+
+
+class QueryCell(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="query",
+):
+    name: str
+    sql: str
 
 
 class ParameterTypeWithStringType(
@@ -934,37 +934,6 @@ class SourceLocation(Struct, frozen=True, forbid_unknown_fields=True, kw_only=Tr
     range: SourceRange
 
 
-class QueryDescriptor(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """
-    A query available on a compiled model.
-
-    name identifies the selection accepted by Model.query, including zero-based run:N and sql:N names for unnamed document queries.
-
-    kind distinguishes an authored run, named query, source view or SQL document cell using the values "run", "named", "view" and "sql".
-
-    location supplies an authored URL and range when available, otherwise null. Python positions use zero-based lines and Unicode code-point character offsets.
-    """
-
-    name: str
-    kind: Literal["run", "named", "view", "sql"]
-    location: SourceLocation | None
-
-
-type DocumentCell = MarkdownCell | QueryCell
-
-
-class AnnotationInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    route: str
-    text: str
-    content: str
-    location: SourceLocation
-
-
-class ImportInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    url: str
-    location: SourceLocation
-
-
 class AtomicTypeWithNumberType(
     Struct,
     frozen=True,
@@ -1018,6 +987,21 @@ class ExpressionWithLiteralValue(
     tag="literal_value",
 ):
     literal_value: LiteralValue
+
+
+type DocumentCell = MarkdownCell | QueryCell
+
+
+class AnnotationInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    route: str
+    text: str
+    content: str
+    location: SourceLocation
+
+
+class ImportInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    url: str
+    location: SourceLocation
 
 
 type FilterableType = (
@@ -1097,40 +1081,6 @@ class Diagnostic(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
         force_setattr(self, "data", freeze(self.data))
 
 
-class ModelReady(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="model",
-):
-    queries: tuple[QueryDescriptor, ...]
-    compiler_version: str = field(name="compilerVersion")
-    source: ModelSource
-
-
-class DocumentReady(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="document",
-):
-    cells: tuple[DocumentCell, ...]
-
-
-class Reference(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    text: str
-    kind: str
-    location: SourceLocation
-    definition_location: SourceLocation | None = field(name="definitionLocation")
-    definition_type: str = field(name="definitionType")
-    default_text: str | None = field(name="defaultText")
-    annotations: tuple[AnnotationInfo, ...]
-
-
 class ParameterValue(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     name: str
     value: LiteralValue
@@ -1149,7 +1099,7 @@ class ExpressionWithFieldReference(
     parameters: tuple[ParameterValue, ...] | None = None
 
 
-class ReferenceModel(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+class Reference(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     name: str
     path: tuple[str, ...] | None = None
     parameters: tuple[ParameterValue, ...] | None = None
@@ -1163,10 +1113,10 @@ class ExpressionWithMovingAverage(
     tag_field="kind",
     tag="moving_average",
 ):
-    field_reference: ReferenceModel
+    field_reference: Reference
     rows_preceding: float | None = None
     rows_following: float | None = None
-    partition_fields: tuple[ReferenceModel, ...] | None = None
+    partition_fields: tuple[Reference, ...] | None = None
 
 
 class ViewOperationWithOrderBy(
@@ -1177,8 +1127,29 @@ class ViewOperationWithOrderBy(
     tag_field="kind",
     tag="order_by",
 ):
-    field_reference: ReferenceModel
+    field_reference: Reference
     direction: OrderByDirection | None = None
+
+
+class DocumentReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="document",
+):
+    cells: tuple[DocumentCell, ...]
+
+
+class Reference1(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    text: str
+    kind: str
+    location: SourceLocation
+    definition_location: SourceLocation | None = field(name="definitionLocation")
+    definition_type: str = field(name="definitionType")
+    default_text: str | None = field(name="defaultText")
+    annotations: tuple[AnnotationInfo, ...]
 
 
 class ParameterTypeWithFilterExpressionType(
@@ -1262,17 +1233,6 @@ class NotebookError(
     diagnostics: tuple[Diagnostic, ...]
 
 
-class DefinitionMetadata(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    revision: Annotated[int, Meta(ge=0)]
-    source: str
-    document_kind: DocumentKind = field(name="documentKind")
-    connection_name: str = field(name="connectionName")
-    notebook: NotebookInfo
-    queries: tuple[QueryDescriptor, ...]
-    url: str | None = None
-    imports: Mapping[str, str] | None = None
-
-
 class HostAnswers(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     urls: Mapping[str, URLAnswer]
     schemas: Mapping[str, SchemaAnswer]
@@ -1322,7 +1282,7 @@ class ExpressionWithTimeTruncation(
     tag_field="kind",
     tag="time_truncation",
 ):
-    field_reference: ReferenceModel
+    field_reference: Reference
     truncation: TimestampTimeframe
 
 
@@ -1456,57 +1416,36 @@ type Response = (
 )
 
 
-class InspectionReady(
+class ModelReady(
     Struct,
     frozen=True,
     forbid_unknown_fields=True,
     kw_only=True,
     tag_field="kind",
-    tag="inspection",
+    tag="model",
 ):
-    inspection: Inspection
-
-
-class Inspection(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    model: NativeMetadata
     queries: tuple[QueryDescriptor, ...]
-    givens: tuple[GivenInfo, ...]
-    annotations: tuple[AnnotationInfo, ...]
-    model_annotations: tuple[AnnotationInfo, ...] = field(name="modelAnnotations")
-    dependencies: tuple[str, ...]
-    imports: tuple[ImportInfo, ...]
-    diagnostics: tuple[Diagnostic, ...]
-    reference: Reference | None = None
-    import_: ImportInfo | None = field(name="import", default=None)
+    compiler_version: str = field(name="compilerVersion")
+    source: ModelSource
 
 
-class NativeMetadata(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    model: ModelInfo | None
-    sources: tuple[SourceInfo, ...]
-    annotations: tuple[AnnotatedObject, ...]
+class QueryDescriptor(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    """
+    A query available on a compiled model.
 
+    name identifies the selection accepted by Model.query, including zero-based run:N and sql:N names for unnamed document queries.
 
-class ModelInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    entries: tuple[ModelEntryValue, ...]
-    anonymous_queries: tuple[AnonymousQueryInfo, ...]
-    annotations: tuple[Annotation, ...] | None = None
+    kind distinguishes an authored run, named query, source view or SQL document cell using the values "run", "named", "view" and "sql".
 
+    location supplies an authored URL and range when available, otherwise null. Python positions use zero-based lines and Unicode code-point character offsets.
 
-type ModelEntryValue = ModelEntryValueWithSource | ModelEntryValueWithQuery
+    schema contains the resolved output fields. Required unbound givens yield null.
+    """
 
-
-class ModelEntryValueWithSource(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="source",
-):
     name: str
-    schema: Schema
-    annotations: tuple[Annotation, ...] | None = None
-    parameters: tuple[ParameterInfo, ...] | None = None
+    kind: Literal["run", "named", "view", "sql"]
+    location: SourceLocation | None
+    schema: Schema | None = None
 
 
 class Schema(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
@@ -1713,7 +1652,7 @@ class ExpressionWithFilteredField(
     tag_field="kind",
     tag="filtered_field",
 ):
-    field_reference: ReferenceModel
+    field_reference: Reference
     where: tuple[FilterOperation, ...]
 
 
@@ -1828,6 +1767,59 @@ class FieldInfoWithCalculate(
     name: str
     type: AtomicType
     annotations: tuple[Annotation, ...] | None = None
+
+
+class InspectionReady(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="inspection",
+):
+    inspection: Inspection
+
+
+class Inspection(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    model: NativeMetadata
+    queries: tuple[QueryDescriptor, ...]
+    givens: tuple[GivenInfo, ...]
+    annotations: tuple[AnnotationInfo, ...]
+    model_annotations: tuple[AnnotationInfo, ...] = field(name="modelAnnotations")
+    dependencies: tuple[str, ...]
+    imports: tuple[ImportInfo, ...]
+    diagnostics: tuple[Diagnostic, ...]
+    reference: Reference1 | None = None
+    import_: ImportInfo | None = field(name="import", default=None)
+
+
+class NativeMetadata(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    model: ModelInfo | None
+    sources: tuple[SourceInfo, ...]
+    annotations: tuple[AnnotatedObject, ...]
+
+
+class ModelInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    entries: tuple[ModelEntryValue, ...]
+    anonymous_queries: tuple[AnonymousQueryInfo, ...]
+    annotations: tuple[Annotation, ...] | None = None
+
+
+type ModelEntryValue = ModelEntryValueWithSource | ModelEntryValueWithQuery
+
+
+class ModelEntryValueWithSource(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="source",
+):
+    name: str
+    schema: Schema
+    annotations: tuple[Annotation, ...] | None = None
+    parameters: tuple[ParameterInfo, ...] | None = None
 
 
 class ParameterInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
@@ -2195,6 +2187,17 @@ class NotebookRequest(
 ):
     id: str
     input: Input
+
+
+class DefinitionMetadata(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    revision: Annotated[int, Meta(ge=0)]
+    source: str
+    document_kind: DocumentKind = field(name="documentKind")
+    connection_name: str = field(name="connectionName")
+    notebook: NotebookInfo
+    queries: tuple[QueryDescriptor, ...]
+    url: str | None = None
+    imports: Mapping[str, str] | None = None
 
 
 class State(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):

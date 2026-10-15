@@ -869,380 +869,22 @@
               "type": "null"
             }
           ]
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": ["name", "kind", "location"],
       "additionalProperties": false,
-      "description": "A query available on a compiled model.\n\nname identifies the selection accepted by Model.query, including zero-based run:N and sql:N names for unnamed document queries.\n\nkind distinguishes an authored run, named query, source view or SQL document cell using the values \"run\", \"named\", \"view\" and \"sql\".\n\nlocation supplies an authored URL and range when available, otherwise null. Python positions use zero-based lines and Unicode code-point character offsets.",
+      "description": "A query available on a compiled model.\n\nname identifies the selection accepted by Model.query, including zero-based run:N and sql:N names for unnamed document queries.\n\nkind distinguishes an authored run, named query, source view or SQL document cell using the values \"run\", \"named\", \"view\" and \"sql\".\n\nlocation supplies an authored URL and range when available, otherwise null. Python positions use zero-based lines and Unicode code-point character offsets.\n\nschema contains the resolved output fields. Required unbound givens yield null.",
       "title": "QueryDescriptor"
-    },
-    "ModelSource": {
-      "type": "object",
-      "properties": {
-        "documentKind": {
-          "$ref": "#/definitions/DocumentKind"
-        },
-        "url": {
-          "type": "string"
-        },
-        "text": {
-          "type": "string"
-        },
-        "imports": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          }
-        }
-      },
-      "required": ["documentKind", "url", "text", "imports"],
-      "additionalProperties": false,
-      "title": "ModelSource"
-    },
-    "QueryReady": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "query"
-        },
-        "name": {
-          "type": "string"
-        },
-        "sql": {
-          "type": "string"
-        },
-        "line": {
-          "type": "number"
-        }
-      },
-      "required": ["kind", "name", "sql"],
-      "additionalProperties": false
-    },
-    "DocumentReady": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "document"
-        },
-        "cells": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/DocumentCell"
-          }
-        }
-      },
-      "required": ["kind", "cells"],
-      "additionalProperties": false
-    },
-    "DocumentCell": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/MarkdownCell"
-        },
-        {
-          "$ref": "#/definitions/QueryCell"
-        }
-      ]
-    },
-    "MarkdownCell": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "markdown"
-        },
-        "text": {
-          "type": "string"
-        }
-      },
-      "required": ["kind", "text"],
-      "additionalProperties": false
-    },
-    "QueryCell": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "query"
-        },
-        "name": {
-          "type": "string"
-        },
-        "sql": {
-          "type": "string"
-        }
-      },
-      "required": ["kind", "name", "sql"],
-      "additionalProperties": false
-    },
-    "InspectionReady": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "inspection"
-        },
-        "inspection": {
-          "$ref": "#/definitions/Inspection"
-        }
-      },
-      "required": ["kind", "inspection"],
-      "additionalProperties": false
-    },
-    "Inspection": {
-      "type": "object",
-      "properties": {
-        "reference": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "text": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "location": {
-                  "$ref": "#/definitions/SourceLocation"
-                },
-                "definitionLocation": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/definitions/SourceLocation"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "definitionType": {
-                  "type": "string"
-                },
-                "defaultText": {
-                  "type": ["string", "null"]
-                },
-                "annotations": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/AnnotationInfo"
-                  }
-                }
-              },
-              "required": [
-                "text",
-                "kind",
-                "location",
-                "definitionLocation",
-                "definitionType",
-                "defaultText",
-                "annotations"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "import": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ImportInfo"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "model": {
-          "$ref": "#/definitions/NativeMetadata"
-        },
-        "queries": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/QueryDescriptor"
-          }
-        },
-        "givens": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/GivenInfo"
-          }
-        },
-        "annotations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/AnnotationInfo"
-          }
-        },
-        "modelAnnotations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/AnnotationInfo"
-          }
-        },
-        "dependencies": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "imports": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ImportInfo"
-          }
-        },
-        "diagnostics": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Diagnostic"
-          }
-        }
-      },
-      "required": [
-        "model",
-        "queries",
-        "givens",
-        "annotations",
-        "modelAnnotations",
-        "dependencies",
-        "imports",
-        "diagnostics"
-      ],
-      "additionalProperties": false,
-      "title": "Inspection"
-    },
-    "AnnotationInfo": {
-      "type": "object",
-      "properties": {
-        "route": {
-          "type": "string"
-        },
-        "text": {
-          "type": "string"
-        },
-        "content": {
-          "type": "string"
-        },
-        "location": {
-          "$ref": "#/definitions/SourceLocation"
-        }
-      },
-      "required": ["route", "text", "content", "location"],
-      "additionalProperties": false,
-      "title": "AnnotationInfo"
-    },
-    "ImportInfo": {
-      "type": "object",
-      "properties": {
-        "url": {
-          "type": "string"
-        },
-        "location": {
-          "$ref": "#/definitions/SourceLocation"
-        }
-      },
-      "required": ["url", "location"],
-      "additionalProperties": false,
-      "title": "ImportInfo"
-    },
-    "NativeMetadata": {
-      "type": "object",
-      "properties": {
-        "model": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ModelInfo"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "sources": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/SourceInfo"
-          }
-        },
-        "annotations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/AnnotatedObject"
-          }
-        }
-      },
-      "required": ["model", "sources", "annotations"],
-      "additionalProperties": false,
-      "title": "NativeMetadata"
-    },
-    "ModelInfo": {
-      "type": "object",
-      "properties": {
-        "entries": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ModelEntryValue"
-          }
-        },
-        "annotations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Annotation"
-          }
-        },
-        "anonymous_queries": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/AnonymousQueryInfo"
-          }
-        }
-      },
-      "required": ["entries", "anonymous_queries"],
-      "additionalProperties": false
-    },
-    "ModelEntryValue": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/ModelEntryValueWithSource"
-        },
-        {
-          "$ref": "#/definitions/ModelEntryValueWithQuery"
-        }
-      ]
-    },
-    "ModelEntryValueWithSource": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "schema": {
-          "$ref": "#/definitions/Schema"
-        },
-        "annotations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Annotation"
-          }
-        },
-        "parameters": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ParameterInfo"
-          }
-        },
-        "kind": {
-          "type": "string",
-          "const": "source"
-        }
-      },
-      "required": ["kind", "name", "schema"]
     },
     "Schema": {
       "type": "object",
@@ -2256,6 +1898,374 @@
         }
       },
       "required": ["kind", "name", "type"]
+    },
+    "ModelSource": {
+      "type": "object",
+      "properties": {
+        "documentKind": {
+          "$ref": "#/definitions/DocumentKind"
+        },
+        "url": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "imports": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["documentKind", "url", "text", "imports"],
+      "additionalProperties": false,
+      "title": "ModelSource"
+    },
+    "QueryReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "query"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        },
+        "line": {
+          "type": "number"
+        }
+      },
+      "required": ["kind", "name", "sql"],
+      "additionalProperties": false
+    },
+    "DocumentReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "document"
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DocumentCell"
+          }
+        }
+      },
+      "required": ["kind", "cells"],
+      "additionalProperties": false
+    },
+    "DocumentCell": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/MarkdownCell"
+        },
+        {
+          "$ref": "#/definitions/QueryCell"
+        }
+      ]
+    },
+    "MarkdownCell": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "markdown"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "text"],
+      "additionalProperties": false
+    },
+    "QueryCell": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "query"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "name", "sql"],
+      "additionalProperties": false
+    },
+    "InspectionReady": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "inspection"
+        },
+        "inspection": {
+          "$ref": "#/definitions/Inspection"
+        }
+      },
+      "required": ["kind", "inspection"],
+      "additionalProperties": false
+    },
+    "Inspection": {
+      "type": "object",
+      "properties": {
+        "reference": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "location": {
+                  "$ref": "#/definitions/SourceLocation"
+                },
+                "definitionLocation": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/SourceLocation"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "definitionType": {
+                  "type": "string"
+                },
+                "defaultText": {
+                  "type": ["string", "null"]
+                },
+                "annotations": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/AnnotationInfo"
+                  }
+                }
+              },
+              "required": [
+                "text",
+                "kind",
+                "location",
+                "definitionLocation",
+                "definitionType",
+                "defaultText",
+                "annotations"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "import": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ImportInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "$ref": "#/definitions/NativeMetadata"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QueryDescriptor"
+          }
+        },
+        "givens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GivenInfo"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationInfo"
+          }
+        },
+        "modelAnnotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationInfo"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "imports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ImportInfo"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        }
+      },
+      "required": [
+        "model",
+        "queries",
+        "givens",
+        "annotations",
+        "modelAnnotations",
+        "dependencies",
+        "imports",
+        "diagnostics"
+      ],
+      "additionalProperties": false,
+      "title": "Inspection"
+    },
+    "AnnotationInfo": {
+      "type": "object",
+      "properties": {
+        "route": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/definitions/SourceLocation"
+        }
+      },
+      "required": ["route", "text", "content", "location"],
+      "additionalProperties": false,
+      "title": "AnnotationInfo"
+    },
+    "ImportInfo": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/definitions/SourceLocation"
+        }
+      },
+      "required": ["url", "location"],
+      "additionalProperties": false,
+      "title": "ImportInfo"
+    },
+    "NativeMetadata": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceInfo"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotatedObject"
+          }
+        }
+      },
+      "required": ["model", "sources", "annotations"],
+      "additionalProperties": false,
+      "title": "NativeMetadata"
+    },
+    "ModelInfo": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ModelEntryValue"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "anonymous_queries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnonymousQueryInfo"
+          }
+        }
+      },
+      "required": ["entries", "anonymous_queries"],
+      "additionalProperties": false
+    },
+    "ModelEntryValue": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ModelEntryValueWithSource"
+        },
+        {
+          "$ref": "#/definitions/ModelEntryValueWithQuery"
+        }
+      ]
+    },
+    "ModelEntryValueWithSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/definitions/Schema"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterInfo"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "source"
+        }
+      },
+      "required": ["kind", "name", "schema"]
     },
     "ParameterInfo": {
       "type": "object",

@@ -297,14 +297,19 @@ def test_required_givens_keep_source_metadata_before_execution():
     source = """##! experimental.givens
 given: cutoff :: number
 source: numbers is duckdb.sql('SELECT 42 AS value')
+run: numbers -> { select: first is value }
 run: numbers -> { where: value > $cutoff select: value }
+run: numbers -> { select: last is value * 2 }
 """
     with pm.connect() as native:
         report = native.check(source)
         assert report.ok
         assert [entry.name for entry in report.model.model.entries] == ["numbers"]
         assert report.model.model.anonymous_queries == ()
-        assert [q.name for q in report.queries] == ["run:0"]
+        assert [q.name for q in report.queries] == ["run:0", "run:1", "run:2"]
+        assert [field.name for field in report.queries[0].schema.fields] == ["first"]
+        assert report.queries[1].schema is None
+        assert [field.name for field in report.queries[2].schema.fields] == ["last"]
         assert report.model.sources[0].name == "numbers"
         with native.model(source) as model:
             inspection = to_dict(model.inspect())
@@ -312,7 +317,10 @@ run: numbers -> { where: value > $cutoff select: value }
             assert [entry["name"] for entry in entries] == ["numbers"]
             assert inspection["givens"][0]["name"] == "cutoff"
             assert inspection["givens"][0]["default_text"] is None
-            sql = model.query().sql(givens={"cutoff": 10})
+            assert inspection["queries"][0]["schema"]["fields"][0]["name"] == "first"
+            assert inspection["queries"][1]["schema"] is None
+            assert inspection["queries"][2]["schema"]["fields"][0]["name"] == "last"
+            sql = model.query("run:1").sql(givens={"cutoff": 10})
             assert native.duckdb.sql(sql).fetchone() == (42,)
 
 

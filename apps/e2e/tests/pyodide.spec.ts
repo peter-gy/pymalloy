@@ -112,8 +112,8 @@ test("the base package runs a synchronized Malloy widget in Pyodide", async ({
   const values = page.getByLabel("Python values", { exact: true });
   await expect(values).toContainText("'exact_integer': 9007199254740993");
   await expect(values).toContainText("'nested': {'value': 9007199254740993}");
-  await expect(values).toContainText("'nan_value': nan");
-  await expect(values).toContainText("'infinity_value': inf");
+  await expect(values).toContainText("'nan_value': 'NaN'");
+  await expect(values).toContainText("'infinity_value': 'Infinity'");
   await expect(values).toContainText("'binary_value': [0, 255]");
   await expect(page.getByRole("cell", { name: "NaN", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Infinity", exact: true })).toBeVisible();

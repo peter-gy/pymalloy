@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { DuckDBInstance, type DuckDBConnection } from "@duckdb/node-api";
 import type { Result } from "@malloy-runtime/compiler";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -665,14 +665,16 @@ test("inspection retains independent query outputs when a query requires givens"
     source: numbers is duckdb.sql('SELECT 42 AS value')
     query: filtered is numbers -> {select: value where: value > $cutoff}
     query: ready is numbers -> {select: doubled is value * 2}
+    run: numbers -> {select: first is value}
     run: numbers -> {select: value where: value > $cutoff}
-    run: numbers -> {select: value}
+    run: numbers -> {select: last is value * 2}
   `,
   });
   const inspection = model.inspect();
   expect(inspection.queries.map((query) => query.name)).toEqual([
     "run:0",
     "run:1",
+    "run:2",
     "filtered",
     "ready",
   ]);
@@ -681,11 +683,97 @@ test("inspection retains independent query outputs when a query requires givens"
       { name: "numbers", schema: { fields: [{ name: "value", type: { kind: "number_type" } }] } },
       { name: "ready", schema: { fields: [{ name: "doubled", type: { kind: "number_type" } }] } },
     ],
-    anonymous_queries: [{ schema: { fields: [{ name: "value", type: { kind: "number_type" } }] } }],
+    anonymous_queries: [],
   });
+  expect(inspection.queries).toMatchObject([
+    { name: "run:0", schema: { fields: [{ name: "first", type: { kind: "number_type" } }] } },
+    { name: "run:1", schema: null },
+    { name: "run:2", schema: { fields: [{ name: "last", type: { kind: "number_type" } }] } },
+    { name: "filtered", schema: null },
+    { name: "ready", schema: { fields: [{ name: "doubled", type: { kind: "number_type" } }] } },
+  ]);
+  expect(model.queries).toEqual(inspection.queries);
+  expect(model.query("run:2").schema?.fields.map((field) => field.name)).toEqual(["last"]);
   expect((await model.query("filtered").run({ givens: { cutoff: 0 } })).rows).toEqual([
     { value: 42 },
   ]);
+});
+
+test("Session.run renders BLOB bytes in records, lists, and maps", async () => {
+  const runtime = await session();
+  const result = await runtime.run(`run: duckdb.sql("""
+    SELECT 'abc'::BLOB AS bytes, ''::BLOB AS empty,
+      {'items': ['abc'::BLOB, ''::BLOB], 'mapping': MAP(['key'], ['abc'::BLOB])} AS nested
+  """) -> {select: *}`);
+  expect(result.malloy.data).toEqual({
+    kind: "array_cell",
+    array_value: [
+      {
+        kind: "record_cell",
+        record_value: [
+          { kind: "sql_native_cell", sql_native_value: "[97,98,99]" },
+          { kind: "sql_native_cell", sql_native_value: "[]" },
+          {
+            kind: "sql_native_cell",
+            sql_native_value:
+              '{"items":[[97,98,99],[]],"mapping":[{"key":"key","value":[97,98,99]}]}',
+          },
+        ],
+      },
+    ],
+  });
+});
+
+test("Session.run renders non-finite doubles as text with matching field types", async () => {
+  const runtime = await session();
+  const result = await runtime.run(`run: duckdb.sql("""
+    SELECT v::DOUBLE AS value FROM (VALUES ('Infinity'), ('-Infinity'), ('NaN'), ('1.5')) AS t(v)
+  """) -> {select: value}`);
+  expect(result.rows).toEqual([
+    { value: Infinity },
+    { value: -Infinity },
+    { value: NaN },
+    { value: 1.5 },
+  ]);
+  expect(result.malloy.schema.fields).toMatchObject([
+    { name: "value", type: { kind: "string_type" } },
+  ]);
+  expect(JSON.parse(JSON.stringify(result.malloy)).data).toEqual({
+    kind: "array_cell",
+    array_value: ["Infinity", "-Infinity", "NaN", "1.5"].map((value) => ({
+      kind: "record_cell",
+      record_value: [{ kind: "string_cell", string_value: value }],
+    })),
+  });
+});
+
+test("Session.run exposes the Node driver's millisecond timestamp boundary", async () => {
+  const runtime = await session();
+  const result = await runtime.run(`run: duckdb.sql("""
+    SELECT DATE '2026-09-10' AS day,
+      TIMESTAMP '2024-02-03 04:05:06.123456' AS stamp,
+      TIMESTAMPTZ '2024-02-03 04:05:06.123456+00' AS zoned
+  """) -> {select: *}`);
+  expect(result.rows).toEqual([
+    {
+      day: new Date("2026-09-10T00:00:00.000Z"),
+      stamp: new Date("2024-02-03T04:05:06.123Z"),
+      zoned: new Date("2024-02-03T04:05:06.123Z"),
+    },
+  ]);
+  expect(result.malloy.data).toEqual({
+    kind: "array_cell",
+    array_value: [
+      {
+        kind: "record_cell",
+        record_value: [
+          { kind: "date_cell", date_value: "2026-09-10T00:00:00.000Z" },
+          { kind: "timestamp_cell", timestamp_value: "2024-02-03T04:05:06.123Z" },
+          { kind: "timestamp_cell", timestamp_value: "2024-02-03T04:05:06.123Z" },
+        ],
+      },
+    ],
+  });
 });
 
 test("close interrupts an executing query and drains accepted queued work", async () => {
@@ -716,5 +804,86 @@ test("close interrupts an executing query and drains accepted queued work", asyn
   } finally {
     safety.abort();
     await outcome;
+  }
+});
+
+test("closing a borrowed session interrupts before the caller reuses its connection", async () => {
+  const instance = await DuckDBInstance.create();
+  const connection = await instance.connect();
+  const runtime = await session({ connection });
+  const events: string[] = [];
+  const nativeInterrupt = connection.interrupt.bind(connection);
+  const interrupt = vi.spyOn(connection, "interrupt").mockImplementation(() => {
+    nativeInterrupt();
+    events.push("interrupted");
+  });
+  try {
+    await connection.run(
+      "SET threads=1; SET enable_progress_bar=true; SET enable_progress_bar_print=false; SET progress_bar_time=0",
+    );
+    const running = runtime
+      .run(
+        "run: duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> {aggregate: total is value.sum()}",
+        {
+          signal: AbortSignal.timeout(10000),
+        },
+      )
+      .catch(async (error) => {
+        events.push("caller rejected");
+        const result = await connection.runAndReadAll("SELECT 99 AS answer");
+        expect(result.getRowObjectsJS()).toEqual([{ answer: 99 }]);
+        throw error;
+      });
+    const outcome = expect(running).rejects.toMatchObject({ name: "AbortError" });
+    await expect
+      .poll(() => connection.progress.total_rows_to_process > 0n, { timeout: 5000 })
+      .toBe(true);
+    await runtime.close();
+    await outcome;
+    expect(events).toEqual(["interrupted", "caller rejected"]);
+  } finally {
+    interrupt.mockRestore();
+    await runtime.close();
+    connection.closeSync();
+    instance.closeSync();
+  }
+});
+
+test("a borrowed session reports an interrupt failure from close", async () => {
+  const instance = await DuckDBInstance.create();
+  const connection = await instance.connect();
+  const runtime = await Session.open({ connection });
+  const nativeInterrupt = connection.interrupt.bind(connection);
+  const failure = new Error("interrupt failed");
+  const interrupt = vi.spyOn(connection, "interrupt").mockImplementation(() => {
+    // Stop the real statement before simulating a native interruption failure.
+    nativeInterrupt();
+    throw failure;
+  });
+  try {
+    await connection.run(
+      "SET threads=1; SET enable_progress_bar=true; SET enable_progress_bar_print=false; SET progress_bar_time=0",
+    );
+    const running = runtime.run(
+      "run: duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> {aggregate: total is value.sum()}",
+      {
+        signal: AbortSignal.timeout(10000),
+      },
+    );
+    const outcome = expect(running).rejects.toBe(failure);
+    await expect
+      .poll(() => connection.progress.total_rows_to_process > 0n, { timeout: 5000 })
+      .toBe(true);
+    await expect(runtime.close()).rejects.toBe(failure);
+    await outcome;
+    await expect(runtime.close()).rejects.toBe(failure);
+    expect((await connection.runAndReadAll("SELECT 99 AS answer")).getRowObjectsJS()).toEqual([
+      { answer: 99 },
+    ]);
+  } finally {
+    interrupt.mockRestore();
+    await runtime.close().catch(() => undefined);
+    connection.closeSync();
+    instance.closeSync();
   }
 });

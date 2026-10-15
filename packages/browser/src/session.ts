@@ -1,5 +1,5 @@
 import { CompiledModel } from "@malloy-runtime/compiler/jobs";
-import { Runtime, type Host } from "@malloy-runtime/compiler/adapters";
+import { Runtime, drive, type Host } from "@malloy-runtime/compiler/adapters";
 import { Table } from "apache-arrow";
 import { materialize } from "@malloy-runtime/duckdb/arrow";
 import { checkSource, formatSource } from "@malloy-runtime/compiler/tooling";
@@ -156,7 +156,7 @@ export class Session {
       const captured = "source" in spec ? spec.source : undefined;
       const root = new URL(captured?.url ?? ("url" in spec ? (spec.url ?? modelURL) : modelURL));
       const host = this.host(files, root, captured);
-      const compiled = await this.operations.compile(
+      const compiled = await drive(
         CompiledModel.begin({
           url: root,
           source: captured?.text ?? ("text" in spec ? spec.text : undefined),
@@ -237,7 +237,7 @@ export class Session {
     return this.enqueue(
       async () => {
         await this.activate(files);
-        return this.operations.compile(
+        return drive(
           checkSource({
             url: root,
             source: text,
@@ -309,6 +309,8 @@ export class Session {
   }
 
   private async describe(sql: string): Promise<Column[]> {
+    this.operations.assertActive();
+    this.imports.signal.throwIfAborted();
     const statement = await this.connection.prepare(sql);
     await statement.close();
     const result = await this.query(sql);
@@ -324,7 +326,10 @@ export class Session {
       : this.imports.signal;
     return {
       signal,
-      schema: async (need) => fields(await this.describe(describeSQL(need))),
+      schema: async (need) => {
+        signal.throwIfAborted();
+        return fields(await this.describe(describeSQL(need)));
+      },
       readURL: async (url) => {
         if (!captured) return readImport(files, url, signal, root);
         if (!Object.hasOwn(captured.imports, url.href))
