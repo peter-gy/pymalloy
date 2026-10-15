@@ -562,6 +562,67 @@ test("cancelling one browser query preserves its model and queued work", async (
   });
 });
 
+test("browser schema cancellation stops discovery and leaves the session reusable", async ({
+  page,
+}) => {
+  await page.goto("/runtime.html");
+  const output = await page.evaluate(async () => {
+    const entry = "/runtime.mjs";
+    const { Session } = await import(entry);
+    const session = await Session.open({
+      bundles: {
+        mvp: {
+          mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
+          mainWorker: new URL("/duckdb/duckdb-browser-mvp.worker.js", location.href).href,
+        },
+      },
+    });
+    const source = "run: duckdb.sql('SELECT 42 AS value') -> {select: value}";
+    const controller = new AbortController();
+    const requests: string[] = [];
+    // Abort on preparation dispatch to exercise schema discovery before execution.
+    // oxlint-disable-next-line typescript/unbound-method -- Restored in finally, called with its original receiver.
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (message, transfer) {
+      post.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
+      requests.push(message.type);
+      if (message.type === "CREATE_PREPARED") controller.abort();
+    };
+    try {
+      const preaborted = new AbortController();
+      preaborted.abort();
+      const outcomes = await Promise.allSettled([
+        session.model({ text: source }, { signal: preaborted.signal }),
+        session.check(source, { signal: preaborted.signal }),
+      ]);
+      const beforeDiscovery = requests.slice();
+      const discovery = await session.model({ text: source }, { signal: controller.signal }).then(
+        () => "resolved",
+        (error: Error) => error.name,
+      );
+      const discoveryRequests = requests.slice();
+      Worker.prototype.postMessage = post;
+      const recovered = await session.run(source);
+      return {
+        preaborted: outcomes.map((outcome) => outcome.status),
+        beforeDiscovery,
+        discovery,
+        requests: discoveryRequests,
+        recovered: recovered.rows,
+      };
+    } finally {
+      Worker.prototype.postMessage = post;
+      await session.close();
+    }
+  });
+  expect(output.preaborted).toEqual(["rejected", "rejected"]);
+  expect(output.beforeDiscovery).toEqual([]);
+  expect(output.discovery).toBe("AbortError");
+  expect(output.recovered).toEqual([{ value: 42 }]);
+  expect(output.requests).toContain("CREATE_PREPARED");
+  expect(output.requests).not.toContain("START_PENDING_QUERY");
+});
+
 test("a widget replaces an active query on its retained browser model", async ({ page }) => {
   await page.goto("/runtime.html");
   const output = await page.evaluate(async () => {

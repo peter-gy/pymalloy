@@ -1,5 +1,5 @@
 import { CompiledModel } from "@malloy-runtime/compiler/jobs";
-import { Runtime, type Host } from "@malloy-runtime/compiler/adapters";
+import { Runtime, drive, type Host } from "@malloy-runtime/compiler/adapters";
 import { checkSource, formatSource } from "@malloy-runtime/compiler/tooling";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -122,7 +122,7 @@ export class Session {
               : pathToFileURL(resolve(this.dataRoot, defaultSourceFilename)).href),
       );
       const host = this.host(captured);
-      const compiled = await this.operations.compile(
+      const compiled = await drive(
         CompiledModel.begin({
           url,
           source: captured?.text ?? ("text" in spec ? spec.text : undefined),
@@ -133,10 +133,13 @@ export class Session {
       );
       this.operations.assertActive();
       return this.operations.model(compiled, {
+        assertAvailable: () => this.operations.assertHealthy(),
         host: () => this.host(captured),
         run: (sql, template) => {
           return this.backend.run(sql, template, this.operations.signal);
         },
+        submit: (task, options) => this.operations.run(task, options),
+        release: () => {},
       });
     }, options);
   }
@@ -157,7 +160,7 @@ export class Session {
     );
     return this.operations.run(
       () =>
-        this.operations.compile(
+        drive(
           checkSource({
             url,
             source,
@@ -178,7 +181,7 @@ export class Session {
     return result.source;
   }
   close(): Promise<void> {
-    this.closing ??= this.operations.close(true).then(() => {
+    this.closing ??= this.operations.close(true).finally(() => {
       this.operations.release();
       this.imports.abort();
       if (this.instance) {

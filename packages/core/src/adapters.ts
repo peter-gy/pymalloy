@@ -1,2 +1,2 @@
 export { Runtime } from "./runtime";
-export type { Host } from "./drive";
+export { drive, type Host } from "./drive";

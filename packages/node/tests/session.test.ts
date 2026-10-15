@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { DuckDBInstance, type DuckDBConnection } from "@duckdb/node-api";
 import type { Result } from "@malloy-runtime/compiler";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -727,5 +727,86 @@ test("close interrupts an executing query and drains accepted queued work", asyn
   } finally {
     safety.abort();
     await outcome;
+  }
+});
+
+test("closing a borrowed session interrupts before the caller reuses its connection", async () => {
+  const instance = await DuckDBInstance.create();
+  const connection = await instance.connect();
+  const runtime = await session({ connection });
+  const events: string[] = [];
+  const nativeInterrupt = connection.interrupt.bind(connection);
+  const interrupt = vi.spyOn(connection, "interrupt").mockImplementation(() => {
+    nativeInterrupt();
+    events.push("interrupted");
+  });
+  try {
+    await connection.run(
+      "SET threads=1; SET enable_progress_bar=true; SET enable_progress_bar_print=false; SET progress_bar_time=0",
+    );
+    const running = runtime
+      .run(
+        "run: duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> {aggregate: total is value.sum()}",
+        {
+          signal: AbortSignal.timeout(10000),
+        },
+      )
+      .catch(async (error) => {
+        events.push("caller rejected");
+        const result = await connection.runAndReadAll("SELECT 99 AS answer");
+        expect(result.getRowObjectsJS()).toEqual([{ answer: 99 }]);
+        throw error;
+      });
+    const outcome = expect(running).rejects.toMatchObject({ name: "AbortError" });
+    await expect
+      .poll(() => connection.progress.total_rows_to_process > 0n, { timeout: 5000 })
+      .toBe(true);
+    await runtime.close();
+    await outcome;
+    expect(events).toEqual(["interrupted", "caller rejected"]);
+  } finally {
+    interrupt.mockRestore();
+    await runtime.close();
+    connection.closeSync();
+    instance.closeSync();
+  }
+});
+
+test("a borrowed session reports an interrupt failure from close", async () => {
+  const instance = await DuckDBInstance.create();
+  const connection = await instance.connect();
+  const runtime = await Session.open({ connection });
+  const nativeInterrupt = connection.interrupt.bind(connection);
+  const failure = new Error("interrupt failed");
+  const interrupt = vi.spyOn(connection, "interrupt").mockImplementation(() => {
+    // Stop the real statement before simulating a native interruption failure.
+    nativeInterrupt();
+    throw failure;
+  });
+  try {
+    await connection.run(
+      "SET threads=1; SET enable_progress_bar=true; SET enable_progress_bar_print=false; SET progress_bar_time=0",
+    );
+    const running = runtime.run(
+      "run: duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> {aggregate: total is value.sum()}",
+      {
+        signal: AbortSignal.timeout(10000),
+      },
+    );
+    const outcome = expect(running).rejects.toBe(failure);
+    await expect
+      .poll(() => connection.progress.total_rows_to_process > 0n, { timeout: 5000 })
+      .toBe(true);
+    await expect(runtime.close()).rejects.toBe(failure);
+    await outcome;
+    await expect(runtime.close()).rejects.toBe(failure);
+    expect((await connection.runAndReadAll("SELECT 99 AS answer")).getRowObjectsJS()).toEqual([
+      { answer: 99 },
+    ]);
+  } finally {
+    interrupt.mockRestore();
+    await runtime.close().catch(() => undefined);
+    connection.closeSync();
+    instance.closeSync();
   }
 });
