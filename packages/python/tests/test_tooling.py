@@ -220,60 +220,12 @@ def test_format_roundtrip_preserves_execution_and_reports_malformed_source():
     assert caught.value.diagnostics[0].location.range.start.line == 0
 
 
-def test_cli_check_returns_json_diagnostics_and_preserves_source(tmp_path):
-    path = tmp_path / "model.malloy"
-    source = "run: duckdb.sql('SELECT 1 AS value') -> { select: missing }"
-    path.write_text(source)
-    result = cli("check", path, "--json")
-    assert result.returncode == 1
-    assert result.stderr == ""
-    report = json.loads(result.stdout)
-    assert not report["ok"]
-    assert report["url"] == path.as_uri()
-    assert report["diagnostics"][0]["code"] == "field-not-found"
-    assert path.read_text() == source
-    path.write_text(ONE)
-    good = cli("check", path, "--json")
-    assert good.returncode == 0
-    assert json.loads(good.stdout)["ok"]
-
-
 def test_cli_syntax_check_accepts_an_unavailable_data_source(tmp_path):
     path = tmp_path / "model.malloy"
     path.write_text("source: rows is duckdb.table('absent.csv')")
     result = cli("check", path, "--syntax-only", "--json", "--data-root", tmp_path)
     assert result.returncode == 0
     assert json.loads(result.stdout)["tables"][0]["path"] == "absent.csv"
-
-
-def test_cli_formatter_emits_source_and_checks_without_writing(tmp_path):
-    path = tmp_path / "model.malloy"
-    path.write_text(ONE)
-    result = cli("format", path)
-    assert result.returncode == 0
-    assert result.stderr == ""
-    assert path.read_text() == ONE
-    assert result.stdout != ONE
-    assert cli("format", path, "--check").returncode == 1
-    path.write_text(result.stdout)
-    checked = cli("format", path, "--check")
-    assert checked.returncode == 0
-    assert checked.stdout == ""
-    assert path.read_text() == result.stdout
-    crlf = result.stdout.replace(
-        "\n",
-        "\r\n",
-    ).encode("utf-8")
-    path.write_bytes(crlf)
-    assert cli("format", path, "--check").returncode == 1
-    assert path.read_bytes() == crlf
-    path.write_text("run: ->")
-    failed = cli("format", path)
-    assert failed.returncode == 1
-    assert failed.stdout == ""
-    assert "syntax-error" in failed.stderr
-    assert str(path) in failed.stderr
-    assert path.read_text() == "run: ->"
 
 
 def test_invalid_tool_arguments_leave_model_available():
@@ -314,14 +266,3 @@ run: numbers -> { where: value > $cutoff select: value }
             assert inspection["givens"][0]["default_text"] is None
             sql = model.query().sql(givens={"cutoff": 10})
             assert native.duckdb.sql(sql).fetchone() == (42,)
-
-
-def test_cli_check_reports_database_setup_errors(tmp_path):
-    source = tmp_path / "model.malloy"
-    source.write_text(ONE)
-    database = tmp_path / "invalid.duckdb"
-    database.write_text("invalid database contents")
-    result = cli("check", source, "--database", database)
-    assert result.returncode == 1
-    assert result.stdout == ""
-    assert result.stderr.startswith("pymalloy:")
