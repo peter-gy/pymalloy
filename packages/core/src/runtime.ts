@@ -141,6 +141,7 @@ export class Runtime {
   private accepting = true;
   private active?: AbortController;
   private failure?: Error;
+  private abortActive?: () => void;
 
   private readonly models = new Set<Model>();
   constructor(private readonly interrupt: () => void | Promise<void>) {}
@@ -179,6 +180,7 @@ export class Runtime {
         settled = true;
         const reason =
           signal?.reason ??
+          controller?.signal.reason ??
           new DOMException("Operation was aborted", "AbortError");
         reject(reason);
         if (controller) {
@@ -196,6 +198,7 @@ export class Runtime {
         }
         controller = new AbortController();
         this.active = controller;
+        this.abortActive = aborted;
         try {
           this.assertActive();
           const result = await task();
@@ -209,6 +212,7 @@ export class Runtime {
             await interrupted;
           } finally {
             this.active = undefined;
+            this.abortActive = undefined;
           }
         }
       });
@@ -220,8 +224,12 @@ export class Runtime {
     });
   }
 
-  close(): Promise<void> {
+  close(abort = false): Promise<void> {
     this.accepting = false;
+    if (abort) {
+      this.active?.abort(new DOMException("Session is closed", "AbortError"));
+      this.abortActive?.();
+    }
     return this.pending;
   }
   compile<T>(job: Job<T>, host: Host): Promise<T> {

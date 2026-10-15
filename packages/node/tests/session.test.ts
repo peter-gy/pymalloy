@@ -655,3 +655,34 @@ test("Session.run preserves TIME, INTERVAL and bigint MAP values through renderi
   });
   expect(() => JSON.stringify(result.malloy)).not.toThrow();
 });
+
+test("close interrupts an executing query and drains accepted queued work", async () => {
+  const runtime = await session();
+  await runtime.connection.run(
+    "SET threads=1; SET enable_progress_bar=true; SET enable_progress_bar_print=false; SET progress_bar_time=0",
+  );
+  const model = await runtime.model({
+    text: `
+    query: slow is duckdb.sql('WITH RECURSIVE endless(value) AS (SELECT 1 UNION ALL SELECT value FROM endless) SELECT max(value) AS value FROM endless') -> {aggregate: total is value.sum()}
+    query: fast is duckdb.sql('SELECT 42 AS answer') -> {select: answer}
+  `,
+  });
+  const safety = new AbortController();
+  const running = model
+    .query("slow")
+    .run({ signal: AbortSignal.any([safety.signal, AbortSignal.timeout(10000)]) });
+  const outcome = Promise.allSettled([running]);
+  try {
+    await expect
+      .poll(() => runtime.connection.progress.total_rows_to_process > 0n, { timeout: 5000 })
+      .toBe(true);
+    const queued = model.query("fast").run();
+    await runtime.close();
+    expect(await outcome).toMatchObject([{ status: "rejected", reason: { name: "AbortError" } }]);
+    expect((await queued).rows).toEqual([{ answer: 42 }]);
+    expect(runtime.closed).toBe(true);
+  } finally {
+    safety.abort();
+    await outcome;
+  }
+});

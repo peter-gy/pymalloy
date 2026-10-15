@@ -178,7 +178,7 @@ export class Session {
     return result.source;
   }
   close(): Promise<void> {
-    this.closing ??= this.operations.close().then(() => {
+    this.closing ??= this.operations.close(true).then(() => {
       this.operations.release();
       this.imports.abort();
       if (this.instance) {
