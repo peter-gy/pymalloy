@@ -1,288 +1,188 @@
 # Architecture and ownership
 
-Malloy owns language semantics. Python authoring produces Malloy syntax. Compiler
-jobs request source text and field schemas. Runtime adapters fulfil those requests
-and execute SQL with DuckDB. Exporters publish source files or notebook documents.
-
-The public [concepts guide](../docs/guide/concepts.md) defines the user-facing
-values. This page assigns their implementation owners.
-
-## Follow a query
-
-1. A host calls `CompiledModel.begin` with source identity, optional inline text,
-   a document kind, and a connection name and dialect.
-2. `Job.step()` drives `MalloyTranslator.translate()`. It returns a result or
-   import/schema needs. Table schema needs carry native table paths, and SQL schema
-   needs carry SQL text. Adapters construct their own probes. The next step
-   receives an answer for every requested key.
-3. A retained model exposes typed query descriptors. A `Query` selects a name or
-   Malloy extension and binds givens when producing SQL.
-4. The host executes SQL on the same connection used for schema discovery and
-   materializes a `Result`.
-
-Node and browser hosts await I/O between synchronous steps. Python fulfils the
-same needs synchronously. Compiler jobs contain no connection or filesystem APIs.
+[Malloy](https://docs.malloydata.dev/) owns language semantics. Python authoring
+builds Malloy syntax. Compiler jobs request source text and field schemas.
+Runtime adapters fulfil those requests and execute SQL with
+[DuckDB](https://duckdb.org/docs/stable/), an embedded SQL database.
 
 ## Owners
 
-| Owner                                        | Responsibility                                                                                        |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `packages/core` (`@malloy-runtime/compiler`) | Synchronous compiler jobs, shared Model/Query contracts, documents, diagnostics, metadata and tooling |
-| `packages/duckdb`                            | DuckDB type conversion, search-path statements, Arrow materialization and stable result conversion    |
-| `packages/node`                              | Native connection ownership, local source readers and session execution                               |
-| `packages/browser`                           | WebAssembly worker ownership, virtual files, imports and execution                                    |
-| `packages/widget`                            | anywidget revision synchronization and Malloy result rendering                                        |
-| `packages/protocol`                          | Shared Python wire contracts, exact givens, and widget state                                          |
-| `packages/headless`                          | Deno compiler service and framed process entry point                                                  |
-| `pymalloy._headless`                         | Deno process, Python DuckDB engine, model ownership and deadlines                                     |
-| `pymalloy._authoring`                        | Immutable syntax, scoped drafts, annotations, and Python reconstruction                               |
-| `pymalloy._model`                            | Source snapshots, captured data, persistence, selection, and shared failure contracts                 |
-| `pymalloy._protocol`                         | Generated compiler/widget records, exact givens, result decoding, and immutable wire snapshots        |
-| `pymalloy.validation`                        | Detached reports and documentation-presence policy                                                    |
-| `pymalloy._notebook`                         | Deferred notebook projections, rich display hooks and cell lifetime ownership                         |
-| `pymalloy.widget`                            | Python inputs and detached widget snapshots                                                           |
-| `pymalloy.export`                            | Source bundles, notebook plans, COPY destination anchoring, and format serialization                  |
-| `apps`                                       | Documentation and notebook-host acceptance tests                                                      |
+| Owner                                    | Boundary                                                                               |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `packages/core`                          | Compiler jobs, host driver, shared Model/Query contracts, tooling, documents, metadata |
+| `packages/duckdb`                        | DuckDB schema/type conversion, file settings, result materialization                   |
+| `packages/node`                          | Native Node sessions, local source readers, connection lifetime                        |
+| `packages/browser`                       | WebAssembly workers, virtual files, browser execution                                  |
+| `packages/widget`                        | anywidget revisions, notebook actions, result rendering                                |
+| `packages/protocol`                      | Python-facing wire contracts and record generation inputs                              |
+| `packages/headless`                      | Deno compiler service and framed stdin/stdout                                          |
+| `pymalloy._headless`                     | Connection owner, model compiler processes, DuckDB execution, deadlines                |
+| `pymalloy._authoring`                    | Syntax, scoped edits, annotations, Python reconstruction                               |
+| `pymalloy._model`                        | Source snapshots, captured inputs, file access, persistence                            |
+| `pymalloy._protocol`                     | Generated Python records, exact values, immutable snapshots                            |
+| `pymalloy._notebook`, `pymalloy.widget`  | Deferred display, host/view lifetime, Python widget inputs                             |
+| `pymalloy.validation`, `pymalloy.export` | Detached evidence, documentation policy, bundles, notebook serialization               |
+| `apps`                                   | Composition, documentation site, notebook-host acceptance tests                        |
 
-Dependency direction follows these owners. Core depends on Malloy. DuckDB helpers
-depend on core. Node and browser adapters depend on both. Python-facing protocol
-records depend on compiler types, and the widget and Deno service consume them.
-Core and DuckDB helpers never depend on those protocol records or Python adapters.
+Core depends on Malloy. DuckDB helpers depend on core. Runtime adapters depend on
+both. Python-facing protocol records consume compiler types. Keep filesystem and
+database APIs in adapters and format-specific serialization in exporters.
 
-### Python package layout
+## Compile and execute
 
-The package root contains the public modules: `authoring`, `expressions`,
-`analysis`, `result`, `errors`, `validation`, `browser`, `widget`, `agent`, and
-`cli`. The root `__init__.py` exposes the main Python API and loads optional
-runtimes on demand.
+`CompiledModel.begin` creates a synchronous job. `step()` returns
+`{needs: {urls, schemas}}` or `{result}`. Each requested key receives `{value}` or
+`{error}`. Table needs carry `tablePath`, SQL needs carry `sql`, and both carry
+connection identity. Hosts construct schema probes and execute on the same engine.
+`@malloy-runtime/compiler/adapters` owns `Host`, `drive`, and serialized `Runtime`.
 
-Private packages own related implementation files:
+A compiled model retains query descriptors and their output schemas. Required
+unbound givens leave the query schema unset. Source schemas remain available.
+A query binds givens during SQL preparation and reads current data during execution.
+SQL rows stay in the data adapter.
 
-| Package      | Files and role                                                                                                                                                                                                                                        |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `_authoring` | `draft.py` coordinates edits, `syntax.py` owns private syntax nodes, `operations.py` renders scalar operations, and `python.py` reconstructs Python. Annotations, identifiers, generated lexer keywords, and table-reference syntax live beside them. |
-| `_model`     | `source.py` owns source identity and snapshots, `inputs.py` captures data, `persistence.py` publishes source, and `selection.py` validates query selection. Shared errors and the default connection name belong here.                                |
-| `_protocol`  | `records.py` contains generated frozen, strict msgspec types. `givens.py`, `codec.py`, and `snapshot.py` encode values, decode results, and freeze boundary data.                                                                                     |
-| `_notebook`  | `subject.py` projects authored metadata and deferred native operations. Display hooks and `lifetime.py` own implicit views.                                                                                                                           |
-| `_headless`  | Compiler processes, tooling leases, native engine execution, deadlines, and retained runtime models.                                                                                                                                                  |
-| `export`     | Public notebook/bundle APIs and their private document, planning, file-access, and serialization modules.                                                                                                                                             |
+### Source identity and data root
 
-`_protocol` is independent of runtime and authoring code. `_model` depends on
-protocol types and imports Arrow when capturing data. Authoring consumes both
-packages. Parsing, formatting, checking, and compilation load the compiler/headless
-code on demand. Widget and export adapters reuse those values. Keep package initializers small
-and import private definitions from their owning modules.
+`ModelSource` retains root URL, kind, text, imports keyed by absolute URL, and
+captured input owners. Imports resolve exclusively from a closed snapshot.
+Python and Node inline source use `model.malloy` under the configured data root.
+A Python draft retains its own URL. Browser inline source uses a memory URL.
+A virtual translator root distinguishes inline text from a physical import
+with the same identifying URL. Diagnostics map back to authored code-point offsets.
 
-The base Python package includes syntax construction, source records, anywidget,
-and agent guidance. Optional components are imported at their use sites. The
-`headless` extra supplies Deno, native DuckDB, PyArrow and timezone data.
-`pm.data` loads PyArrow when called. Polars and notebook hosts are installed
-directly when needed. Separate compiler and widget bundles let browser execution
-remain independent of Deno.
-Deno comes from its Python distribution, giving headless installs a packaged
-JavaScript runtime. Its permission sandbox and V8 heap limit bound compiler
-access and memory independently of DuckDB. Native DuckDB supplies Arrow results.
-Timezone-aware Arrow values retain their timezone through PyArrow conversion.
-
-## Source and data
-
-`ModelSource` is a closed source snapshot: root URL, document kind, root text,
-imported text keyed by URL, and captured input owners. Hosts infer kind from file extensions once unless
-the caller supplies it. Compiler jobs consume the explicit kind. Default inline
-filenames are `model.malloy`. Native hosts resolve that name against the current directory,
-while browser-only text uses the shared memory URL. These bases determine relative
-import resolution. A virtual translator root keeps inline text distinct from an
-imported physical source with the same identifying URL. Diagnostics map back to
-authored source identity and code-point coordinates.
-
-A model's URL determines import resolution. DuckDB connection settings determine
-data resolution. Owned native sessions set UTC and `file_search_path` at creation.
-DuckDB checks the current process directory before `file_search_path`. Catalog
-identifiers and CTEs retain DuckDB's native precedence. Loading a model never
-changes the data root. Borrowed connections use caller settings and reject
-connection options that would mutate them.
-
-Browser models snapshot virtual-file mappings. The session activates a model's
-files before discovery or execution. HTTP sources require CORS. Captured source
-imports resolve exclusively through the snapshot.
+Model URLs determine imports. Engine settings determine data resolution.
+Owned native connections set UTC and `file_search_path` at creation. DuckDB checks
+the process directory before the search path and applies native identifier
+precedence. Loading a model keeps the data root unchanged. Browser models copy
+virtual-file mappings and activate their files before discovery or execution.
 
 ## Resources and cancellation
 
-| Resource                               | Owner and teardown                                                           |
-| -------------------------------------- | ---------------------------------------------------------------------------- |
-| Owned native connection                | Python connection or TypeScript session, closed after submitted work settles |
-| Borrowed native connection             | Caller, including settings and transactions                                  |
-| Browser worker and database            | Session, terminated on close, worker failure, or session-lifetime abort      |
-| Import requests                        | Operation signal, also cancelled when the session closes                     |
-| Retained Deno process and compiler job | Python model, released on close or collection                                |
-| Compiler-only Deno process             | Serialized tooling lease, released after 30 seconds idle or at exit          |
-| MalloyWidget session                   | anywidget initialization, released by initialization cleanup                 |
-| MalloyWidget DOM and renderer          | Rendered view, listeners and visualization disposed on cleanup               |
-| Precompiled notebook connection        | Query cell, closed after materialization or COPY                             |
-| Headless notebook model                | Generated setup shared by query cells                                        |
+`pm.connect()` owns an engine and one lock shared by its models. Each model owns
+one compiler process and retains its connection. Queries retain their model.
+Closing a connection waits for work, closes child models, then closes its owned
+engine. Closing a model releases its compiler and leaves siblings usable.
+Borrowed connections retain caller settings, registrations, and transactions.
+The caller owns rollback after a failed statement aborts an explicit transaction.
 
-Operations serialize per Python model or TypeScript session. Queued cancellation
-rejects that call. Active engine cancellation interrupts the statement and waits
-for acknowledgement before queued work starts. Healthy engines remain reusable.
-An interrupted caller-owned transaction may require rollback by its owner.
-TypeScript accepts `AbortSignal`, including `AbortSignal.timeout(ms)`. Python
-measures seconds across lock acquisition, compilation and execution. Compiler
-requests receive the remaining budget. A compiler request timeout kills Deno
-because its request framing can no longer be trusted, making that model terminal.
-Worker death and compiler crashes also close the affected runtime.
-`compiler_memory_mb` limits the compiler V8 heap independently of DuckDB memory.
-`pm.connect()` owns the engine and serializes its models through one lock. Models
-own their compiler processes. Closing the connection settles child models before
-closing its owned engine. Queries retain their model and connection.
+Operations serialize per Python connection or TypeScript session. A queued
+timeout/cancellation rejects that call. Active engine cancellation interrupts
+and settles the statement before queued work proceeds. Healthy engines remain
+reusable. Python carries one deadline through lock acquisition, compiler requests,
+and execution. A completed value or body exception survives a late deadline.
 
-## Notebook display
+[Deno](https://docs.deno.com/) is the JavaScript runtime for Python's compiler.
+An in-flight compiler timeout kills the process because framing cannot resume
+that request. Compiler crashes, protocol failures, and heap exhaustion close the
+affected model. SQL timeouts leave healthy compilers reusable. Browser worker
+failure closes the session and settles pending work.
 
-`NotebookDisplay` supplies marimo's `_display_` and Jupyter's `_repr_mimebundle_`
-hooks. It creates an inspection-first MalloyWidget for each display. Subject
-projection reads authored structure and retained metadata. It neither compiles
-nor materializes captured inputs. Check and Run requests trigger that work.
-Isolated expressions and clauses keep their unresolved context visible.
+### Python compiler transport
 
-Browser subjects use the existing browser session adapter. Native subjects
-borrow a model and send bounded preview results as Arrow IPC over standard
-anywidget custom messages. Materialized results use the same transport for a
-20-row slice. The widget reuses DuckDB Arrow conversion and Malloy stable-result
-rendering. Native previews carry column types and values, while browser query
-results also retain Malloy rendering annotations.
+Each process owns one retained model and one pending compiler job. Frames contain
+a four-byte unsigned big-endian length followed by UTF-8 JSON, capped at 64 MiB.
+Startup returns `{kind: "ready"}`. Each request has one typed reply. Authored
+failures use `kind: "error"` with diagnostics. Internal failures use
+`kind: "failure"`. Python validates replies before dispatching them.
+Deno runs the self-contained bundle with configuration, npm resolution, and
+remote imports disabled, and receives no filesystem or network permissions.
 
-Implicit views close when their last frontend view unmounts. In marimo,
-`_notebook/lifetime.py` also registers with the private cell lifecycle registry:
-marimo closes a comm on cell rerun, while ipywidgets retains its Python widget
-until `close()`. This isolated host seam releases captured inputs and borrowed
-model references on rerun and deletion. Explicit MalloyWidget instances keep
-caller ownership. Closing a view never closes a borrowed native model.
+Format, parse, syntax projection, and check lease a shared serialized compiler.
+It exits after 30 seconds idle. Lease waiting and startup consume the deadline.
+Checks resolve schemas and imports afresh. Diagnostic replies keep the process
+reusable. Failed processes are discarded. Idle teardown sends EOF so Deno can
+persist its code cache. Active failure terminates it. Both paths have bounded waits.
 
-## Records and rendering
+### Widget revisions and views
 
-TypeScript records use camel case. `packages/protocol` owns the wire contracts and
-their generated JSON Schema. `scripts/generate-records.ts` emits Python msgspec
-records with Python field names and wire aliases. Authored
-dictionary keys retain their spelling. Incoming messages are validated at the
-boundary. [Protocols and lifecycle](protocol.md) owns transport shapes, exact
-values, and widget revision rules.
+[anywidget](https://anywidget.dev/) bridges Python and notebook browsers.
+Definitions and inputs carry separate revisions. The browser waits for
+`input.definitionRevision` to match the definition, cancels superseded work, and
+coalesces pending input to the latest revision. Every publication is guarded by
+the current generation. Python and renderer guards reject stale results.
+Capture materialization and given encoding must succeed before revisions advance.
 
-Node and browser results contain native rows and a Malloy stable result tree.
-The widget transports that tree to Python as recursively immutable mappings and
-tuples. `pymalloy.analysis.to_dict(state)` explicitly materializes mutable copies. Native Python
-results retain DuckDB-produced Arrow tables. Row conversion materializes Python
-objects on demand, while `.to_arrow()` returns the retained table. SQL rows never pass through
-the Deno compiler process.
+Initialization owns the browser session and input listeners. Each view owns DOM
+and renderer cleanup. Native preview messages carry correlation IDs, input
+revisions, and [Arrow IPC](https://arrow.apache.org/docs/format/Columnar.html#serialization-and-interprocess-communication-ipc)
+columnar buffers. Closing a widget preserves borrowed native models.
+Implicit marimo inspectors close on cell rerun through an isolated host lifecycle
+seam. Implicit Jupyter inspectors close when their last view unmounts.
+Explicit widgets remain caller-owned.
 
-The widget uses `@anywidget/react` and stable external-store subscriptions.
-React owns each view's controls, tabs, schema glyphs and diagnostic presentation. Each
-view has a shadow root, with StyleX tokens and compiled component rules isolated
-from notebook form styles. The host stylesheet contains only the shadow-host
-layout reset. Malloy's renderer owns result DOM and authored rendering tags inside
-one effect-managed adapter, including its style and accessibility observers.
-Initialization owns the shared session and input listeners.
+Givens encode integers as exact decimal text recursively through arrays and
+records. Result decoding preserves big integers and decimals using schema-tagged
+cells. Public state, files, and givens use detached immutable mappings and tuples.
+`analysis.to_dict` produces mutable containers while preserving scalar types.
 
-Source and SQL panels load one shared Shiki registry on demand. Only the Malloy,
-MOTLY and SQL grammars and GitHub light/dark themes enter that chunk. The JavaScript
-regex engine runs without additional WebAssembly. React renders token text, while
-StyleX follows the host color scheme. Plain source stays readable during loading
-or if highlighting fails.
+## Authoring and persistence
 
-`anywidget-bundle` owns the bootstrap, manifest and module transport. Its Python
-`BundledWidget` base serves packaged JavaScript chunks over the existing comm.
-The browser compiler, native Arrow adapter and result visualization load on
-request. Notebook inspection starts with the React app and its stylesheet.
-StyleX exposes the renderer's CSS fallback theme variables so authored Malloy
-theme annotations keep their precedence.
+`Source` and `View` wrap private immutable `Syntax` nodes. Source declarations
+append to one trailing `extend` block. View clauses append to the final stage,
+including saved-view refinement. `pipe` starts a stage. Annotations bind to named
+objects before annotated views enter pipelines.
 
-Malloy adaptation lives in `core/src/upstream.ts`, including translator creation,
-parser access, experimental formatting and internal metadata conversions. Parser
-listeners use Malloy's generated context types so grammar drift fails typechecking.
+Named bindings own their expression and directly attached annotation routes.
+Lookup and replacement stop at scope boundaries. Parser-projected bindings
+retain surrounding source, comments, and shared annotations. Opaque scalar
+subtrees keep the whole enclosing scalar opaque because parentheses can change
+Malloy temporal-range semantics. `number` retains numeric spelling when it affects
+type inference. Python emission reconstructs supported operations and retains
+other grammar as trusted literal syntax.
 
-## Repeated work and result conversion
+Unchanged file reads and saves preserve exact UTF-8 bytes. Python reconstruction
+preserves semantics with canonical supported scalar spelling. Saves publish
+complete text atomically, preserve permissions, and compare a loaded file's
+observed revision. That comparison cannot lock concurrent writers.
+Validated saves check captured imports and their original root directory.
 
-A compiled model owns one typed query registry. Embedded queries retain their
-validated preparation and SQL fragments, so first execution uses the schemas
-already discovered during compilation. Each call binds its own givens
-and executes against current data. Named queries, runs, and retained source views
-keep one native `PreparedResult` for calls without supplied values, following
-Malloy's `QueryMaterializer` default-compilation policy. Nonempty givens and ad hoc
-source compile per request. Query rows are always fetched from the engine.
-SQL-only calls leave rendering metadata unevaluated, and each result publication
-gets fresh stable metadata.
+`Connection.validate` captures givens once, compiles once, executes each supplied
+counterexample query under one deadline, and closes its model on every path.
+It retains structured compiler diagnostics and one row for failed assertions.
+Documentation policy reads native annotation metadata, keeping compiler semantics
+and presence checks separate.
 
-Inspection retains one serialized projection per compiled model. Each call returns
-a fresh object, so caller edits cannot alter later inspections. Projection traverses
-Malloy's given objects once and reuses source schemas from its stable `ModelInfo`.
-Queries needing runtime givens still expose source-only
-metadata through Malloy's source converter. Native table discovery can skip the
-coordinate-repair walk when Malloy reports no table references.
+### Captured input ownership
 
-Browser models keep a bounded output-schema cache keyed by SQL and Arrow schema.
-Dictionary schemas and large keys bypass it. Cache entries contain column
-descriptions, not rows. Model file snapshots copy input buffers before queued work.
+`_model/inputs.py` owns immutable Arrow IPC snapshots and once-only verified
+Parquet materialization. Validation reads bounded batches and compares exact
+schema, values, and row counts. Table-reference nodes retain input owners through
+composition. Runtime models, queries, snapshots, validation, and execution evidence
+retain those owners independently of compiler or connection lifetime.
+`ModelSource.inputs` accompanies logical paths. Physical paths are substituted
+at the compiler boundary using parsed table-call spans.
 
-Browser Arrow conversion plans decoders per field and reads column vectors.
-Python retains the engine's Arrow buffers and schema directly. Public row reads
-return detached values. Non-finite values copy only changed result
-branches before browser rendering. Widget result messages disable anywidget echo
-because the browser already owns the publication.
-The widget's `_should_send_property` hook also skips ipywidgets' buffer walks and
-JSON comparison for an accepted frontend `_state` frame. Validation records that
-acceptance under the property lock. Rejected frames and Python-originated updates
-retain the ordinary synchronization path.
+Bundles rewrite parsed import and table spans, copy declared files, and record
+identities. Explicit files are copied at export time. The producer notebook or
+script owns dataframe preparation and its rebuild dependencies.
 
-Native notebook previews send a memory view of the Arrow IPC buffer. Python
-readback validates one detached wire tree shared by its decoder and state
-resynchronization. Publishing the public snapshot freezes its own containers,
-so mutations to incoming frames cannot change retained snapshots.
+## Generated contracts and assets
 
-Idle Deno processes exit through stdin EOF to let Deno persist its code cache.
-Active failures terminate the child. Both shutdown paths have bounded waits.
+`packages/protocol/src/records.ts` selects the wire contracts.
+`scripts/generate-records.ts` produces JSON Schema, frozen Python msgspec records,
+and the pinned Malloy keyword lexicon in a temporary directory. It formats them
+and validates the full decoder graph before replacing tracked outputs.
+`pnpm records:check` compares generated bytes and runs in `pnpm check`.
+Change generation inputs and regenerate these artifacts together.
 
-See [authoring internals](authoring.md) for syntax and input materialization costs,
-and [benchmarks](testing.md#measure-authoring-and-dataframe-costs) for reproducible
-measurements.
+The build stages widget modules, bootstrap/manifest, stylesheet, compiler bundle,
+per-artifact dependency notices, and installed agent guidance into Python assets.
+Hatch verifies them before packaging. [Packaging](releasing.md) owns distribution
+checks. Base imports and syntax construction stay independent of Deno, DuckDB,
+and optional dataframe libraries.
 
 ## Notebook exports
 
-Compiler documents preserve Markdown, Malloy and SQL order, including embedded
-query splicing and authored diagnostics. `Document` carries public givens, files,
-source, profile and ordered cells.
+Preparation uses one compiler for file discovery and model compilation under one
+deadline. A typed notebook plan owns profiles, names, setup, and COPY dependencies.
+Format serializers own notebook syntax. Identical source, schemas, options,
+output path, and dependencies must yield identical bytes.
 
-A shared typed notebook plan owns execution profiles, setup, query naming and
-COPY dependencies. Marimo and Jupyter serializers supply format-specific syntax.
-Export preparation carries one deadline through every phase.
-
-Precompiled notebooks set `file_search_path` and the `data_root` variable on each
-connection. The exporter anchors relative COPY destinations using that variable. Export
-preparation and generated native execution reject a relative input shadowed by
-a different file in the current directory. Native preparation and generated
-execution set DuckDB's `allowed_paths` to discovered table files, explicit reader
-files and inferred COPY destinations, with external access otherwise disabled.
-Remote inputs enable HTTP(S) directory prefixes so redirects remain usable.
-Native profiles install and load `httpfs` before applying those restrictions.
-`Document.remote_files` records discovered table URLs and explicitly declared
-SQL reader URLs. Remote bytes remain live dependencies.
-Headless notebooks hydrate `ModelSource` and use `model.query(name).run()`. MalloyWidget
-notebooks create `MalloyWidget` instances from source and registered files. The exporter
-uses public model, parse, and connection methods.
-
-MalloyWidget file discovery uses Malloy table-path metadata. Readers inside SQL require
-explicit `files`. MalloyWidget exports reject COPY and native database state.
-Marimo serialization writes the public Python notebook format and derives cell
-dependencies with Python's symbol table. It adds dependencies after COPY. Jupyter executes cells
-in order. Identical inputs, schemas, options, output paths and dependencies must
-produce identical notebook bytes.
-
-## Source bundles
-
-The [authoring layer](authoring.md#source-artifacts-and-failures) retains captured
-input owners through drafts, validations, models, and execution evidence. Bundle
-export consumes those owners alongside a closed source graph. It rewrites native
-import and table spans, copies declared inputs, and publishes a new directory.
-
-Source bundles and notebook documents have separate contracts. Bundles publish
-files and replay metadata. Notebook export prepares ordered cells and a runtime
-profile. Neither supplies a dataset-specific intent record, output comparison,
-or the Python producer's dependency graph. Those belong to the consuming project.
-The [export reference](../docs/reference/export.md) owns the file and replay contract.
+Native preparation and generated execution share file-access settings. Allowed
+paths include discovered tables, declared SQL readers, and inferred COPY outputs.
+Relative COPY paths anchor to the data root. Input shadowing in the current
+working directory fails. Remote native inputs load `httpfs` before restrictions
+and allow HTTP(S) redirects. Remote bytes remain live.
+Widget exports use captured imports and browser virtual files and reject native
+database state and COPY. [Export reference](../docs/reference/export.md) owns the
+public serialization and replay contracts.

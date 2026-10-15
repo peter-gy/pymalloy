@@ -1,6 +1,7 @@
 # Build and package
 
-Build the JavaScript assets before packaging Python:
+Build JavaScript assets before packaging Python with
+[Hatch](https://hatch.pypa.io/), the Python distribution builder:
 
 ```sh
 pnpm build
@@ -25,9 +26,9 @@ To build just Python's JavaScript dependencies:
 pnpm --filter '@pymalloy/python...' build
 ```
 
-`anywidget-bundle` builds the widget's module graph and `BundledWidget` serves it
+[anywidget-bundle](https://github.com/manzt/anywidget-bundle) builds the widget's module graph and `BundledWidget` serves it
 from the installed Python distribution. Static imports load with the app. Browser
-compilation, native Arrow decoding and the Malloy result renderer have dynamic
+compilation, native [Arrow](https://arrow.apache.org/docs/) columnar-data decoding and the Malloy result renderer have dynamic
 import boundaries. Keep every manifest-listed chunk and the stylesheet in wheel
 and source archives. Hatch checks those files before packaging.
 
@@ -39,8 +40,8 @@ builds a browser consumer bundle, and runs that bundle through the exact-value
 browser test. The browser server reads the bundle from `PYMALLOY_BROWSER_BUNDLE`.
 
 Test isolated installs of the wheel and a wheel rebuilt from the source archive.
-The base installation must support widgets and agent guidance without Deno or
-native DuckDB. The headless installation must execute queries and return Arrow
+Verify that the base installation supports widget construction and agent
+guidance with base dependencies. The headless installation must execute queries and return Arrow
 results. Check [browser behavior against the built wheel](testing.md#browser-tests).
 
 ```sh

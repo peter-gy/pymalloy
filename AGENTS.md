@@ -15,8 +15,8 @@ DuckDB execution, data access, and resource lifetime.
   `packages/python` owns Python inputs and detached state snapshots.
 - `packages/protocol` owns Python wire records shared by the widget and headless host.
 - `packages/headless` owns the bundled Deno compiler service and framed stdin/stdout.
-- `pymalloy._headless` owns optional headless dependencies, the Deno process, Python
-  DuckDB connections, and deadlines. Keep the base widget import Deno-free.
+- `pymalloy._headless` owns Connection lifetimes, optional headless dependencies,
+  per-model Deno processes, native DuckDB execution, and deadlines. Keep the base widget import Deno-free.
 - Exporters own format-specific serialization and reproducible notebook data access.
 - `apps` compose packages. Public guides and reference live in `docs`, contributor
   guidance in `development_docs`, and the public site's configuration in `apps/docs`.
@@ -24,6 +24,10 @@ DuckDB execution, data access, and resource lifetime.
 ## Invariants
 
 - Delegate Malloy parsing, model resolution, and SQL generation to the shared compiler.
+- Keep Source, View, Expr, and Draft immutable. Query descriptors carry their own
+  output schemas. Required unbound givens leave output schemas unresolved.
+- Retain captured input owners alongside logical paths through drafts, models,
+  ModelSource snapshots, validation, and execution evidence.
 - Use one data-access contract for schema discovery and execution. Resolve database
   identifiers with native DuckDB semantics before treating them as file paths.
 - Give connections, workers, models, processes, and listeners explicit owners.
@@ -41,7 +45,6 @@ DuckDB execution, data access, and resource lifetime.
 
 Run the command list in [contributor setup](development_docs/README.md#validate-a-change).
 
-Add `pnpm docs:build` and desktop/narrow inspection for documentation changes.
 Keep dependencies scoped to the package that imports them and preserve both lockfiles.
 
 Test consumer behavior through APIs, files, kernel results, and browser state.

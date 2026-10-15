@@ -1,54 +1,28 @@
 # Contributor workflow
 
-Set up the JavaScript and Python workspaces from the repository root:
+Build JavaScript assets before installing the Python workspace:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
-uv sync --frozen --all-packages --all-extras
+uv sync --all-packages --all-extras --frozen
 ```
 
-Use Node 24.11 or newer and the pnpm version in `package.json`. Node, Python, and uv versions are recorded in `.node-version`, `.python-version`, and
-`pyproject.toml`. JavaScript dependencies use the pnpm catalog. Python uses `uv.lock`.
+[Node.js](https://nodejs.org/en/docs) runs the JavaScript tools. Use Node 24.11
+or newer and the [pnpm](https://pnpm.io/) package-manager version in
+`package.json`. `.node-version` records the development version.
+[uv](https://docs.astral.sh/uv/) manages Python dependencies. Its minimum version
+is in `pyproject.toml` and `.python-version` selects Python 3.12.
 
-Build before syncing the Python workspace. The build compiles JavaScript, stages Python
-runtime assets, and builds the public site.
-
-| Task                                  | Start here                                    |
-| ------------------------------------- | --------------------------------------------- |
-| Choose the owner for a change         | [Architecture and ownership](architecture.md) |
-| Extend model authoring and agent APIs | [Authoring architecture](authoring.md)        |
-| Change widget or compiler messages    | [Protocols and lifecycle](protocol.md)        |
-| Validate behavior across runtimes     | [Testing and compatibility](testing.md)       |
-| Build distributions or publish        | [Build and release](releasing.md)             |
-
-## TypeScript imports
-
-Use extensionless relative imports in bundled TypeScript:
-
-```ts
-import { documentSource, sqlParts } from "./document";
-```
-
-Package and application configs inherit `tsconfig.base.json`. It uses
-`moduleResolution: "Bundler"` and `module: "ESNext"` because Vite+ builds the
-runtime code. Each package declares its own host types and libraries. The root
-Oxlint configuration enforces the convention for relative module imports and
-exports, including type imports.
-
-Keep workspace dependencies as package names with `workspace:*` versions.
-`vp pack` emits the public JavaScript and declarations referenced by package
-exports, including their runtime file extensions. `pnpm canary` checks installed
-packages under both NodeNext and Bundler resolution without skipping declaration
-checks, executes a Node query, and runs the packed browser bundle through the
-exact-value browser test.
-
-Explicit extensions remain on real assets, external package subpaths, and the
-scripts workspace and anti-slop tooling executed directly by Node/Oxlint. Those paths resolve actual
-files. Python schema generation uses source paths relative to its own config to
-keep protocol records independent of declaration bundling.
+| Task                                 | Documentation                     |
+| ------------------------------------ | --------------------------------- |
+| Choose an owner or change a boundary | [Architecture](architecture.md)   |
+| Choose a contract test or benchmark  | [Testing](testing.md)             |
+| Package distributions                | [Build and package](releasing.md) |
 
 ## Validate a change
+
+Run from the repository root after building:
 
 ```sh
 uv lock --check
@@ -56,121 +30,87 @@ pnpm check
 pnpm test
 pnpm canary
 pnpm e2e
-uv run --frozen pytest
-uv run --frozen pytest -m e2e
-uv run --frozen ruff format --check packages/python examples apps/e2e scripts
+uv run --frozen pytest -q
+uv run --frozen pytest -m e2e -q
 uv run --frozen ruff check packages/python examples apps/e2e scripts
+uv run --frozen ruff format --check packages/python examples apps/e2e scripts
 uv run --frozen ty check
 uv run --frozen pyrefly check
 uv run --frozen basedpyright
+pnpm docs:build
 git diff --check
 ```
 
-`pnpm check` runs formatting, type-aware Oxlint with anti-slop rules, typechecks,
-generated-contract freshness, and Knip. Use `pnpm check:knip` for unused-code and dependency checks alone.
-Build first to provide workspace package declarations.
+`pnpm check` covers formatting, type-aware Oxlint and the repository's anti-slop
+rules, TypeScript, generated-record freshness, and unused code/dependencies.
+Build first to supply package declarations. The Python type checkers inspect
+`packages/python/src` using root `.venv` dependencies.
 
-The three Python type checkers cover `packages/python/src` with dependencies from
-the root `.venv`. Pyrefly uses its default preset and fails on warnings.
-basedpyright uses standard mode. Configure their source roots in `pyproject.toml`.
-
-`scripts/` is a private pnpm workspace. It owns build utilities, generators, consumer
-checks, benchmarks, and their dependencies. TypeScript scripts run directly on
-Node and are checked with the packages by `pnpm check`. Python benchmarks stay
-Python in the same directory.
-
-Keep the anti-slop rules and license together in `tools/oxlint/anti-slop`.
-`vite.config.ts` documents exceptions for runtime decoding. Fix findings at their
-owning boundary before adding exceptions.
-
-Run `pnpm records` after changing compiler or widget records, or upgrading Malloy.
-Commit `packages/protocol/schema/protocol.json`, `_protocol/records.py`, and
-`_authoring/lexicon.py` together. Review their diff after generation. The
-[protocol guide](protocol.md#contract-generation) describes ownership and validation.
-
-Rebuild after changes to generated-asset inputs. Browser, widget, lifecycle, and
-cross-language changes also require the [browser suite](testing.md#browser-tests).
-Packaging changes require wheel and source-archive installation checks from
-[build and release](releasing.md#validate-distributions).
-
-Verify cross-runtime changes through each affected consumer API. Update package
-exports, docs, examples, and lifecycle tests together.
+The [testing guide](testing.md) maps contracts to focused checks and describes
+browser prerequisites. Packaging changes also need the
+[distribution checks](releasing.md#validate-distributions).
 
 ## Work on documentation
 
-Public Python functions and methods carry their parameter descriptions and
-examples in their defining docstrings. Use NumPy-style Parameters, Returns,
-Raises, Notes, See Also, and Examples sections where relevant. Explain accepted
-input forms, execution or materialization, resource ownership, and the choice
-between related operations. Read-only properties can use a short contract.
-
-Examples use `import pymalloy as pm` and small self-contained inputs. Include
-observable output and close retained runtimes. `test_docstrings.py` runs these
-examples in the normal Python suite. Browser display itself needs the browser
-suite, while construction and state examples run as doctests.
-
 Public pages live in `docs/`, contributor pages in `development_docs/`, and
-VitePress configuration and theme in `apps/docs/.vitepress/`.
+[VitePress](https://vitepress.dev/), the documentation site builder, is configured
+in `apps/docs/.vitepress`. Root and Python package READMEs share their opening
+example and route list. Give each guide one reader task and each reference exact
+signatures, defaults, return values, errors, and lifetime.
 
-```sh
-pnpm docs:dev
-pnpm docs:build
-```
+Python docstrings use NumPy-style Parameters, Returns, Raises, Notes, See Also,
+and Examples sections as needed. Include small inputs, observable results, and
+resource cleanup. `test_docstrings.py` executes public docstrings.
+`test_docs_examples.py` executes each README and guide Python fence in a fresh
+process with shared temporary example data. Reserve an immediately preceding
+`<!-- not-executed -->` marker for examples requiring an interactive environment.
 
-Portless serves development at `https://docs.pymalloy.localhost` and preview at
-`https://preview.docs.pymalloy.localhost`. Use the printed URL when your proxy
-port or Git worktree changes it. Portless assigns the VitePress port. Its first
-HTTPS setup may request administrator access to trust a certificate and bind
-port 443.
+`pnpm docs:dev` starts the site through [Portless](https://github.com/vercel-labs/portless),
+a local hostname proxy. It prints the worktree-specific URL.
+`pnpm docs:preview` serves the built site. Its first HTTPS setup can require
+administrator access to trust a certificate and bind port 443.
+Build output lives in `apps/docs/.vitepress/dist`.
 
-Build output is in `apps/docs/.vitepress/dist`. Inspect desktop and narrow widths,
-navigation, search, code blocks, and both themes. Keep titles, labels, links, and
-terms consistent. Link every public page from the navigation.
+Validate links, heading anchors, navigation, local search, code blocks, tables,
+and light/dark themes at desktop and narrow widths. Check the deployment base
+with `BASE_PATH=/pymalloy/ pnpm docs:build` and the matching preview environment.
 
-Use the deployment base path when validating site links:
+## Keep imports and generated contracts aligned
 
-```sh
-BASE_PATH=/pymalloy/ pnpm docs:build
-BASE_PATH=/pymalloy/ pnpm docs:preview
-```
+Bundled TypeScript uses extensionless relative imports and workspace package
+names with `workspace:*` versions. Vite builds runtime exports and declarations.
+Scripts run directly in Node and retain extensions for real files.
+`scripts/` owns its dependencies and build utilities.
 
-Give each explanation a canonical home:
-
-| Surface                                | Owns                                                                    |
-| -------------------------------------- | ----------------------------------------------------------------------- |
-| Root and Python package READMEs        | Shared capability summary, first examples, and links                    |
-| `docs/guide/overview.md`               | Workflow and dependency choices                                         |
-| `docs/guide/concepts.md`               | Public vocabulary and the scope of captured or checked evidence         |
-| Other guides                           | One workflow per page with executable examples                          |
-| `docs/reference`                       | Signatures, defaults, data shapes, failure behavior, and file contracts |
-| `development_docs`                     | Package ownership, internal invariants, build, tests, and release       |
-| `skills/pymalloy` and `pymalloy.agent` | Installed agent workflow and offline recipes                            |
-
-Keep shared README examples in parity. Link to the owning page for detailed
-contracts. Skills intentionally carry executable recipes for installed agents,
-which may have no checkout or site access. Dataset-specific task records and
-research evidence belong to the producing project.
+Run `pnpm records` after compiler/widget contract changes or a Malloy upgrade.
+Review and commit `packages/protocol/schema/protocol.json`, Python
+`_protocol/records.py`, and `_authoring/lexicon.py` together. Rebuild assets before
+testing installed distributions. [Architecture](architecture.md#generated-contracts-and-assets)
+defines generation ownership.
 
 ## Upgrade a dependency
 
-The compiler and document parser share a pin in `pnpm-workspace.yaml`.
-Diagnose behavior against that installed version, not a newer upstream checkout.
+1. Update the importing package or `pnpm-workspace.yaml` catalog. Run
+   `pnpm install` for JavaScript or `uv lock` for Python. Preserve both lockfiles.
+2. Review the dependency's current contract. [Malloy](https://docs.malloydata.dev/),
+   the language compiler, shares a pin with its document parser. Check schema,
+   givens, diagnostics, formatting, and parsed spans against that installed pin.
+   Rebase its patch in `patches/` when changing the pin.
+3. Rebuild and run the affected contracts from the testing guide. For database
+   and Arrow changes, include precision, nested values, file resolution, and
+   borrowed transactions. For compiler changes, run the upstream sample checkers
+   and record their sample revision.
+4. Verify installed distributions after bundled dependency or build-tool changes.
 
-1. Update the importing package or shared catalog, then run `pnpm install` or
-   `uv lock`.
-2. Review affected upstream contracts. For Malloy, check schema and given metadata
-   in `packages/core/src/upstream.ts`, plus selectors, diagnostics, formatting,
-   and document parsing. Keep report fields consistent across runtimes.
-   For anywidget or traitlets, check initialization, validation, synchronization,
-   and observers.
-3. Run `pnpm build`. Test installed distributions after bundled dependency or
-   build-tool changes.
-4. Run the affected [semantic tests](testing.md#choose-tests-by-contract) and
-   boundary checks. DuckDB and Arrow upgrades need precision, nested-value,
-   path-resolution, and borrowed-connection cases.
-5. For compiler changes, run the [upstream sample checker](testing.md#check-upstream-samples)
-   and record the sample revision and outcomes.
+pnpm 11 defaults to a 1,440-minute minimum release age for dependencies,
+including transitive dependencies. Respect that [release-age policy](https://pnpm.io/settings/dependency-resolution#minimumreleaseage)
+during upgrades. Wait for the release to age or review a narrowly scoped exception
+before recording it in workspace configuration.
 
-Python dependencies use lower bounds. Test both the locked environment and
-isolated public-index installations. A passing locked run does not establish
-compatibility with every allowed dependency combination.
+Published Python lower bounds need a separate environment. Build a wheel, resolve
+its direct dependencies with `--resolution lowest-direct`, install the test
+producers and hosts, then run the normal Python suite against that wheel.
+Use `uv run --isolated --no-project` to keep the root development group's higher
+bounds out of that resolution. Repeat for base and headless installations and
+record the actual resolved versions. The locked development suite proves the
+locked combination. A lower-bound claim needs the isolated result too.

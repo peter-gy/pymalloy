@@ -1,180 +1,102 @@
 # Testing and compatibility
 
-Test consumer behavior through API results, files, kernels, and browser state.
-Use the smallest boundary that proves the contract, then check affected runtimes.
+Test observable contracts through public APIs, files, kernels, and browser state.
+The [contributor workflow](README.md#validate-a-change) owns the complete command list.
 
 ## Choose tests by contract
 
-| Contract                                                     | Primary evidence                                    | Additional boundary                                          |
-| ------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------ |
-| Malloy parsing, imports, query selection, and document order | `packages/core/tests`                               | Python tooling and export tests                              |
-| Source coordinates, diagnostics, inspection, and formatting  | Core tooling tests and Python `test_tooling.py`     | MalloyWidget error recovery in a browser                     |
-| Native file resolution and database identifiers              | Node session tests and Python `test_runtime.py`     | Exported notebook execution from another directory           |
-| Nested values, exact integers, dates, and nulls              | Node/Python result tests and browser Arrow tests    | Pyodide numeric readback                                     |
-| Model reuse, queued calls, close, and borrowed transactions  | Node session tests and Python runtime tests         | MalloyWidget multiple-view and worker lifecycle cases        |
-| Input revisions, state snapshots, and trait validation       | Python `test_widget.py` and widget lifecycle tests  | marimo, JupyterLab, and Pyodide synchronization              |
-| Ordered Markdown/SQL cells and COPY writes                   | Python document, marimo, and Jupyter tests          | Executed notebooks and upstream samples                      |
-| Symbolic edits and Python reconstruction                     | Authoring/expression tests and `check_roundtrip.py` | Upstream queries compared by SQL structure and typed results |
-| Captured inputs and bundle relocation                        | `test_data_inputs.py`, `test_source_bundle.py`      | Re-execution after source files move or disappear            |
-| Bundled assets, optional imports, and distribution contents  | Isolated wheel/source-archive installs              | Browser tests against the installed wheel                    |
+| Contract                                              | Focused evidence                                                  | Consumer gate                            |
+| ----------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------- |
+| Compiler jobs, imports, document order, query schemas | `packages/core/tests`, Python tooling/document tests              | `pnpm test`, `uv run --frozen pytest -q` |
+| Source/View authoring, scoped edits, exact saves      | `test_source_view.py`, `test_authoring.py`, `test_persistence.py` | Python suite and roundtrip checker       |
+| Connection ownership, deadlines, current data         | `test_connection.py`, `test_runtime.py`, `test_execution.py`      | Python and Node suites                   |
+| Exact integers, nested values, temporal data          | `test_result.py`, DuckDB and Node tests                           | Browser numeric readback                 |
+| Captured inputs, snapshots, relocated bundles         | `test_data_inputs.py`, `test_source_bundle.py`                    | Installed bundle replay                  |
+| README, guide, docstring, installed skill examples    | `test_docs_examples.py`, `test_docstrings.py`, `test_agent.py`    | Python suite                             |
+| Widget revisions, immutable state, view lifetime      | `test_widget.py`, widget lifecycle tests                          | `pnpm e2e`                               |
+| Installed wheel, exported notebook, CLI process       | `packages/python/tests/e2e`                                       | `uv run --frozen pytest -m e2e -q`       |
+| Published TypeScript exports and runtime identity     | `scripts/consumer-canary.ts`                                      | `pnpm canary`                            |
 
-For lifecycle races, control when work settles and assert which result survives.
-Avoid sleeps, private field layouts, and mirrored implementation constants.
-
-Python Result tests verify the Arrow table after engine closure, connection-local
-types, nested exact values, empty SELECT schemas, and COPY output. Rows use Arrow
-scalar representations. Native cancellation tests interrupt both active execution
-and the gap between statement parsing and execution, then reuse the same model.
-Documentation lint tests opt into `DocumentationPolicy` explicitly.
-
-`pnpm test` covers core, Node, the compiler service, Arrow conversion, and widget lifecycle.
-`uv run pytest` runs `packages/python/tests` and leaves tests marked `e2e` unselected.
-`uv run pytest -m e2e` installs the built wheel into fresh environments, runs exported
-marimo and Jupyter notebooks as separate processes, and drives the `pymalloy` console script.
-Build JavaScript assets with `pnpm build` before the wheel tests. Each test has a timeout
-so a stuck compiler or kernel ends the run.
-
-`pnpm e2e` is the browser gate. `pnpm canary` is part of the same gate: it packs the four
-public TypeScript packages, executes a Node query with exact integer and decimal values,
-and runs the packed browser bundle through the exact-value browser test.
+`pnpm test` covers compiler, Node, DuckDB conversion, widget lifecycle, and the
+compiler service. The normal Python suite deselects `e2e` tests. The explicit e2e
+suite builds and installs distributions, executes notebook processes, and invokes
+the CLI. Build assets first.
 
 ## Browser tests
 
-Build the runtime assets and a wheel before starting the browser suite:
+[Playwright](https://playwright.dev/) drives the browser acceptance suite. Build
+runtime assets and exactly one root `dist/pymalloy-*-py3-none-any.whl`, then run
+`pnpm --filter @pymalloy/e2e install-browser` and `pnpm e2e`.
+The four configured hosts are:
 
-```sh
-pnpm build
-uv sync --frozen --all-packages --all-extras
-uv build --package pymalloy --no-sources
-pnpm --filter @pymalloy/e2e install-browser
-pnpm e2e
-```
+| Host               | Port  | Contract                                                |
+| ------------------ | ----- | ------------------------------------------------------- |
+| marimo             | 28441 | Handwritten reactive notebook and Python readback       |
+| JupyterLab         | 28442 | Kernel communication, multiple views, recovery, close   |
+| Standalone Pyodide | 28443 | Base wheel in browser Python and direct browser runtime |
+| Exported marimo    | 28444 | CLI-generated widget notebook                           |
 
-The standalone server requires exactly one `pymalloy-*-py3-none-any.whl` in root
-`dist/`. Move older wheels aside before running the suite.
+[marimo](https://docs.marimo.io/) is a reactive Python notebook editor.
+[JupyterLab](https://jupyterlab.readthedocs.io/) hosts notebook kernels and widgets.
+[Pyodide](https://pyodide.org/en/stable/) runs Python in the browser. Its bootstrap
+loads `micropip` and `lzma` before installing the wheel. Browser runtime assets
+and Python packages require network access.
 
-Local marimo and JupyterLab tests use the installed Python workspace. To test the
-built wheel, install it immediately before `pnpm e2e`:
+Tests run serially in Chromium. Screenshots and traces are in
+`apps/e2e/playwright-report` and `apps/e2e/test-results`.
+Servers use `uv run --no-sync` to retain the selected installation. For wheel
+coverage, install the built wheel immediately before the browser suite and restore
+the editable workspace with the setup sync command afterward.
+`PYMALLOY_KERNEL_PYTHON` selects a separate base-package Jupyter interpreter.
+Install PyArrow and ipykernel there for captured inputs and kernel communication.
 
-```sh
-uv pip install --no-deps --reinstall-package pymalloy dist/pymalloy-*.whl
-pnpm e2e
-```
-
-The test servers use `uv run --no-sync` to retain the selected installation.
-Set `PYMALLOY_KERNEL_PYTHON` to run the Jupyter kernel with a separate interpreter.
-Install the base wheel, PyArrow, and ipykernel into that environment, with
-neither Deno nor native DuckDB. PyArrow supports the captured-data fixture.
-The fixture authoring process may use the headless extra to prepare an exported
-notebook. Execution of that notebook happens in the widget-only kernel.
-Run `uv sync --frozen --all-packages --all-extras` to return to the editable
-workspace afterward.
-
-Playwright starts and stops four servers defined in
-`apps/e2e/playwright.config.ts`:
-
-| Host               | Port  | Boundary exercised                                                                                  |
-| ------------------ | ----- | --------------------------------------------------------------------------------------------------- |
-| marimo             | 28441 | Handwritten notebook: rendering, reactive Python readback, and input updates                        |
-| JupyterLab         | 28442 | Kernel communication, several views of one widget, recovery, and close                              |
-| Standalone Pyodide | 28443 | Base-package installation in browser Python, binary inputs, precise readback, and browser execution |
-| Exported marimo    | 28444 | Widget notebook produced by `pymalloy export --format marimo --profile widget`                      |
-
-Pyodide supplies an anywidget-model adapter to test the packaged frontend against
-browser Python. Its bootstrap loads `micropip` and the unvendored standard-library
-module `lzma` needed by agent-plugins. The test reads the installed agent skill
-and executes a widget from the base wheel. JupyterLab tests the host's widget manager and communication.
-Keep both checks when changing synchronization.
-
-Tests run serially in Chromium. Failure screenshots and traces are in
-`apps/e2e/playwright-report/` and `apps/e2e/test-results/`. DuckDB workers and
-WebAssembly use the configured bundles. Pyodide and Python packages load over
-the network.
+`pnpm canary` creates a temporary packed-package consumer. It checks declarations
+under NodeNext and Bundler resolution, executes native exact-value queries, and
+builds a browser bundle for the browser acceptance test. The standalone server
+reads that bundle from `PYMALLOY_BROWSER_BUNDLE`.
 
 ## Check upstream samples
 
-Use an existing Malloy samples checkout and a prepared data directory:
+Use an existing [Malloy samples](https://github.com/malloydata/malloy-samples)
+checkout and prepared data. The sample checker command is
+`uv run python packages/python/tests/check_samples.py CHECKOUT --data-root DATA
+--output /tmp/sample-results --runtime`.
 
-```sh
-uv run python packages/python/tests/check_samples.py /path/to/malloy-samples \
-  --data-root /path/to/data --output /tmp/sample-results --runtime
-```
+`results.json` records the sample revision and per-source outcomes. It checks
+deterministic exports, executes marimo/Jupyter notebooks, and compares each query
+with native SQL. `--runtime` includes `Query.run`. Missing data and incompatible
+samples return nonzero. `--execute-writes` enables COPY and requires isolated data
+with output destinations prepared.
 
-`results.json` records the checkout revision and per-source outcomes. The checker
-verifies deterministic exports, executes marimo and Jupyter notebooks, and
-compares results by query selector against headless-model SQL. `--runtime` also
-compares `Query.run()`. Each query records which consumers passed.
+The roundtrip command is
+`uv run python packages/python/tests/check_roundtrip.py CHECKOUT --data-root DATA
+--output /tmp/roundtrip-results`.
+It parses models, emits and executes Python, and recompiles captured imports.
+A query needs equivalent SQL or DuckDB syntax trees plus matching typed results.
+Matching rows on one dataset alone cannot prove semantic equivalence.
+Reports retain hashes, SQL comparison, types, row counts, outcomes, and generated
+Python. Inspect skipped writes and timeouts before interpreting corpus coverage.
 
-Comparisons preserve column names, row and nested-list order, and exact floats.
-`--unordered` compares top-level rows as a multiset, preserving duplicates and
-nested-list order. `--float-precision 9` rounds floats to nine significant digits.
-The report records both options. Unseeded sampling checks columns and successful
-execution because rows can differ between runs.
-
-Missing data and incompatible samples return a nonzero exit status. Per-source
-results distinguish missing data from compiler or runtime failures.
-`--execute-writes` enables COPY and requires an isolated data directory containing
-its output destinations.
-
-### Check symbolic Python roundtrips
-
-```sh
-uv run python packages/python/tests/check_roundtrip.py /path/to/malloy-samples \
-  --data-root /path/to/data --output /tmp/roundtrip-results
-```
-
-The checker reads each `.malloy` model, emits and executes Python, and recompiles
-the reconstructed source with its captured imports. Notebook and SQL document
-roots stay unchanged while their captured `.malloy` imports are reconstructed.
-Every SELECT runs through both models on the same single-thread DuckDB connection.
-COPY statements are compiled and recorded but not executed.
-
-`results.json` records source hashes, the sample revision, compilation failures,
-SQL equivalence, column names and types, row counts, and result hashes.
-These are regression observations for the tested queries, inputs, and versions,
-not a proof for every Malloy expression or future compiler. A passing
-query requires identical SQL or identical DuckDB syntax trees after removing
-source-location metadata, plus matching results. Matching rows alone cannot prove
-equivalence: different filters can return the same rows on one dataset.
-
-Results preserve row order and exact floats by default. `--unordered` explicitly
-compares top-level rows as a multiset. `--float-precision 9` explicitly rounds
-floats to nine significant digits. The report records both options. Nested-list
-order always remains significant. These options never relax the SQL-equivalence
-gate. Value mismatches trigger another original-query execution to check whether
-the baseline itself varies. Baseline variability is evidence for review, not an
-automatic pass.
-
-Generated Python is retained under `sources/`. The command returns nonzero for
-compilation failures, mismatches, skipped writes, and timeouts. Inspect per-source
-outcomes before interpreting an incomplete corpus as a regression. `--match`
-restricts the run to paths containing the supplied text.
+Both checkers preserve row and nested-list order and exact floats by default.
+`--unordered` compares top-level row multisets. `--float-precision 9` rounds
+floats to nine significant digits. The report records these policies.
+The roundtrip checker's SQL-equivalence gate remains in force.
 
 ## Measure authoring and dataframe costs
 
+Run benchmarks separately from builds and tests:
+
 ```sh
-uv run python scripts/benchmark_authoring.py --samples 7 --output nogit/authoring-timings.json
-uv run python scripts/benchmark_data_inputs.py --rows 1000000 --samples 7 --output nogit/dataframe-timings.json
-pnpm bench:compiler --samples 7 --output nogit/compiler-timings.json
-uv run python scripts/benchmark_notebook.py --samples 7 --output nogit/notebook-timings.json
+uv run python scripts/benchmark_authoring.py --samples 7 --output /tmp/authoring-timings.json
+uv run python scripts/benchmark_data_inputs.py --rows 1000000 --samples 7 --output /tmp/dataframe-timings.json
+pnpm bench:compiler --samples 7 --output /tmp/compiler-timings.json
+uv run python scripts/benchmark_notebook.py --samples 7 --output /tmp/notebook-timings.json
 ```
 
-The dataframe benchmark measures contiguous and fragmented Arrow snapshots,
-Parquet materialization with verification, and bundles with 100, 1,000, and 5,000
-table references. Results include dependency versions and every timing sample.
-Compare medians using the same interpreter, dependencies, input size, and machine.
-Run benchmarks separately from tests and builds. Keep timing thresholds out of
-behavior tests.
-
-The notebook benchmark measures inspection/display of 1,000 fields, decoding
-and publishing 5,000 eight-column rows, and serialization of a 20 MiB native
-preview. It reports timing samples and peak Python allocation during each call.
-Allocation measurements exclude pre-existing objects and Arrow's native buffers,
-so they are not total process memory measurements.
-
-Build the packages before running the compiler benchmark. It measures model
-inspection, fresh model checks, and batches of 100 SQL preparations through the
-shared host driver with synthetic schemas. It excludes database execution and
-compiler process startup. `--compiler path/to/dist` selects another compiler build
-for comparison. The Python authoring benchmark measures process and execution
-costs separately, including warm SQL-only calls.
+Record dependency versions, machine, workload, and every sample. Compare medians
+under the same environment. Authoring measures construction, process, and execution
+costs. Data capture measures Arrow layouts, verified Parquet, and reference-heavy
+bundles. Compiler measurements use synthetic schemas and exclude database execution
+and startup. Notebook measurements cover display, state publication, and Arrow
+preview serialization. Python allocation measurements exclude existing objects and
+native Arrow buffers. Keep timing thresholds out of behavior tests.
