@@ -9,30 +9,35 @@ pip install 'pymalloy[headless]'
 ```python
 import pymalloy as pm
 
-result = pm.run("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
-print(result.rows())  # [{'answer': 42}]
-table = result.arrow()
+result = (
+    pm.connect()
+    .model("run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }")
+    .query()
+    .run()
+)
+print(result.to_pylist())  # [{'answer': 42}]
+table = result.to_arrow()
 ```
 
-`pm.run` compiles and executes a query, then releases its compiler and connection
-before returning. The result retains an Arrow table. `result.sql` contains the
-executed SQL and `result.columns` describes the DuckDB columns. `arrow()` returns
-the table, and `rows()` creates detached Python dictionaries. Install the optional
-`polars` package to convert with `result.polars()`.
+`pm.connect()` scopes native resources. Closing the connection releases its
+models and owned engine. The result retains an Arrow table. `result.sql` contains the
+executed SQL and `result.columns` describes the DuckDB columns. `to_arrow()` returns
+the table, and `to_pylist()` creates detached Python dictionaries. Install the optional
+`polars` package to convert with `result.to_polars()`.
 
 Keep a model when you want to select queries or run again with different inputs:
 
 ```python
 from pathlib import Path
 
-orders = pm.model(Path("examples/orders.malloy"), data_root="examples")
-print(orders.query("orders.by_region").run().rows())
+orders = pm.connect(data_root="examples").model(Path("examples/orders.malloy"))
+print(orders.query("orders.by_region").run().to_pylist())
 print(orders.queries)
 orders.close()
 ```
 
 Queries keep their model alive. Dropping the last reference allows cleanup, and
-`close()` releases resources immediately. A model also supports `with pm.model(...)
+`close()` releases resources immediately. A model also supports `with connection.model(...)
 as orders:` when a lexical scope suits the caller. Materialized results remain
 usable after the model closes.
 

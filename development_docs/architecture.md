@@ -52,7 +52,7 @@ Core and DuckDB helpers never depend on those protocol records or Python adapter
 ### Python package layout
 
 The package root contains the public modules: `authoring`, `expressions`,
-`analysis`, `result`, `execution`, `validation`, `browser`, `widget`, `agent`, and
+`analysis`, `result`, `errors`, `validation`, `browser`, `widget`, `agent`, and
 `cli`. The root `__init__.py` exposes the main Python API and loads optional
 runtimes on demand.
 
@@ -108,18 +108,18 @@ imports resolve exclusively through the snapshot.
 
 ## Resources and cancellation
 
-| Resource                               | Owner and teardown                                                      |
-| -------------------------------------- | ----------------------------------------------------------------------- |
-| Owned native connection                | Python model or TypeScript session, closed after submitted work settles |
-| Borrowed native connection             | Caller, including settings and transactions                             |
-| Browser worker and database            | Session, terminated on close, worker failure, or session-lifetime abort |
-| Import requests                        | Operation signal, also cancelled when the session closes                |
-| Retained Deno process and compiler job | Python model, released on close or collection                           |
-| Compiler-only Deno process             | Serialized tooling lease, released after 30 seconds idle or at exit     |
-| MalloyWidget session                   | anywidget initialization, released by initialization cleanup            |
-| MalloyWidget DOM and renderer          | Rendered view, listeners and visualization disposed on cleanup          |
-| Precompiled notebook connection        | Query cell, closed after materialization or COPY                        |
-| Headless notebook model                | Generated setup shared by query cells                                   |
+| Resource                               | Owner and teardown                                                           |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
+| Owned native connection                | Python connection or TypeScript session, closed after submitted work settles |
+| Borrowed native connection             | Caller, including settings and transactions                                  |
+| Browser worker and database            | Session, terminated on close, worker failure, or session-lifetime abort      |
+| Import requests                        | Operation signal, also cancelled when the session closes                     |
+| Retained Deno process and compiler job | Python model, released on close or collection                                |
+| Compiler-only Deno process             | Serialized tooling lease, released after 30 seconds idle or at exit          |
+| MalloyWidget session                   | anywidget initialization, released by initialization cleanup                 |
+| MalloyWidget DOM and renderer          | Rendered view, listeners and visualization disposed on cleanup               |
+| Precompiled notebook connection        | Query cell, closed after materialization or COPY                             |
+| Headless notebook model                | Generated setup shared by query cells                                        |
 
 Operations serialize per Python model or TypeScript session. Queued cancellation
 rejects that call. Active engine cancellation interrupts the statement and waits
@@ -131,8 +131,9 @@ requests receive the remaining budget. A compiler request timeout kills Deno
 because its request framing can no longer be trusted, making that model terminal.
 Worker death and compiler crashes also close the affected runtime.
 `compiler_memory_mb` limits the compiler V8 heap independently of DuckDB memory.
-`pm.run` closes resources before returning. Retained Python models use finalizer
-cleanup, expose `close()` for early release, and support optional context management. Queries keep their model alive.
+`pm.connect()` owns the engine and serializes its models through one lock. Models
+own their compiler processes. Closing the connection settles child models before
+closing its owned engine. Queries retain their model and connection.
 
 ## Notebook display
 
@@ -169,7 +170,7 @@ Node and browser results contain native rows and a Malloy stable result tree.
 The widget transports that tree to Python as recursively immutable mappings and
 tuples. `pymalloy.analysis.to_dict(state)` explicitly materializes mutable copies. Native Python
 results retain DuckDB-produced Arrow tables. Row conversion materializes Python
-objects on demand, while `.arrow()` returns the retained table. SQL rows never pass through
+objects on demand, while `.to_arrow()` returns the retained table. SQL rows never pass through
 the Deno compiler process.
 
 The widget uses `@anywidget/react` and stable external-store subscriptions.

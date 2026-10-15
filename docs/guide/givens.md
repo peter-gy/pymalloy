@@ -10,8 +10,8 @@ given: minimum :: number is 10
 source: orders is duckdb.sql('SELECT 42 AS amount')
 run: orders -> { select: amount where: amount >= $minimum }
 """
-query = pm.model(source).query()
-print(query.run(givens={"minimum": 20}).rows())
+query = pm.connect().model(source).query()
+print(query.run(givens={"minimum": 20}).to_pylist())
 print(query.sql(givens={"minimum": 50}))
 ```
 

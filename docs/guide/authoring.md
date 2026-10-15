@@ -26,7 +26,8 @@ orders = (
 )
 
 candidate = pm.draft().define(orders=orders)
-report = candidate.validate(
+report = pm.connect().validate(
+    candidate,
     {
         "unique_order_id": pm.ref("orders").pipe(
             pm.query(
@@ -43,7 +44,7 @@ report = candidate.validate(
                 pm.aggregate(pm.col("revenue")), pm.having(pm.col("revenue") != 42)
             )
         ),
-    }
+    },
 )
 report.save("orders.malloy", warnings_as_errors=True)
 ```
@@ -58,7 +59,7 @@ Use `pm.col("amount")` for a column and `pm.lit("North")` for a literal.
 Arithmetic and comparisons build symbolic expressions, checked by Malloy.
 
 Each validation query returns counterexamples. Zero rows passes. A failed check
-retains one example in `report.checks[i].result.rows()`. Compilation or query errors
+retains one example in `report.checks[i].result.to_pylist()`. Compilation or query errors
 also make `report.ok` false. Validation compiles once, shares one timeout budget
 across its phases, and closes its owned model before returning.
 
@@ -89,15 +90,15 @@ so an ordinary Python string cannot accidentally become executable Malloy.
 
 ## Ground definitions in data
 
-Use `pm.table("orders.parquet")` with `candidate.compile(data_root="data")` for
+Use `pm.table("orders.parquet")` with `pm.connect(data_root="data").model(candidate)` for
 files. A `Path` table argument explicitly denotes a file and quotes its path.
 Inspect real fields and values before choosing keys, measures, or joins:
 
 ```python
-model = candidate.compile()
+model = pm.connect().model(candidate)
 try:
     print(model.inspect().model.sources)
-    print(model.query("orders.by_region").preview(limit=5).rows())
+    print(model.query("orders.by_region").preview(limit=5).to_pylist())
 finally:
     model.close()
 ```
@@ -126,7 +127,7 @@ candidate = original.define(
     )
 )
 print(candidate.diff())
-print(candidate.check().diagnostics)
+print(pm.connect().check(candidate).diagnostics)
 ```
 
 The edit replaces `revenue` and its directly owned documentation route. It
@@ -185,18 +186,18 @@ through the execution and export APIs.
 
 ## Check and save a revision
 
-| Operation                | Result                                                                 |
-| ------------------------ | ---------------------------------------------------------------------- |
-| `draft.check()`          | Compiler diagnostics, source fields, query names, and locations        |
-| `draft.validate(checks)` | Static diagnostics and executable assertions for the captured revision |
-| `draft.compile()`        | A reusable model for inspection and execution                          |
+| Operation                            | Result                                                                 |
+| ------------------------------------ | ---------------------------------------------------------------------- |
+| `connection.check(draft)`            | Compiler diagnostics, source fields, query names, and locations        |
+| `connection.validate(draft, checks)` | Static diagnostics and executable assertions for the captured revision |
+| `connection.model(draft)`            | A reusable model for inspection and execution                          |
 
 Enable documentation checks explicitly:
 
 ```python
 from pymalloy.validation import DocumentationPolicy
 
-report = candidate.check(documentation=DocumentationPolicy())
+report = pm.connect().check(candidate, documentation=DocumentationPolicy())
 ```
 
 The default policy checks source, measure, and view descriptions. Pass the same

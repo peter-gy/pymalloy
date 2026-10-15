@@ -93,8 +93,8 @@ def _(pm):
     native_connection.execute(
         "CREATE TABLE local_values AS SELECT 9007199254740993::BIGINT AS id, 1.2300::DECIMAL(12,4) AS amount, [1, NULL, 3] AS nested"
     )
-    native_model = pm.model(
-        "run: duckdb.table('local_values') -> {select: *}", connection=native_connection
+    native_model = pm.connect(database=native_connection).model(
+        "run: duckdb.table('local_values') -> {select: *}"
     )
     native_query = native_model.query()
     native_query

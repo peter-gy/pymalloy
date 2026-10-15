@@ -16,14 +16,20 @@ import polars as pl
 import pymalloy as pm
 
 orders = pl.DataFrame({"region": ["North", "South"], "amount": [42, 30]})
-model = pm.draft().define(orders=pm.data(orders)).queries(
-    totals=pm.ref("orders").pipe(pm.query(
-        pm.group_by(pm.col("region")),
-        pm.aggregate(total=pm.col("amount").sum()),
-        pm.order_by(pm.col("region")),
-    ))
+model = (
+    pm.draft()
+    .define(orders=pm.data(orders))
+    .queries(
+        totals=pm.ref("orders").pipe(
+            pm.query(
+                pm.group_by(pm.col("region")),
+                pm.aggregate(total=pm.col("amount").sum()),
+                pm.order_by(pm.col("region")),
+            )
+        )
+    )
 )
-print(pm.run(model).rows())
+print(pm.connect().model(model).query().run().to_pylist())
 ```
 
 The captured input stays fixed when the original dataframe changes. DuckDB
@@ -60,11 +66,13 @@ import pymalloy as pm
 orders = pl.DataFrame({"amount": [42, 30]})
 with duckdb.connect() as connection:
     connection.register("orders", orders)
-    result = pm.run(
-        "run: duckdb.table('orders') -> { aggregate: total is amount.sum() }",
-        connection=connection,
+    result = (
+        pm.connect(database=connection)
+        .model("run: duckdb.table('orders') -> { aggregate: total is amount.sum() }")
+        .query()
+        .run()
     )
-    print(result.rows())  # [{'total': Decimal('72')}]
+    print(result.to_pylist())  # [{'total': Decimal('72')}]
     connection.unregister("orders")
 ```
 
@@ -77,8 +85,7 @@ and leaves a healthy model reusable. If DuckDB aborts an explicit transaction,
 the caller must roll it back before issuing another statement.
 
 Python adapters use the Malloy connection name `duckdb` by default. Match a
-model's alternative name with `connection_name="analytics"` on `pm.model` or
-`pm.check` and `connection="analytics"` on `pm.table`, `pm.sql`, or `pm.data`.
+connection's alternative name with `name="analytics"` on `pm.connect` and `connection="analytics"` on `pm.table`, `pm.sql`, or `pm.data`.
 The native engine remains DuckDB.
 
 Browser models receive virtual files with `files`. Each model snapshots its

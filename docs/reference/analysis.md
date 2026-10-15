@@ -6,7 +6,9 @@ Language tools return typed Python records generated from the compiler schema:
 import pymalloy as pm
 from pymalloy.analysis import SourcePosition, to_dict
 
-report = pm.check("run: missing", position=SourcePosition(line=0, character=5))
+report = pm.connect().check(
+    "run: missing", position=SourcePosition(line=0, character=5)
+)
 print(report.ok, to_dict(report.diagnostics))
 ```
 

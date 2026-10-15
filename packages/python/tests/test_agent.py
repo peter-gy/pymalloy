@@ -63,9 +63,9 @@ sys.meta_path.insert(0, BaseInstall())
 import pymalloy as pm
 from pymalloy.validation import Validation
 candidate = pm.draft().define(values=pm.sql('SELECT 42 value'))
-for operation in (candidate.compile, candidate.check, candidate.validate):
+for operation in ("model", "check", "validate"):
     try:
-        operation()
+        getattr(pm.connect(), operation)(candidate)
     except ImportError as error:
         assert 'pymalloy[headless]' in str(error)
     else:

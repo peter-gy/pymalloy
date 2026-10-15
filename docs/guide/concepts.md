@@ -8,11 +8,11 @@ and DuckDB execution.
 ## From source to results
 
 ```text
-Draft.compile() → Model.query(...) → Query.run() → Result
+Connection.model(draft) → Model.query(...) → Query.run() → Result
                       │                 └─ sql() → SQL text
                       └─ source() → ModelSource
 
-Draft.validate(checks) → Validation → bundle(...) → SourceBundle
+Connection.validate(checks) → Validation → bundle(...) → SourceBundle
 
 Malloy file → export.prepare(...) → Document → notebook
 ```
@@ -32,8 +32,8 @@ Malloy file → export.prepare(...) → Document → notebook
 
 `pm.query(...)` constructs a query fragment. `model.query(...)` selects a query
 on an already compiled model. A fragment has no connection and does not execute.
-`pm.model(...)` accepts text, a `Path`, a draft, or a source snapshot.
-`pm.run(...)` compiles and executes once, releasing resources before it returns.
+`connection.model(...)` accepts text, a `Path`, a draft, or a source snapshot.
+`pm.connect()` owns native resources and closes its models on exit.
 
 ## What gets captured
 
@@ -64,8 +64,8 @@ settings still need review before treating it as self-contained.
 | Data assertions    | Supplied counterexample queries returned zero rows at validation time             |
 | Replay comparison  | A re-executed query matches a recorded output under an explicit comparison policy |
 
-`draft.check()` returns compiler diagnostics. Pass a `DocumentationPolicy` with
-`documentation=` to also check descriptions. `draft.validate()` adds the supplied
+`connection.check(draft)` returns compiler diagnostics. Pass a `DocumentationPolicy` with
+`documentation=` to also check descriptions. `connection.validate(draft)` adds the supplied
 data assertions. Calling it without assertions establishes no
 additional data properties. A passing report does not establish that a metric or
 question matches someone's intent. Grain, units, denominators, coverage, and null
@@ -83,8 +83,8 @@ Browser sessions use DuckDB WebAssembly. Widgets own a browser session and publi
 results asynchronously to Python.
 
 `sql()` prepares SQL. `run()` executes it and materializes a result. Python results
-retain Arrow tables, expose `.arrow()` directly, and materialize detached Python
-values through `.rows()`. `.polars()` requires Polars.
+retain Arrow tables, expose `.to_arrow()` directly, and materialize detached Python
+values through `.to_pylist()`. `.to_polars()` requires Polars.
 JavaScript results expose `rows`, `columns`, `sql`, and a Malloy result tree for
 rendering. Results remain usable after their runtime closes.
 

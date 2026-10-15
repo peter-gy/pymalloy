@@ -33,19 +33,24 @@ candidate = (
         )
     )
 )
-accepted = candidate.validate(
-    {
-        "unique_id": pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("id")),
-                pm.aggregate(n=pm.count()),
-                pm.having(pm.col("n") > 1),
+accepted = (
+    pm.connect()
+    .validate(
+        candidate,
+        {
+            "unique_id": pm.ref("orders").pipe(
+                pm.query(
+                    pm.group_by(pm.col("id")),
+                    pm.aggregate(n=pm.count()),
+                    pm.having(pm.col("n") > 1),
+                )
             )
-        ),
-    }
-).require_valid()
+        },
+    )
+    .require_valid()
+)
 
 with TemporaryDirectory() as directory:
     artifact = bundle(accepted, Path(directory) / "sales", query="by_region")
     result = runpy.run_path(str(artifact.model.parent / "replay.py"))["result"]
-    print(result.rows())
+    print(result.to_pylist())

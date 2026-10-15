@@ -7,7 +7,7 @@ book = prepare("examples/orders.malloy", all=True)
 notebook = jupyter.render(book, output_path="orders.ipynb")
 ```
 
-`prepare(model, *, profile="precompiled", queries=None, all=False, givens=None,
+`prepare(path, *, profile="precompiled", queries=None, all=False, givens=None,
 data_root=None, database=None, connection_name="duckdb", title=None, timeout=120,
 files=None, remote_files=(), extensions=())` returns a
 `Document`. `model` is a local path. The data root defaults to its parent.
@@ -35,9 +35,9 @@ access, both during preparation and in generated native notebooks. The widget
 profile rejects this option; its execution uses DuckDB WebAssembly's extension
 support.
 
-A `Document` holds title, ordered `Markdown`/`QueryCell` cells, data root, database,
+A `Document` holds title, ordered `MarkdownCell`/`NotebookQuery` cells, data root, database,
 profile, captured source, givens, local files, remote URLs, extensions, and connection name. Query cells contain `name`, `sql`, and
-`kind` (`select` or `copy`). These `pymalloy.export.QueryCell` records describe notebook cells. Renderers preserve cell order and COPY dependencies.
+`kind` (`select` or `copy`). These `pymalloy.export.NotebookQuery` records describe notebook cells. Renderers preserve cell order and COPY dependencies.
 
 `marimo.render(document, *, output_path)` returns Python source. Running that
 notebook requires `marimo` plus the dependencies declared by its execution profile. `jupyter.render(document, *, output_path)` returns notebook JSON.

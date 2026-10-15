@@ -13,26 +13,30 @@ pip install 'pymalloy[headless]'
 ```python
 import pymalloy as pm
 
-orders = pm.sql("SELECT * FROM (VALUES ('North', 20), ('North', 22)) t(region, amount)")
+orders = pm.sql(
+    "SELECT * FROM (VALUES ('North', 20), ('North', 22), ('South', 30)) t(region, amount)"
+)
 candidate = (
     pm.draft()
     .define(
         orders=orders.extend(
             pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
-        ).doc("One row per order.")
+        )
     )
     .queries(
         by_region=pm.ref("orders").pipe(
             pm.query(
                 pm.group_by(pm.col("region")),
                 pm.aggregate(pm.col("revenue")),
+                pm.order_by(pm.col("region")),
             )
         )
     )
 )
-
-print(candidate.text)  # Ordinary Malloy source
-print(pm.run(candidate).rows())  # [{'region': 'North', 'revenue': Decimal('42')}]
+print(candidate.text)
+with pm.connect() as connection:
+    print(connection.model(candidate).query("by_region").run().to_pylist())
+# [{'region': 'North', 'revenue': Decimal('42')}, {'region': 'South', 'revenue': Decimal('30')}]
 ```
 
 Drafts are immutable. Check them with Malloy, validate assumptions with named

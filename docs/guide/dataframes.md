@@ -9,32 +9,44 @@ import polars as pl
 import pymalloy as pm
 from pymalloy.export import bundle
 
-orders = pl.DataFrame({
-    "id": [1, 2, 3],
-    "region": ["North", "South", "North"],
-    "amount": [12, 20, 8],
-})
+orders = pl.DataFrame(
+    {
+        "id": [1, 2, 3],
+        "region": ["North", "South", "North"],
+        "amount": [12, 20, 8],
+    }
+)
 prepared = orders.filter(pl.col("amount") >= 10)
 candidate = (
     pm.draft()
-    .define(orders=pm.data(prepared, name="orders").extend(
-        pm.primary_key("id"),
-        pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
-    ).doc("One retained order per id, with amount of at least 10 USD."))
-    .queries(by_region=pm.ref("orders").pipe(pm.query(
-        pm.group_by(pm.col("region")),
-        pm.aggregate(pm.col("revenue")),
-        pm.order_by(pm.col("region")),
-    )))
+    .define(
+        orders=pm.data(prepared, name="orders")
+        .extend(
+            pm.primary_key("id"),
+            pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
+        )
+        .doc("One retained order per id, with amount of at least 10 USD.")
+    )
+    .queries(
+        by_region=pm.ref("orders").pipe(
+            pm.query(
+                pm.group_by(pm.col("region")),
+                pm.aggregate(pm.col("revenue")),
+                pm.order_by(pm.col("region")),
+            )
+        )
+    )
 )
 checks = {
-    "unique_id": pm.ref("orders").pipe(pm.query(
-        pm.group_by(pm.col("id")),
-        pm.aggregate(n=pm.count()),
-        pm.having(pm.col("n") > 1),
-    )),
+    "unique_id": pm.ref("orders").pipe(
+        pm.query(
+            pm.group_by(pm.col("id")),
+            pm.aggregate(n=pm.count()),
+            pm.having(pm.col("n") > 1),
+        )
+    ),
 }
-accepted = candidate.validate(checks).require_valid()
+accepted = pm.connect().validate(candidate, checks).require_valid()
 artifact = bundle(accepted, "booked-sales", query="by_region")
 ```
 
@@ -76,9 +88,9 @@ It cannot infer the code that produced `prepared`.
 
 ## Work with query results
 
-Native query results retain the Arrow table produced by DuckDB. `result.arrow()`
-returns that table, `result.rows()` materializes Python values, and
-`result.polars()` converts without consolidating Arrow chunks. Install `polars`
+Native query results retain the Arrow table produced by DuckDB. `result.to_arrow()`
+returns that table, `result.to_pylist()` materializes Python values, and
+`result.to_polars()` converts without consolidating Arrow chunks. Install `polars`
 for the latter. Results remain usable after the model closes.
 
 Python rows follow Arrow scalar representations. With DuckDB's default Arrow
