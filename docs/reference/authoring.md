@@ -7,8 +7,8 @@ examples, and related operations in their Python docstrings. IDE hovers and
 ```python
 import pymalloy as pm
 
-candidate = pm.draft().define(
-    orders=pm.table("orders.parquet").extend(pm.measure(revenue=pm.col("amount").sum()))
+candidate = pm.draft().sources(
+    orders=pm.table("orders.parquet").measure(revenue=pm.col("amount").sum())
 )
 report = pm.connect(data_root="data").check(candidate)
 ```
@@ -19,7 +19,7 @@ report = pm.connect(data_root="data").check(candidate)
 references a joined field, while `col("orders.amount")` names one field containing
 a dot. `given(name)` references a declared given. `lit(value)` accepts a string,
 integer, finite float or `Decimal`, boolean, `date`, `datetime`, or `None`.
-`number(text)` preserves the exact spelling of a finite numeric literal, including
+`pymalloy.expressions.number(text)` preserves the exact spelling of a finite numeric literal, including
 scientific notation and signed zero. Generated Python uses it when numeric spelling
 affects the compiler-inferred type. It accepts numeric data, not expression code.
 
@@ -51,8 +51,8 @@ Python truth testing and iteration. `.equals(other)` compares operation trees.
 predicates. For example, `case((col("amount") > 100, "large"), otherwise="small")`
 constructs a Malloy case expression.
 
-`call(name, *arguments, receiver=None)` constructs a Malloy function call. A receiver is an explicit tuple of source-path
-components for scoped calls. `raw_expr(code)`
+`pymalloy.expressions.call(name, *arguments, receiver=None)` constructs a Malloy function call. A receiver is an explicit tuple of source-path
+components for scoped calls. `Expr.raw(code)`
 retains scalar Malloy syntax outside the supported operation grammar. Malloy owns
 function availability, types, aggregate scope, and evaluation. An opaque expression
 is inserted verbatim when used alone and parenthesized when composed as an operand.
@@ -60,51 +60,54 @@ Supply context-sensitive forms, such as `created = @2022`, as one complete raw
 expression. Imported scalars with unsupported subexpressions remain whole raw
 expressions so temporal range and partial-filter semantics are preserved.
 
-## Sources and clauses
+## Source and View
 
-Source constructors return immutable `Fragment` values. Scalar clause arguments
-require `Expr` values, including documented expressions. Bare strings are rejected.
-Construction performs no compilation. `data(frame, *, name=None, connection="duckdb")` additionally
-requires PyArrow and captures a detached Arrow snapshot. Other constructors use
-base dependencies. See [dataframe inputs](../guide/dataframes.md).
+`table(path, *, connection="duckdb")`, `sql(text, *, connection="duckdb")`,
+`data(frame, *, name=None, connection="duckdb")`, and `source(name)` return
+immutable `Source` values. `view()` creates an empty `View`. Construction builds
+Malloy text. `data` also captures an Arrow snapshot and requires PyArrow.
 
-| Constructor                                                                             | Meaning                                                                                   |
-| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `table(path: str \| Path, *, connection="duckdb")`                                      | DuckDB table expression. `Path` explicitly denotes a file                                 |
-| `data(frame, *, name=None, connection="duckdb")`                                        | Capture a materialized dataframe-like input through Arrow                                 |
-| `sql(text: str, *, connection="duckdb")`                                                | DuckDB SQL source expression                                                              |
-| `ref(name: str)`                                                                        | Quoted reference to one source or query name                                              |
-| `dimension(**fields)`, `measure(**fields)`                                              | Named scalar expressions                                                                  |
-| `view(**queries)`, `nest(**queries)`                                                    | Named query fragments                                                                     |
-| `query(*clauses)`                                                                       | Query block                                                                               |
-| `group_by(*fields, **named)`, `aggregate(*fields, **named)`, `select(*fields, **named)` | Query scalar fields                                                                       |
-| `where(predicate)`, `having(predicate)`                                                 | Row or aggregate predicate                                                                |
-| `order_by(*fields)`                                                                     | `Expr` or `.asc()` / `.desc()` sort values                                                |
-| `limit(rows: int)`                                                                      | Nonnegative query row limit                                                               |
-| `primary_key(field: str)`                                                               | Quoted key field name                                                                     |
-| `join(name, source, *, on, kind)`                                                       | Source fragment and `Expr` predicate with explicit `one`, `many`, or `cross` relationship |
+| Source method                           | Behavior                                  |
+| --------------------------------------- | ----------------------------------------- |
+| `.dimension(**fields: Expr)`            | Declare row-level fields                  |
+| `.measure(**fields: Expr)`              | Declare reusable aggregate fields         |
+| `.view(**views: View)`                  | Declare saved query stages                |
+| `.primary_key(field: str)`              | Declare row identity                      |
+| `.join_one(name, source, *, on)`        | Declare a to-one relationship             |
+| `.join_many(name, source, *, on)`       | Declare a to-many relationship            |
+| `.join_cross(name, source, *, on=None)` | Declare a cross join, optionally filtered |
+| `.where(predicate: Expr)`               | Filter source rows                        |
 
-`ref` quotes one name. Use `ref("orders").pipe(ref("by_region"))` to apply a saved source view. Arbitrary binding names use `**{"display name": expression}`.
+Source declaration methods append clauses in authored order to one trailing
+`extend` block. Malloy checks keys, field types, and relationship semantics.
 
-## Fragment
+| View method                    | Behavior                                      |
+| ------------------------------ | --------------------------------------------- |
+| `.group_by(*fields, **named)`  | Set the output grain                          |
+| `.aggregate(*fields, **named)` | Choose aggregate values                       |
+| `.select(*fields, **named)`    | Project detail fields                         |
+| `.where(predicate: Expr)`      | Filter input rows                             |
+| `.having(predicate: Expr)`     | Filter aggregate groups                       |
+| `.nest(**views: View \| str)`  | Add nested results or saved views             |
+| `.order_by(*fields)`           | Order fields or explicit Expr.asc/desc values |
+| `.limit(rows: int)`            | Bound the output row count                    |
 
-| Member                         | Behavior                                     |
-| ------------------------------ | -------------------------------------------- |
-| `.text`                        | Rendered Malloy text                         |
-| `.names`                       | Named expressions in this scope              |
-| `[name]`                       | One named expression's right-hand side       |
-| `.replace(**expressions)`      | Replace named right-hand sides in this scope |
-| `.extend(*clauses)`            | Append a source extension block              |
-| `.pipe(*queries)`              | Append query pipeline stages                 |
-| `.doc(text)`                   | Add a Malloy documentation annotation        |
-| `.annotate(text, *, route="")` | Add a routed Malloy annotation               |
+Positional strings in `group_by`, `aggregate`, `select`, and `order_by` name field
+paths split on dots. Keyword values require `Expr`. `col("customer", "name")`
+keeps explicit path components, while `col("customer.name")` names a field with
+a literal dot. Strings beside expressions remain literal values.
 
-Operations return new fragments. `.doc(text)` uses the native `"` route, and
-`.annotate(text, route="research")` uses an app annotation route. When replacing a
-binding, supplied annotations replace its directly attached annotations for those
-routes. Other routes and shared statement annotations remain intact. Omitting
-annotations preserves the binding's existing annotations. Lookup stops at named scope boundaries. Missing
-names raise `KeyError`, and duplicates in the same scope raise `ValueError`.
+Both types expose `.text`, `.names`, `.inputs`, `[name]`, `.replace(**definitions)`,
+`.doc(text)`, `.annotate(text, *, route="")`, and `.pipe(*stages: View | str)`.
+A pipeline string names a saved view. View clauses append to the final stage.
+`Source.raw(*parts)` and `View.raw(*parts)` concatenate trusted text, sources,
+views, and scalar expressions verbatim.
+
+Lookup returns `Source` for source bindings, `View` for saved views and nests,
+and `Expr` for fields. Draft query bindings return `Source`. Lookup stops at
+named scope boundaries. Missing names raise `KeyError`, and duplicate names
+raise `ValueError`. Replacements preserve surrounding text and annotations on
+routes the replacement leaves unspecified.
 
 Pipeline stages inside one named query share an editing scope. If stages define
 the same field name, `.replace` rejects that ambiguous name. Replace the containing
@@ -120,7 +123,7 @@ and uses `syntax(...)` for comments and grammar outside those constructors.
 
 ## Draft
 
-`draft(*parts: str | Fragment, url=None, imports=None) -> Draft`
+`draft(*parts: str | Source | View, url=None, imports=None) -> Draft`
 
 Compose a document verbatim. Raw strings are retained as text. Named editing
 requires constructor-created bindings or `read_model`. `imports=None` resolves
@@ -138,7 +141,7 @@ slots but does not resolve schemas or validate business meaning.
 | `.text`, `.url`, `.imports`, `.names`   | Source text, identity, captured imports, and root declaration names                      |
 | `.inputs`                               | Captured input resources with names, row counts, fingerprints, and detached Arrow access |
 | `[name]`                                | Named source or query expression                                                         |
-| `.define(**sources)`                    | Add or replace named source expressions                                                  |
+| `.sources(**sources)`                   | Add or replace named source expressions                                                  |
 | `.queries(**queries)`                   | Add or replace named query expressions                                                   |
 | `.append(*parts)`                       | Append literal text or syntax verbatim                                                   |
 | `.include(url: str \| Path)`            | Add an import to a live draft                                                            |
@@ -147,7 +150,7 @@ slots but does not resolve schemas or validate business meaning.
 | `.to_python(name="model", inputs=None)` | Executable Python reconstructing scalar operations, syntax, URL, and imports             |
 | `.save(path=None, *, overwrite=False)`  | Write root text and return its `Path`                                                    |
 
-`define` and `queries` preserve surrounding text when replacing an existing
+`sources` and `queries` preserve surrounding text when replacing an existing
 right-hand side. Replacing a declaration of the wrong kind fails. New declarations
 are appended in keyword order. Imports and dependencies must precede consumers.
 
@@ -165,8 +168,8 @@ ownership of the originally loaded file.
 ## Validation
 
 `connection.validate(draft, checks, *, givens=None, documentation=None, timeout=None)` compiles once and executes a
-mapping of names to source/query `Fragment` values, such as
-`ref("orders").pipe(query(where(col("amount") < 0), select(col("id"))))`. Zero rows passes. A failed
+mapping of names to `Source` values, such as
+`source("orders").pipe(query(where(col("amount") < 0), select(col("id"))))`. Zero rows passes. A failed
 check retains one row. The timeout budget covers compilation, metadata, and all
 assertions. Validation closes its compiler before returning the report.
 

@@ -7,7 +7,7 @@ the text that surrounds them.
 
 ## Representation and editing
 
-A `Fragment` contains ordered literal strings, child fragments, and scalar `Expr`
+The private `Syntax` node contains ordered literal strings, child nodes, and scalar `Expr`
 leaves. Scalars own their operations independently of source/query composition.
 Their immutable operation records are shared with the compiler projection.
 Operators reuse existing records, while decoding freezes incoming sequences once.
@@ -23,9 +23,9 @@ prefixes and suffixes retain names, other annotations, comments, and punctuation
 Anonymous fragments compose expressions and clauses. A `Draft` owns the document fragment, source URL, captured imports,
 and the original file revision used for persistence checks.
 
-`table`, `sql`, and `ref` construct source expressions. `dimension`, `measure`,
+`table`, `sql`, and `source` construct source expressions. `dimension`, `measure`,
 `view`, and query clauses construct fragments. `extend` and `pipe` compose them.
-`Draft.define` and `Draft.queries` assign declaration names. A binding is the
+`Draft.sources` and `Draft.queries` assign declaration names. A binding is the
 editing boundary, so replacing a field in a source cannot silently change a
 same-named field inside a nested view or join.
 
@@ -46,7 +46,7 @@ operators, aggregate methods, and namespaces. Python emission walks this tree
 and emits source/query constructors for parser-recognized structure, including
 handwritten models. Scalar operations become editable constructors. Grammar that
 cannot be reconstructed retains its literal syntax with named editing scopes.
-Unsupported scalar grammar is represented explicitly by `raw_expr`. Generated
+Unsupported scalar grammar is represented explicitly by `Expr.raw`. Generated
 code retains named editing scopes and captured imports.
 
 The compiler wire contract distinguishes concrete syntax containers from scalar
@@ -76,8 +76,7 @@ imports, data, and connection configuration.
 
 Malloy supplies expression semantics and type checking. Python builds operation
 records without inferring field types. Scalar positions require `Expr`, and
-ordinary values beside expressions become literals. `raw_expr` and `syntax` mark
-additional scalar and source/query grammar respectively.
+ordinary values beside expressions become literals. `Expr.raw`, `Source.raw`, and `View.raw` retain additional trusted grammar.
 
 Opaque scalar subtrees make their entire enclosing imported expression opaque.
 Parentheses in Malloy can change temporal range comparisons into point comparisons,

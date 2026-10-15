@@ -4,7 +4,7 @@ Identify the stage before changing the model:
 
 | Stage               | Evidence and next action                                                                                                                                                             |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Python construction | `TypeError` or `ValueError` before compilation. Check constructor arguments and use `raw_expr` or native syntax for grammar outside the API.                                         |
+| Python construction | `TypeError` or `ValueError` before compilation. Check constructor arguments and use `Expr.raw` or native syntax for grammar outside the API.                                         |
 | Malloy compilation  | `CompilationError.diagnostics` carries source locations. Inspect the installed compiler version, source and imports. Fix the original Malloy, then reconstruct Python if needed.     |
 | Schema discovery    | A `CompilationError` caused by `SchemaError` retains the failing DESCRIBE SQL and original engine cause. Verify connection, file bindings and the source SQL.                        |
 | Compiler service    | `CompilerError` identifies an internal compiler or transport failure. Retain the cause and restart the model. A deadline raises `TimeoutError`, not a model diagnostic.              |

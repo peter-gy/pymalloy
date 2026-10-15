@@ -11,38 +11,33 @@ orders = (
     pm.sql(
         "SELECT * FROM (VALUES (1, 40, 'North'), (2, 2, 'North')) t(id, amount, region)"
     )
-    .extend(
-        pm.primary_key("id"),
-        pm.measure(revenue=pm.col("amount").sum().doc("Gross order revenue in USD.")),
-        pm.view(
-            by_region=pm.query(
-                pm.group_by(pm.col("region")),
-                pm.aggregate(pm.col("revenue")),
-                pm.order_by(pm.col("revenue").desc(), pm.col("region")),
-            ).doc("Revenue by region with stable ranking.")
-        ),
+    .primary_key("id")
+    .measure(revenue=pm.col("amount").sum().doc("Gross order revenue in USD."))
+    .view(
+        by_region=pm.view()
+        .group_by(pm.col("region"))
+        .aggregate(pm.col("revenue"))
+        .order_by(pm.col("revenue").desc(), pm.col("region"))
+        .doc("Revenue by region with stable ranking.")
     )
     .doc("One row per order, with amounts in USD.")
 )
 
-candidate = pm.draft().define(orders=orders)
+candidate = pm.draft().sources(orders=orders)
 report = pm.connect().validate(
     candidate,
     {
-        "unique_order_id": pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("id")),
-                pm.aggregate(n=pm.count()),
-                pm.having(pm.col("n") > 1),
-            )
+        "unique_order_id": pm.source("orders").pipe(
+            pm.view()
+            .group_by(pm.col("id"))
+            .aggregate(n=pm.count())
+            .having(pm.col("n") > 1)
         ),
-        "non_null_order_id": pm.ref("orders").pipe(
-            pm.query(pm.where(pm.col("id").is_null()), pm.select(pm.col("id")))
+        "non_null_order_id": pm.source("orders").pipe(
+            pm.view().where(pm.col("id").is_null()).select(pm.col("id"))
         ),
-        "known_total": pm.ref("orders").pipe(
-            pm.query(
-                pm.aggregate(pm.col("revenue")), pm.having(pm.col("revenue") != 42)
-            )
+        "known_total": pm.source("orders").pipe(
+            pm.view().aggregate(pm.col("revenue")).having(pm.col("revenue") != 42)
         ),
     },
 )
@@ -53,10 +48,16 @@ The assertions check duplicate keys, null keys, and a known total. A zero-row
 result passes. The save publishes the accepted root source. See
 [concepts and boundaries](concepts.md#what-checks-establish) for the scope of this evidence.
 
-Source expressions and clauses are immutable values. Reuse them across drafts.
-`define(orders=...)` names the source, while `measure(revenue=...)` names a field.
+Sources and views are immutable values. Reuse them across drafts.
+`sources(orders=...)` names the source, while `measure(revenue=...)` names a field.
 Use `pm.col("amount")` for a column and `pm.lit("North")` for a literal.
 Arithmetic and comparisons build symbolic expressions, checked by Malloy.
+
+Positional strings in `group_by`, `aggregate`, `select`, and `order_by` name
+field paths split on dots. `view.select("customer.name")` means
+`view.select(pm.col("customer", "name"))`. Keyword values require `Expr`.
+`pm.col("customer.name")` names a field containing a literal dot. Strings beside
+expressions remain literal values.
 
 Each validation query returns counterexamples. Zero rows passes. A failed check
 retains one example in `report.checks[i].result.to_pylist()`. Compilation or query errors
@@ -68,14 +69,15 @@ across its phases, and closes its owned model before returning.
 ```python
 amount = pm.col("amount")
 predicate = (amount > 0) & (pm.col("region") == "North")
-source = pm.table("orders.parquet").extend(
-    pm.dimension(
+source = (
+    pm.table("orders.parquet")
+    .dimension(
         normalized_region=pm.col("region").str.lower(),
         order_year=pm.col("created_at").dt.year(),
         order_month=pm.col("created_at").dt.truncate("month"),
-    ),
-    pm.measure(revenue=amount.sum()),
-    pm.where(predicate),
+    )
+    .measure(revenue=amount.sum())
+    .where(predicate)
 )
 ```
 
@@ -84,8 +86,8 @@ refers to a joined field. `pm.given("minimum")` refers to a declared given.
 Use `&`, `|`, and `~` with parenthesized comparisons for predicates. Python
 `and`, `or`, and chained comparisons require a truth value and raise an error.
 
-`pm.raw_expr("...")` embeds scalar syntax outside the symbolic API.
-`pm.syntax("...")` embeds source or query clauses. Keep those boundaries explicit
+`pm.Expr.raw("...")` embeds scalar syntax outside the symbolic API.
+`pm.Source.raw("...")` embeds relation syntax, and `pm.View.raw("...")` embeds query stages. Keep those boundaries explicit
 so an ordinary Python string cannot accidentally become executable Malloy.
 
 ## Ground definitions in data
@@ -108,7 +110,7 @@ the full input, and nested values may contain more rows. Pass `timeout=` to boun
 operation time. COPY statements are rejected.
 
 Check key uniqueness and nulls separately. Check target uniqueness before choosing
-`pm.join(..., kind="one")`, and compare totals before and after joins. Compilation
+`source.join_one(...)`, and compare totals before and after joins. Compilation
 establishes language validity. Data checks and review establish the intended
 meaning of a metric.
 
@@ -121,7 +123,7 @@ join expressions while retaining the original text:
 from pathlib import Path
 
 original = pm.read_model(Path("orders.malloy"))
-candidate = original.define(
+candidate = original.sources(
     orders=original["orders"].replace(
         revenue=pm.col("amount").avg().doc("Mean order amount in USD.")
     )
@@ -141,17 +143,17 @@ raise `KeyError`, and ambiguous names raise `ValueError`.
 Attach renderer and application annotations with their native routes:
 
 ```python
-view = pm.query(pm.aggregate(revenue=pm.col("amount").sum())).annotate("bar_chart")
+view = pm.view().aggregate(revenue=pm.col("amount").sum()).annotate("bar_chart")
 measure = pm.col("amount").sum().annotate("unit=USD", route="research")
 ```
 
 Changing a measure also requires reviewing its name, documentation, and assertions.
-For a separate definition, derive a source with `pm.ref`:
+For a separate definition, derive a source with `pm.source`:
 
 ```python
-candidate = original.define(
-    north_orders=pm.ref("orders")
-    .extend(pm.where(pm.col("region") == "North"))
+candidate = original.sources(
+    north_orders=pm.source("orders")
+    .where(pm.col("region") == "North")
     .doc("Orders in the North region.")
 )
 ```

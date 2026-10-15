@@ -15,31 +15,25 @@ from pymalloy.export import bundle
 
 candidate = (
     pm.draft()
-    .define(
+    .sources(
         orders=pm.sql(
             "SELECT * FROM (VALUES ('North', 20), ('South', 30), ('North', 22)) t(region, amount)"
         )
-        .extend(
-            pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
-        )
+        .measure(revenue=pm.col("amount").sum().doc("Booked amount in USD."))
         .doc("One row per order.")
     )
     .queries(
-        by_region=pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("region")),
-                pm.aggregate(pm.col("revenue")),
-                pm.order_by(pm.col("region")),
-            )
+        by_region=pm.source("orders").pipe(
+            pm.view()
+            .group_by(pm.col("region"))
+            .aggregate(pm.col("revenue"))
+            .order_by(pm.col("region"))
         )
     )
 )
 checks = {
-    "known_revenue": pm.ref("orders").pipe(
-        pm.query(
-            pm.aggregate(pm.col("revenue")),
-            pm.having(pm.col("revenue") != 72),
-        )
+    "known_revenue": pm.source("orders").pipe(
+        pm.view().aggregate(pm.col("revenue")).having(pm.col("revenue") != 72)
     ),
 }
 accepted = pm.connect().validate(candidate, checks).require_valid()
@@ -72,7 +66,9 @@ For a model that references an ordinary file, bind that file explicitly:
 ```python
 # accepted is a validation of a model using duckdb.table('orders.parquet').
 artifact = bundle(
-    accepted, "orders-export", query="by_region",
+    accepted,
+    "orders-export",
+    query="by_region",
     files={"orders.parquet": "data/orders.parquet"},
 )
 ```

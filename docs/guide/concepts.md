@@ -20,7 +20,8 @@ Malloy file → export.prepare(...) → Document → notebook
 | Value          | Responsibility                                                                                  |
 | -------------- | ----------------------------------------------------------------------------------------------- |
 | `Expr`         | A scalar expression such as `pm.col("amount").sum()`, resolved by Malloy                        |
-| `Fragment`     | Reusable source or query syntax, including clauses and named editing scopes                     |
+| `Source`       | A relation expression with declarations, joins, and pipelines                                   |
+| `View`         | A reusable source-relative query stage                                                          |
 | `Draft`        | An immutable model revision, its source identity, optional captured imports, and managed inputs |
 | `Model`        | Compiled source and discovered schemas, retained for query preparation and execution            |
 | `Query`        | A selection within a model, or an ad hoc query, bound to givens when preparing SQL              |
@@ -30,8 +31,8 @@ Malloy file → export.prepare(...) → Document → notebook
 | `SourceBundle` | Paths to emitted Malloy, its data directory, and a manifest                                     |
 | `Document`     | Ordered Markdown and query cells prepared for notebook serialization                            |
 
-`pm.query(...)` constructs a query fragment. `model.query(...)` selects a query
-on an already compiled model. A fragment has no connection and does not execute.
+`pm.view()` constructs a reusable query stage. `model.query(...)` selects a query
+on an already compiled model. Sources and views retain syntax and captured inputs until used by a model.
 `connection.model(...)` accepts text, a `Path`, a draft, or a source snapshot.
 `pm.connect()` owns native resources and closes its models on exit.
 

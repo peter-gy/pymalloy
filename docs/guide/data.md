@@ -18,14 +18,13 @@ import pymalloy as pm
 orders = pl.DataFrame({"region": ["North", "South"], "amount": [42, 30]})
 model = (
     pm.draft()
-    .define(orders=pm.data(orders))
+    .sources(orders=pm.data(orders))
     .queries(
-        totals=pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("region")),
-                pm.aggregate(total=pm.col("amount").sum()),
-                pm.order_by(pm.col("region")),
-            )
+        totals=pm.source("orders").pipe(
+            pm.view()
+            .group_by(pm.col("region"))
+            .aggregate(total=pm.col("amount").sum())
+            .order_by(pm.col("region"))
         )
     )
 )
