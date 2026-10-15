@@ -48,9 +48,9 @@ class _Storage:
 
 @dataclass(frozen=True, eq=False)
 class Input:
-    """An immutable Python-data capture retained by a fragment or draft.
+    """An immutable Python-data capture retained by a source, view, or draft.
 
-    Obtain through Fragment.inputs or Draft.inputs after calling data. Direct
+    Obtain through Source.inputs, View.inputs, or Draft.inputs after calling data. Direct
     construction is internal. Values and schema are detached from the producer.
 
     Attributes

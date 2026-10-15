@@ -45,7 +45,7 @@ close independently while sibling models remain usable.
 
 `model.queries` contains `QueryDescriptor(name=..., kind=..., location=...)` records.
 `model.query(selection=None, *, malloy=None)` accepts a named query or a composed
-source/query `Fragment`. Use `malloy=` for native Malloy query text.
+`Source`. Use `malloy=` for native Malloy query text.
 Omit both to select the final run or single available query.
 
 `query.run(*, givens=None, timeout=None)` executes a selected query.

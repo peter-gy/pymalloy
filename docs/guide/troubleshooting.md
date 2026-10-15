@@ -16,7 +16,7 @@ reader files explicitly when exporting widgets.
 After upgrading PyMalloy or editing its Python classes in an editable install,
 save the notebook and restart its kernel. Automatic module reload can leave
 existing expressions and constructors referring to different versions of a
-class. Errors such as `Use col(), lit(), or raw_expr()` on a value created by
+class. Errors such as `Use col(), lit(), or Expr.raw()` on a value created by
 `pm.col()` can indicate this mismatch. Rerunning the import cell alone may keep
 those old class references alive.
 

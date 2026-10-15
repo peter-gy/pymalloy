@@ -11,7 +11,6 @@ from anywidget_bundle import Bundle, BundledWidget
 from msgspec import ValidationError, convert, to_builtins
 
 from pymalloy._authoring.draft import Draft
-from pymalloy._authoring.syntax import Fragment
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._notebook import NotebookDisplay
 from pymalloy._notebook.subject import Subject, describe
@@ -29,6 +28,7 @@ from pymalloy._protocol.records import (
     WidgetMessage,
 )
 from pymalloy._protocol.snapshot import freeze
+from pymalloy.authoring import Source, View
 from pymalloy.browser import Runtime
 
 
@@ -89,7 +89,7 @@ class MalloyWidget(BundledWidget):
 
     Parameters
     ----------
-    source : str, Expr, Sort, Fragment, Draft, ModelSource, Model, Query, or Result
+    source : str, Expr, Sort, Source, View, Draft, ModelSource, Model, Query, or Result
         Authored syntax, a complete model, a bound native query, or materialized
         results. Syntax shows its Malloy text, references and annotations.
         Complete drafts run in the browser. Native models and queries preview
@@ -249,7 +249,7 @@ class MalloyWidget(BundledWidget):
         if name in {"source", "files"}:
             source = value if name == "source" else self.source
             files = value if name == "files" else self.files
-            if isinstance(source, (Draft, Fragment)) and any(
+            if isinstance(source, (Draft, Source, View)) and any(
                 item.reference in files for item in source.inputs
             ):
                 raise t.TraitError("Files cannot replace captured dataframe inputs")

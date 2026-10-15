@@ -23,10 +23,10 @@ from pymalloy.export import bundle
 def totals(source):
     return (
         pm.draft()
-        .define(orders=source)
+        .sources(orders=source)
         .queries(
-            total=pm.ref("orders").pipe(
-                pm.query(pm.aggregate(amount=pm.col("amount").sum()))
+            total=pm.source("orders").pipe(
+                pm.view().aggregate(amount=pm.col("amount").sum())
             )
         )
     )
@@ -38,9 +38,7 @@ def test_input_is_a_snapshot_and_materializes_once_across_composition_and_format
     captured = pm.data(pa.table({"amount": column}), name="orders")
     values[:] = array("q", [100, 100])
     draft = totals(
-        captured.doc("Captured amounts.").extend(
-            pm.dimension(double=pm.col("amount") * 2)
-        )
+        captured.doc("Captured amounts.").dimension(double=pm.col("amount") * 2)
     )
     formatted = draft.format()
     ready = Barrier(2, timeout=5)
@@ -57,7 +55,7 @@ def test_input_is_a_snapshot_and_materializes_once_across_composition_and_format
         assert model.query().run().to_pylist() == [{"amount": 32}]
     finally:
         model.close()
-    assert not draft.define(orders=pm.sql("SELECT 1 AS amount")).inputs
+    assert not draft.sources(orders=pm.sql("SELECT 1 AS amount")).inputs
 
 
 def test_accepted_inputs_export_after_model_close_and_relocate_without_python_data(
@@ -155,7 +153,7 @@ def test_lazy_and_lossy_inputs_require_explicit_conversion():
 def test_python_reconstruction_preserves_explicit_shared_input_bindings(tmp_path):
     frame = pl.DataFrame({"amount": [12, 20]})
     captured = pm.data(frame, name="orders")
-    draft = totals(captured).define(other=captured)
+    draft = totals(captured).sources(other=captured)
     with pytest.raises(ValueError, match="bindings"):
         draft.to_python()
     path = tmp_path / "model.py"
@@ -175,7 +173,7 @@ def test_runtime_retains_temporary_input_owner_for_direct_queries():
     try:
         assert model.query().run().to_pylist() == [{"amount": 32}]
         direct = pm.data(pl.DataFrame({"amount": [7]})).pipe(
-            pm.query(pm.aggregate(total=pm.col("amount").sum()))
+            pm.view().aggregate(total=pm.col("amount").sum())
         )
         query = model.query(direct)
         del direct
@@ -231,7 +229,7 @@ def test_managed_input_publication_rejects_source_only_saves_and_changed_inputs(
 
 def test_identical_assets_share_bytes_without_collapsing_capture_origins(tmp_path):
     frame = pl.DataFrame({"amount": [12, 20]})
-    draft = totals(pm.data(frame, name="original")).define(
+    draft = totals(pm.data(frame, name="original")).sources(
         copy=pm.data(frame, name="independent")
     )
     accepted = pm.connect().validate(draft, documentation=None).require_valid()

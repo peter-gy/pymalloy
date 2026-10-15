@@ -310,8 +310,8 @@ def test_http_inputs_survive_notebook_relocation(
         table = pm.sql(f"SELECT * FROM read_csv('{url}')") if reader else pm.table(url)
         source = (
             pm.draft()
-            .define(rows=table)
-            .queries(answer=pm.ref("rows").pipe(pm.query(pm.select(pm.col("value")))))
+            .sources(rows=table)
+            .queries(answer=pm.source("rows").pipe(pm.view().select(pm.col("value"))))
         )
         path = tmp_path / "model.malloy"
         path.write_text(source.text)

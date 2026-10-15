@@ -24,15 +24,17 @@ host. This example captures two orders and defines a named query:
 import pyarrow as pa
 import pymalloy as pm
 
-orders = pm.data(pa.table({"region": ["North", "North"], "amount": [20, 22]}),
-                 name="orders")
+orders = pm.data(
+    pa.table({"region": ["North", "North"], "amount": [20, 22]}), name="orders"
+)
 candidate = (
     pm.draft()
-    .define(orders=orders.extend(pm.measure(revenue=pm.col("amount").sum())))
-    .queries(by_region=pm.ref("orders").pipe(pm.query(
-        pm.group_by(pm.col("region")),
-        pm.aggregate(pm.col("revenue")),
-    )))
+    .sources(orders=orders.measure(revenue=pm.col("amount").sum()))
+    .queries(
+        by_region=pm.source("orders").pipe(
+            pm.view().group_by(pm.col("region")).aggregate(pm.col("revenue"))
+        )
+    )
 )
 candidate
 ```
@@ -42,16 +44,16 @@ executes the selected query and opens **Result**. Its generated query is availab
 `North`, `42`. Draft execution uses Malloy and DuckDB WebAssembly in the browser.
 Captured inputs become Parquet bytes on the first Check or Run action.
 
-Display intermediate values such as `orders`, `pm.measure(revenue=revenue)` or
+Display intermediate values such as `orders`, `orders.measure(revenue=revenue)` or
 a reusable query block in separate cells. Each inspector shows the value's own
 structure. An unresolved reference stays unresolved until a containing model
 supplies its scope.
 
 | Cell output                                            | Available behavior                                                                                |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `Expr`, `Sort`, query clauses and incomplete fragments | Authored syntax, references and annotations                                                       |
+| `Expr`, `Sort`, `View`, and unresolved `Source` values | Authored syntax, references and annotations                                                       |
 | Self-contained table, SQL or captured source           | Check and run a generated query selecting up to 20 rows                                           |
-| `Draft`, document fragment or `ModelSource`            | Check and run a selected query in the browser                                                     |
+| `Draft` or `ModelSource`                               | Check and run a selected query in the browser                                                     |
 | Native `Model` or `Query`                              | Inspect retained source, check schema and preview up to 20 rows on the existing Python connection |
 | `Result`                                               | Display up to 20 already materialized rows and SQL                                                |
 

@@ -19,31 +19,24 @@ orders = pl.DataFrame(
 prepared = orders.filter(pl.col("amount") >= 10)
 candidate = (
     pm.draft()
-    .define(
+    .sources(
         orders=pm.data(prepared, name="orders")
-        .extend(
-            pm.primary_key("id"),
-            pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
-        )
+        .primary_key("id")
+        .measure(revenue=pm.col("amount").sum().doc("Booked amount in USD."))
         .doc("One retained order per id, with amount of at least 10 USD.")
     )
     .queries(
-        by_region=pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("region")),
-                pm.aggregate(pm.col("revenue")),
-                pm.order_by(pm.col("region")),
-            )
+        by_region=pm.source("orders").pipe(
+            pm.view()
+            .group_by(pm.col("region"))
+            .aggregate(pm.col("revenue"))
+            .order_by(pm.col("region"))
         )
     )
 )
 checks = {
-    "unique_id": pm.ref("orders").pipe(
-        pm.query(
-            pm.group_by(pm.col("id")),
-            pm.aggregate(n=pm.count()),
-            pm.having(pm.col("n") > 1),
-        )
+    "unique_id": pm.source("orders").pipe(
+        pm.view().group_by(pm.col("id")).aggregate(n=pm.count()).having(pm.col("n") > 1)
     ),
 }
 accepted = pm.connect().validate(candidate, checks).require_valid()
@@ -74,7 +67,7 @@ integers, floats, decimals up to precision 38, dates, and timestamps. Nanosecond
 timestamps are normalized to microseconds only when exact. Unsupported types,
 submicrosecond values, or a Parquet roundtrip that changes values or schema raise
 an error. Cast deliberately in the preparation code when another representation
-is appropriate. Query ordering still requires `pm.order_by`.
+is appropriate. Query ordering still requires `view.order_by`.
 
 Reuse a captured source expression to share one input. Two separate `pm.data`
 calls represent separate capture origins. Give distinct inputs distinct names.

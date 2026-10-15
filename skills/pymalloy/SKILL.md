@@ -29,7 +29,7 @@ If a model exists, read it and its imports first. Use
 For a new model, start with the smallest source that exposes the data:
 
 ```python
-candidate = pm.draft().define(orders=pm.table("orders.parquet"))
+candidate = pm.draft().sources(orders=pm.table("orders.parquet"))
 model = pm.connect(data_root="data").model(candidate)
 try:
     print(model.inspect().model.sources)
@@ -49,27 +49,22 @@ counterexample queries to test whole-data assumptions.
 ```python
 orders = (
     pm.table("orders.parquet")
-    .extend(
-        pm.primary_key("order_id"),
-        pm.measure(revenue=pm.col("amount").sum().doc("Gross order amount in USD.")),
-    )
+    .primary_key("order_id")
+    .measure(revenue=pm.col("amount").sum().doc("Gross order amount in USD."))
     .doc("One row per order.")
 )
-candidate = pm.draft().define(orders=orders)
+candidate = pm.draft().sources(orders=orders)
 report = pm.connect(data_root="data", timeout=30).validate(
     candidate,
     {
-        "unique_order_id": pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("order_id")),
-                pm.aggregate(n=pm.count()),
-                pm.having(pm.col("n") > 1),
-            )
+        "unique_order_id": pm.source("orders").pipe(
+            pm.view()
+            .group_by(pm.col("order_id"))
+            .aggregate(n=pm.count())
+            .having(pm.col("n") > 1)
         ),
-        "non_null_order_id": pm.ref("orders").pipe(
-            pm.query(
-                pm.where(pm.col("order_id").is_null()), pm.select(pm.col("order_id"))
-            )
+        "non_null_order_id": pm.source("orders").pipe(
+            pm.view().where(pm.col("order_id").is_null()).select(pm.col("order_id"))
         ),
     },
 )
@@ -80,8 +75,8 @@ else:
 ```
 
 1. Compose immutable source expressions and reusable clauses. Name declarations
-   with `.define(**sources)` or `.queries(**queries)`. For an existing field, use
-   `draft.define(orders=draft["orders"].replace(revenue=pm.col("amount").sum()))`.
+   with `.sources(**sources)` or `.queries(**queries)`. For an existing field, use
+   `draft.sources(orders=draft["orders"].replace(revenue=pm.col("amount").sum()))`.
    Pass `pm.col("amount").sum().doc("revised description")` to replace the binding's directly
    attached documentation route. Use `.annotate(text, route=...)` for other
    owned routes. Shared statement tags stay intact.
@@ -115,7 +110,7 @@ an expression also become literals: `pm.col("region") == "North"`.
 Combine predicates with `&`, `|`, and `~`, parenthesizing each comparison.
 Use `.str.lower()` to normalize text and `.dt.year()` or `.dt.truncate("month")`
 for time expressions. Scalar clause arguments require expressions. Use
-`pm.raw_expr(text)` for additional scalar Malloy grammar and `pm.syntax(text)` for
+`pm.Expr.raw(text)` for additional scalar Malloy grammar and `pm.Source.raw(text)` for
 additional model or query grammar. Neither boundary is needed for ordinary field
 references, arithmetic, predicates, or aggregates.
 

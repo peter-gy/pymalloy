@@ -33,8 +33,8 @@ distribution-backed thresholds. Label unresolved assumptions in the model's docs
 Keep raw columns available without redeclaring them. Add dimensions for derived
 values or meaningful aliases, measures for reusable aggregations, and saved views
 for questions worth asking again. Use Python scalar expressions for field references, arithmetic, predicates, and
-aggregates. Malloy compiles their semantics. Use `raw_expr` for scalar grammar
-outside the constructor API. Compose additional source or query clauses with `pm.syntax(text)` and complete
+aggregates. Malloy compiles their semantics. Use `Expr.raw` for scalar grammar
+outside the constructor API. Compose relation syntax with `pm.Source.raw(text)` and query stages with `pm.View.raw(text)` and complete
 declarations with `Draft.append(text)`. Use `pm.read_model(text)` to expose named
 expressions in existing Malloy for scoped edits.
 
@@ -45,7 +45,7 @@ sources when reuse or size warrants it. Schema-led projects can establish one
 base source per table and compose domain sources. Avoid speculative fields and
 views that no question needs.
 
-Use `draft.define(regional_orders=pm.ref("orders").extend(...))` to derive a
+Use `draft.sources(regional_orders=pm.source("orders").measure(...))` to derive a
 source while keeping the existing source's meaning. Imports and definitions precede their consumers.
 Expose tunable inputs as `given` parameters and pass values through `givens=`.
 A non-neutral default or permanent source filter changes every later query.

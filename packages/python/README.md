@@ -16,27 +16,22 @@ import pymalloy as pm
 orders = pm.sql(
     "SELECT * FROM (VALUES ('North', 20), ('North', 22), ('South', 30)) t(region, amount)"
 )
-candidate = (
+model = (
     pm.draft()
-    .define(
-        orders=orders.extend(
-            pm.measure(revenue=pm.col("amount").sum().doc("Booked amount in USD.")),
+    .sources(
+        orders=orders.measure(
+            revenue=pm.col("amount").sum().doc("Booked amount in USD.")
         )
     )
     .queries(
-        by_region=pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("region")),
-                pm.aggregate(pm.col("revenue")),
-                pm.order_by(pm.col("region")),
-            )
+        by_region=pm.source("orders").pipe(
+            pm.view().group_by("region").aggregate("revenue").order_by("region")
         )
     )
 )
-print(candidate.text)
-with pm.connect() as connection:
-    print(connection.model(candidate).query("by_region").run().to_pylist())
-# [{'region': 'North', 'revenue': Decimal('42')}, {'region': 'South', 'revenue': Decimal('30')}]
+print(model.text)
+with pm.connect() as con:
+    print(con.model(model).query("by_region").run().to_pylist())
 ```
 
 Drafts are immutable. Check them with Malloy, validate assumptions with named

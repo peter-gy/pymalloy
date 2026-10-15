@@ -52,16 +52,13 @@ def test_inline_model_and_captured_python_data():
     )
     draft = (
         pm.draft()
-        .define(
-            orders=pm.data(frame).extend(pm.measure(revenue=pm.col("amount").sum()))
-        )
+        .sources(orders=pm.data(frame).measure(revenue=pm.col("amount").sum()))
         .queries(
-            totals=pm.ref("orders").pipe(
-                pm.query(
-                    pm.group_by(pm.col("region")),
-                    pm.aggregate(pm.col("revenue")),
-                    pm.order_by(pm.col("region")),
-                )
+            totals=pm.source("orders").pipe(
+                pm.view()
+                .group_by(pm.col("region"))
+                .aggregate(pm.col("revenue"))
+                .order_by(pm.col("region"))
             )
         )
     )
@@ -537,8 +534,8 @@ def test_model_context_releases_owned_resources_and_preserves_borrowed_transacti
 def test_connection_name_is_shared_by_authoring_check_and_execution():
     draft = (
         pm.draft()
-        .define(values=pm.sql("SELECT 42 AS amount", connection="analytics"))
-        .queries(answer=pm.ref("values").pipe(pm.query(pm.select(pm.col("amount")))))
+        .sources(values=pm.sql("SELECT 42 AS amount", connection="analytics"))
+        .queries(answer=pm.source("values").pipe(pm.view().select(pm.col("amount"))))
     )
     assert pm.connect(name="analytics").check(draft).ok
     assert (

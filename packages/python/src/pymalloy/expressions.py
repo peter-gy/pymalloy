@@ -42,7 +42,6 @@ __all__ = [
     "given",
     "lit",
     "number",
-    "raw_expr",
 ]
 
 type Literal = (
@@ -62,7 +61,7 @@ type IntoExpr = Expr | Literal
 class Expr(NotebookDisplay):
     """Build an immutable scalar expression for Malloy to resolve.
 
-    Create expressions with col, lit, given, or raw_expr. Arithmetic, comparisons,
+    Create expressions with col, lit, given, or Expr.raw. Arithmetic, comparisons,
     and aggregate methods build syntax, not Python values. Use ``&``, ``|``, and
     ``~`` for boolean expressions and parentheses around comparisons. Python
     ``and``, ``or``, ``not``, truth testing, and iteration are unsupported.
@@ -96,7 +95,7 @@ class Expr(NotebookDisplay):
     _annotations: tuple[tuple[builtins.str, builtins.str], ...]
 
     def __init__(self) -> None:
-        raise TypeError("Create expressions with col(), lit(), or raw_expr()")
+        raise TypeError("Create expressions with col(), lit(), or Expr.raw()")
 
     @classmethod
     def _from_node(
@@ -111,6 +110,37 @@ class Expr(NotebookDisplay):
         object.__setattr__(result, "_source", source)
         object.__setattr__(result, "_annotations", annotations)
         return result
+
+    @classmethod
+    def raw(cls, code: builtins.str) -> Expr:
+        """Embed scalar Malloy syntax outside the symbolic constructors.
+
+        Parameters
+        ----------
+        code : str
+            Nonempty scalar expression text. It is retained verbatim and checked
+            when the enclosing model compiles. It is trusted code, not escaped data.
+
+        Returns
+        -------
+        Expr
+            An opaque scalar that still composes with symbolic operators.
+
+        See Also
+        --------
+        Source.raw : Embed relation syntax.
+        lit : Encode a Python value safely as a literal.
+
+        Examples
+        --------
+        >>> import pymalloy as pm
+        >>> expression = pm.Expr.raw("amount * 0.9")
+        >>> expression.text
+        'amount * 0.9'
+        """
+        if not isinstance(code, str) or not code.strip():
+            raise ValueError("A raw expression requires Malloy text")
+        return cls._from_node(ScalarRaw(code=code))
 
     def _with_node(self, node: Scalar) -> Expr:
         return self._from_node(node, annotations=self._annotations)
@@ -136,7 +166,7 @@ class Expr(NotebookDisplay):
         --------
         >>> import pymalloy as pm
         >>> amount = pm.col("amount").sum().annotate("unit=USD", route="research")
-        >>> source = pm.sql("SELECT 1 AS amount").extend(pm.measure(revenue=amount))
+        >>> source = pm.sql("SELECT 1 AS amount").measure(revenue=amount)
         >>> "unit=USD" in source.text
         True
         """
@@ -351,8 +381,8 @@ class Expr(NotebookDisplay):
         --------
         >>> import pymalloy as pm
         >>> expr = pm.col("amount").fill_null(0)
-        >>> candidate = pm.draft().define(values=pm.sql("SELECT NULL::INTEGER AS amount"))
-        >>> candidate = candidate.queries(result=pm.ref("values").pipe(pm.query(pm.select(amount=expr))))
+        >>> candidate = pm.draft().sources(values=pm.sql("SELECT NULL::INTEGER AS amount"))
+        >>> candidate = candidate.queries(result=pm.source("values").pipe(pm.view().select(amount=expr)))
         >>> pm.connect().model(candidate).query().run().to_pylist()
         [{'amount': 0}]
         """
@@ -375,8 +405,8 @@ class Expr(NotebookDisplay):
         --------
         >>> import pymalloy as pm
         >>> expr = pm.col("amount").nullif(0)
-        >>> candidate = pm.draft().define(values=pm.sql("SELECT 0::INTEGER AS amount"))
-        >>> candidate = candidate.queries(result=pm.ref("values").pipe(pm.query(pm.select(amount=expr))))
+        >>> candidate = pm.draft().sources(values=pm.sql("SELECT 0::INTEGER AS amount"))
+        >>> candidate = candidate.queries(result=pm.source("values").pipe(pm.view().select(amount=expr)))
         >>> pm.connect().model(candidate).query().run().to_pylist()
         [{'amount': None}]
         """
@@ -518,8 +548,8 @@ class Expr(NotebookDisplay):
         --------
         >>> import pymalloy as pm
         >>> expr = pm.lit("invalid").cast("number", safe=True)
-        >>> candidate = pm.draft().define(values=pm.sql("SELECT 1 AS id"))
-        >>> candidate = candidate.queries(result=pm.ref("values").pipe(pm.query(pm.select(value=expr))))
+        >>> candidate = pm.draft().sources(values=pm.sql("SELECT 1 AS id"))
+        >>> candidate = candidate.queries(result=pm.source("values").pipe(pm.view().select(value=expr)))
         >>> pm.connect().model(candidate).query().run().to_pylist()
         [{'value': None}]
         """
@@ -550,7 +580,7 @@ class Expr(NotebookDisplay):
         --------
         >>> import pymalloy as pm
         >>> north = pm.col("amount").sum().filter(pm.col("region") == "North")
-        >>> measures = pm.measure(north_revenue=north, all_revenue=pm.col("amount").sum())
+        >>> measures = pm.Source.raw("").measure(north_revenue=north, all_revenue=pm.col("amount").sum())
         >>> measures.names
         ('north_revenue', 'all_revenue')
         """
@@ -643,8 +673,8 @@ class Sort(NotebookDisplay):
     Examples
     --------
     >>> import pymalloy as pm
-    >>> pm.order_by(pm.col("revenue").desc(), pm.col("region").asc()).text
-    'order_by: revenue desc, region asc'
+    >>> pm.view().order_by(pm.col("revenue").desc(), pm.col("region").asc()).text
+    '{\\n  order_by: revenue desc, region asc\\n}'
     """
 
     expression: Expr
@@ -677,7 +707,7 @@ def col(*path: str) -> Expr:
 
     See Also
     --------
-    ref : Reference a source or query instead of a scalar field.
+    source : Reference a named relation.
     lit : Represent a literal value rather than a field name.
 
     Examples
@@ -719,11 +749,8 @@ def given(name: str) -> Expr:
     --------
     >>> import pymalloy as pm
     >>> source = "##! experimental.givens\ngiven: minimum :: number is 0\n"
-    >>> candidate = pm.draft(source).define(values=pm.sql("SELECT 42 AS amount"))
-    >>> candidate = candidate.queries(filtered=pm.ref("values").pipe(pm.query(
-    ...     pm.where(pm.col("amount") > pm.given("minimum")),
-    ...     pm.select(pm.col("amount")),
-    ... )))
+    >>> candidate = pm.draft(source).sources(values=pm.sql("SELECT 42 AS amount"))
+    >>> candidate = candidate.queries(filtered=pm.source("values").pipe(pm.view().where(pm.col("amount") > pm.given("minimum")).select(pm.col("amount"))))
     >>> pm.connect().model(candidate).query().run(givens={'minimum': 40}).to_pylist()
     [{'amount': 42}]
     """
@@ -811,9 +838,9 @@ def number(text: str) -> Expr:
     Examples
     --------
     >>> import pymalloy as pm
-    >>> pm.number("1e0").text
+    >>> pm.expressions.number("1e0").text
     '1e0'
-    >>> pm.number("-0.00").text
+    >>> pm.expressions.number("-0.00").text
     '-0.00'
     """
     if not isinstance(text, str) or _NUMBER.fullmatch(text) is None:
@@ -825,37 +852,6 @@ def number(text: str) -> Expr:
     if not finite:
         raise ValueError("A number requires one finite Malloy numeric literal")
     return Expr._from_node(ScalarLiteral(type="number", value=text))
-
-
-def raw_expr(code: str) -> Expr:
-    """Embed scalar Malloy syntax outside the symbolic constructors.
-
-    Parameters
-    ----------
-    code : str
-        Nonempty scalar expression text. It is retained verbatim and checked
-        when the enclosing model compiles. It is trusted code, not escaped data.
-
-    Returns
-    -------
-    Expr
-        An opaque scalar that still composes with symbolic operators.
-
-    See Also
-    --------
-    syntax : Embed source or query grammar rather than a scalar expression.
-    lit : Encode a Python value safely as a literal.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> expression = pm.raw_expr("amount * 0.9")
-    >>> expression.text
-    'amount * 0.9'
-    """
-    if not isinstance(code, str) or not code.strip():
-        raise ValueError("A raw expression requires Malloy text")
-    return Expr._from_node(ScalarRaw(code=code))
 
 
 def call(name: str, *args: IntoExpr, receiver: tuple[str, ...] | None = None) -> Expr:
@@ -879,9 +875,9 @@ def call(name: str, *args: IntoExpr, receiver: tuple[str, ...] | None = None) ->
     Examples
     --------
     >>> import pymalloy as pm
-    >>> pm.call("abs", pm.col("amount")).text
+    >>> pm.expressions.call("abs", pm.col("amount")).text
     'abs(amount)'
-    >>> pm.call("count", receiver=("orders",)).text
+    >>> pm.expressions.call("count", receiver=("orders",)).text
     'orders.count()'
     """
     identifier(name)
@@ -1274,7 +1270,7 @@ class DateTimeExpr:
         Examples
         --------
         >>> import pymalloy as pm
-        >>> monthly = pm.group_by(month=pm.col("created_at").dt.truncate("month"))
+        >>> monthly = pm.view().group_by(month=pm.col("created_at").dt.truncate("month"))
         >>> monthly.names
         ('month',)
         """

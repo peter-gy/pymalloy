@@ -46,12 +46,12 @@ query: failure is values -> { select: converted is value::number, cutoff is $cut
 
 
 def test_assertion_engine_failure_keeps_execution_evidence():
-    candidate = pm.draft().define(values=pm.sql("SELECT 'invalid' AS value"))
+    candidate = pm.draft().sources(values=pm.sql("SELECT 'invalid' AS value"))
     report = pm.connect().validate(
         candidate,
         {
-            "numeric": pm.ref("values").pipe(
-                pm.query(pm.select(value=pm.col("value").cast("number")))
+            "numeric": pm.source("values").pipe(
+                pm.view().select(value=pm.col("value").cast("number"))
             )
         },
     )
@@ -62,8 +62,8 @@ def test_assertion_engine_failure_keeps_execution_evidence():
     assert (
         check.execution.malloy
         == "run: "
-        + pm.ref("values")
-        .pipe(pm.query(pm.select(value=pm.col("value").cast("number"))))
+        + pm.source("values")
+        .pipe(pm.view().select(value=pm.col("value").cast("number")))
         .text
     )
 

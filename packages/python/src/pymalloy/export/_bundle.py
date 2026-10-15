@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from pymalloy._authoring.draft import Draft
-from pymalloy._authoring.syntax import Fragment, from_wire
+from pymalloy._authoring.syntax import Syntax, from_wire
 from pymalloy._authoring.tables import table_path
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.source import ModelSource
@@ -259,7 +259,7 @@ def bundle(
                 deadline=deadline,
             ).syntax
         )
-        if not isinstance(syntax, Fragment):
+        if not isinstance(syntax, Syntax):
             raise TypeError("Compiler returned a scalar for a model document")
         python_model = Draft(
             syntax,

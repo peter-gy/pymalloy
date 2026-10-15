@@ -5,38 +5,35 @@
 ```python
 import pymalloy as pm
 
-regional = pm.query(
-    pm.group_by(pm.col("region")),
-    pm.aggregate(pm.col("revenue")),
-    pm.order_by(pm.col("revenue").desc(), pm.col("region")),
+regional = (
+    pm.view()
+    .group_by(pm.col("region"))
+    .aggregate(pm.col("revenue"))
+    .order_by(pm.col("revenue").desc(), pm.col("region"))
 )
 orders = (
     pm.table("orders.parquet")
-    .extend(
-        pm.dimension(order_date=pm.col("created_at").cast("date")),
-        pm.measure(revenue=pm.col("amount").sum().doc("Gross amount in USD.")),
-        pm.view(
-            by_region=regional.doc("Revenue by region with deterministic ranking.")
-        ),
-    )
+    .dimension(order_date=pm.col("created_at").cast("date"))
+    .measure(revenue=pm.col("amount").sum().doc("Gross amount in USD."))
+    .view(by_region=regional.doc("Revenue by region with deterministic ranking."))
     .doc("One row per order.")
 )
 candidate = (
     pm.draft()
-    .define(orders=orders)
-    .queries(regional_report=pm.ref("orders").pipe(regional))
+    .sources(orders=orders)
+    .queries(regional_report=pm.source("orders").pipe(regional))
 )
 print(candidate.text)
 ```
 
-`table`, `sql`, and `ref` create anonymous expressions. Names enter through keyword
+`table`, `sql`, and `source` create anonymous expressions. Names enter through keyword
 bindings. Use `col` for field paths, `given` for parameters, and `lit` for values.
 Operators build scalar expressions, and values beside expressions become literals.
 Every edit returns a new value. Clauses can be reused across sources and queries.
 
-`pm.join(name, source, on=..., kind="one" | "many" | "cross")` requires an explicit
-relationship. Use `pm.raw_expr(text)` for additional scalar expressions,
-`pm.syntax(text)` for additional source or query clauses, and `draft.append(text)`
+`source.join_one(name, source, on=...)`, `join_many`, and `join_cross` declare
+relationships. Use `pm.Expr.raw(text)` for additional scalar expressions,
+`pm.Source.raw(text)` for relation syntax, `pm.View.raw(text)` for query stages, and `draft.append(text)`
 for complete declarations. These preserve text verbatim.
 Use `read_model` when raw text needs named editing slots.
 
@@ -46,14 +43,14 @@ Use `read_model` when raw text needs named editing slots.
 from pathlib import Path
 
 original = pm.read_model(Path("orders.malloy"))
-candidate = original.define(
+candidate = original.sources(
     orders=original["orders"].replace(
         revenue=(pm.col("amount").sum() - pm.col("refunds").sum()).doc(
             "Net amount in USD."
         )
     ),
-    north_orders=pm.ref("orders")
-    .extend(pm.where(pm.col("region") == "North"))
+    north_orders=pm.source("orders")
+    .where(pm.col("region") == "North")
     .doc("Orders in the North region."),
 )
 print(candidate.diff())
@@ -73,9 +70,9 @@ relative to `draft.url`. Imports must precede their consumers.
 For givens, compose the installed Malloy syntax explicitly:
 
 ```python
-candidate = pm.draft("##! experimental.givens\ngiven: minimum :: number is 0\n").define(
-    orders=orders.extend(pm.where(pm.col("amount") > pm.given("minimum")))
-)
+candidate = pm.draft(
+    "##! experimental.givens\ngiven: minimum :: number is 0\n"
+).sources(orders=orders.where(pm.col("amount") > pm.given("minimum")))
 ```
 
 ## Roundtrip source through Python
@@ -136,7 +133,7 @@ point. `help(pymalloy.agent)` introduces the installed API.
 Pass a composed source/query directly to a retained model:
 
 ```python
-expression = pm.ref("orders").pipe(pm.query(pm.aggregate(pm.col("revenue"))))
+expression = pm.source("orders").pipe(pm.view().aggregate(pm.col("revenue")))
 result = model.query(expression).run()
 ```
 

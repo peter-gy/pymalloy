@@ -9,7 +9,7 @@ widget
 
 `MalloyWidget(source, *, files=None, query=None, givens=None, runtime=None,
 connection_name="duckdb", auto_run=True)` creates an
-anywidget for text, `Expr`, `Sort`, `Fragment`, `Draft`, `ModelSource`, native
+anywidget for text, `Expr`, `Sort`, `Source`, `View`, `Draft`, `ModelSource`, native
 `Model` or `Query`, and materialized `Result` values. `files`, `query`, `givens`,
 `auto_run`, and `source` can be assigned after construction. Assign complete mappings to update
 files or givens. `files`, `givens`, and `state` are recursively read-only mappings.

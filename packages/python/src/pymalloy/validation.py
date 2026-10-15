@@ -42,8 +42,7 @@ class DocumentationPolicy:
     >>> import pymalloy as pm
     >>> from pymalloy.validation import DocumentationPolicy
     >>> policy = DocumentationPolicy(kinds=("measure",), severity="error")
-    >>> candidate = pm.draft().define(values=pm.sql("SELECT 1 AS n").extend(
-    ...     pm.measure(total=pm.col("n").sum().doc("Total observed n."))))
+    >>> candidate = pm.draft().sources(values=pm.sql("SELECT 1 AS n").measure(total=pm.col("n").sum().doc("Total observed n.")))
     >>> pm.connect().check(candidate, documentation=policy).ok
     True
     """
@@ -162,7 +161,7 @@ class Validation:
     Examples
     --------
     >>> import pymalloy as pm
-    >>> accepted = pm.connect().validate(pm.draft().define(values=pm.sql('SELECT 42 AS n')))
+    >>> accepted = pm.connect().validate(pm.draft().sources(values=pm.sql('SELECT 42 AS n')))
     >>> accepted.ok
     True
     >>> accepted.checks
@@ -214,7 +213,7 @@ class Validation:
         Examples
         --------
         >>> import pymalloy as pm
-        >>> accepted = pm.connect().validate(pm.draft().define(values=pm.sql('SELECT 42 AS n')))
+        >>> accepted = pm.connect().validate(pm.draft().sources(values=pm.sql('SELECT 42 AS n')))
         >>> accepted.require_valid() is accepted
         True
         """
@@ -283,7 +282,7 @@ class Validation:
         >>> import pymalloy as pm
         >>> from pathlib import Path
         >>> from tempfile import TemporaryDirectory
-        >>> accepted = pm.connect().validate(pm.draft().define(values=pm.sql('SELECT 42 AS n')))
+        >>> accepted = pm.connect().validate(pm.draft().sources(values=pm.sql('SELECT 42 AS n')))
         >>> with TemporaryDirectory() as directory:
         ...     saved = accepted.save(Path(directory) / "model.malloy")
         ...     print(saved.is_file())

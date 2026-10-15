@@ -57,11 +57,16 @@ def test_expression_and_fragment_outputs_expose_authored_structure():
         assert widget._input["action"] == "inspect"
     finally:
         widget.close()
-    block = pm.query(
-        pm.group_by(pm.col("region")),
-        pm.aggregate(revenue=expression),
-        pm.where(pm.call("coalesce", pm.col("kind"), pm.given("fallback")) == "chosen"),
-    ).doc("Totals by region.\nAmounts are USD; refunds are excluded.")
+    block = (
+        pm.view()
+        .group_by(pm.col("region"))
+        .aggregate(revenue=expression)
+        .where(
+            pm.expressions.call("coalesce", pm.col("kind"), pm.given("fallback"))
+            == "chosen"
+        )
+        .doc("Totals by region.\nAmounts are USD; refunds are excluded.")
+    )
     widget = block._display_()
     try:
         info = to_dict(widget._definition["notebook"])

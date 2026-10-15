@@ -17,10 +17,10 @@ DATA = """SELECT * FROM (VALUES
 def execute(**expressions):
     draft = (
         pm.draft()
-        .define(data=pm.sql(DATA))
+        .sources(data=pm.sql(DATA))
         .queries(
-            result=pm.ref("data").pipe(
-                pm.query(pm.select(**expressions), pm.order_by(pm.col("id")))
+            result=pm.source("data").pipe(
+                pm.view().select(**expressions).order_by(pm.col("id"))
             )
         )
     )
@@ -93,10 +93,10 @@ def test_namespaces_nulls_cases_and_temporal_types_survive_python_emission(tmp_p
     }
     draft = (
         pm.draft()
-        .define(data=pm.sql(f"SELECT *, created::DATE AS created_date FROM ({DATA})"))
+        .sources(data=pm.sql(f"SELECT *, created::DATE AS created_date FROM ({DATA})"))
         .queries(
-            result=pm.ref("data").pipe(
-                pm.query(pm.select(**fields), pm.order_by(pm.col("id")))
+            result=pm.source("data").pipe(
+                pm.view().select(**fields).order_by(pm.col("id"))
             )
         )
     )
@@ -130,37 +130,33 @@ def test_aggregate_scope_distinct_values_and_filtered_aggregates():
     amount = pm.col("amount")
     draft = (
         pm.draft()
-        .define(
-            data=pm.sql(DATA).extend(
-                pm.measure(
-                    total=amount.sum(),
-                    average=amount.avg(),
-                    low=amount.min(),
-                    high=amount.max(),
-                    rows=pm.count(),
-                    distinct=amount.count_distinct(),
-                    computed=(amount + 1).sum(),
-                    filtered=amount.sum().filter(amount > 3),
-                )
+        .sources(
+            data=pm.sql(DATA).measure(
+                total=amount.sum(),
+                average=amount.avg(),
+                low=amount.min(),
+                high=amount.max(),
+                rows=pm.count(),
+                distinct=amount.count_distinct(),
+                computed=(amount + 1).sum(),
+                filtered=amount.sum().filter(amount > 3),
             )
         )
         .queries(
-            result=pm.ref("data").pipe(
-                pm.query(
-                    pm.aggregate(
-                        *(
-                            pm.col(name)
-                            for name in [
-                                "total",
-                                "average",
-                                "low",
-                                "high",
-                                "rows",
-                                "distinct",
-                                "computed",
-                                "filtered",
-                            ]
-                        )
+            result=pm.source("data").pipe(
+                pm.view().aggregate(
+                    *(
+                        pm.col(name)
+                        for name in [
+                            "total",
+                            "average",
+                            "low",
+                            "high",
+                            "rows",
+                            "distinct",
+                            "computed",
+                            "filtered",
+                        ]
                     )
                 )
             )
@@ -183,28 +179,24 @@ def test_aggregate_scope_distinct_values_and_filtered_aggregates():
         model.close()
     joined = (
         pm.draft()
-        .define(
+        .sources(
             items=pm.sql(
                 "SELECT * FROM (VALUES(1,10),(1,20),(2,30)) t(parent_id, amount)"
             ),
-            parents=pm.sql("SELECT * FROM (VALUES(1),(2)) t(id)").extend(
-                pm.primary_key("id"),
-                pm.join(
-                    "items",
-                    pm.ref("items"),
-                    on=pm.col("id") == pm.col("items", "parent_id"),
-                    kind="many",
-                ),
+            parents=pm.sql("SELECT * FROM (VALUES(1),(2)) t(id)")
+            .primary_key("id")
+            .join_many(
+                "items",
+                pm.source("items"),
+                on=pm.col("id") == pm.col("items", "parent_id"),
             ),
         )
         .queries(
-            result=pm.ref("parents").pipe(
-                pm.query(
-                    pm.aggregate(
-                        parents=pm.count(),
-                        items=pm.count("items"),
-                        total=pm.col("items", "amount").sum(),
-                    )
+            result=pm.source("parents").pipe(
+                pm.view().aggregate(
+                    parents=pm.count(),
+                    items=pm.count("items"),
+                    total=pm.col("items", "amount").sum(),
                 )
             )
         )
@@ -232,10 +224,10 @@ def test_symbolic_values_cannot_be_used_as_python_conditions_or_implicit_code():
     assert not amount.equals(pm.col("other"))
     assert pm.col("joined", "amount").text != pm.col("joined.amount").text
     for operation in [
-        lambda: pm.measure(total="amount.sum()"),
-        lambda: pm.group_by("region"),
-        lambda: pm.where("amount > 0"),
-        lambda: pm.order_by("amount desc"),
+        lambda: pm.table("orders").measure(total="amount.sum()"),
+        lambda: pm.view().group_by(region="region"),
+        lambda: pm.view().where("amount > 0"),
+        lambda: pm.view().order_by(42),
     ]:
         with pytest.raises(TypeError, match="symbolic|scalar"):
             operation()
@@ -247,12 +239,10 @@ def test_symbolic_values_cannot_be_used_as_python_conditions_or_implicit_code():
 def test_given_references_and_raw_escape_compose_symbolically():
     draft = (
         pm.draft("##! experimental.givens\ngiven: minimum :: number is 10\n")
-        .define(
-            data=pm.sql(DATA).extend(pm.where(pm.col("amount") > pm.given("minimum")))
-        )
+        .sources(data=pm.sql(DATA).where(pm.col("amount") > pm.given("minimum")))
         .queries(
-            result=pm.ref("data").pipe(
-                pm.query(pm.aggregate(total=pm.col("amount").sum()))
+            result=pm.source("data").pipe(
+                pm.view().aggregate(total=pm.col("amount").sum())
             )
         )
     )
@@ -264,7 +254,7 @@ def test_given_references_and_raw_escape_compose_symbolically():
     finally:
         model.close()
     result = execute(
-        id=pm.col("id"), answer=pm.raw_expr("amount // trailing Malloy comment") + 1
+        id=pm.col("id"), answer=pm.Expr.raw("amount // trailing Malloy comment") + 1
     )
     assert result.to_pylist()[0]["answer"] == 41
 
@@ -285,14 +275,14 @@ def test_literal_values_and_types_survive_constructed_and_parsed_python(tmp_path
         ),
         "precise": pm.lit(decimal.Decimal("1.234567890123456789")),
         "huge": pm.lit(123456789012345678901234567890),
-        "scientific": pm.number("1e0"),
+        "scientific": pm.expressions.number("1e0"),
     }
     draft = (
         pm.draft()
-        .define(data=pm.sql("SELECT 1 AS id").extend(pm.dimension(**values)))
+        .sources(data=pm.sql("SELECT 1 AS id").dimension(**values))
         .queries(
-            result=pm.ref("data").pipe(
-                pm.query(pm.select(*(pm.col(name) for name in values)))
+            result=pm.source("data").pipe(
+                pm.view().select(*(pm.col(name) for name in values))
             )
         )
     )
@@ -354,15 +344,15 @@ query: result is data -> {select: doubled}
 
 
 def test_syntax_identity_and_named_scalar_replacement_have_explicit_contracts():
-    first = pm.dimension(x=pm.col("x"))
-    second = pm.dimension(x=pm.col("x"))
+    first = pm.table("orders").dimension(x=pm.col("x"))
+    second = pm.table("orders").dimension(x=pm.col("x"))
     assert first != second
-    draft = pm.draft().define(
-        s=pm.sql("SELECT 42 AS x").extend(pm.measure(total=pm.col("x").sum()))
+    draft = pm.draft().sources(
+        s=pm.sql("SELECT 42 AS x").measure(total=pm.col("x").sum())
     )
-    assert draft != pm.draft().define(s=draft["s"])
+    assert draft != pm.draft().sources(s=draft["s"])
     with pytest.raises(TypeError, match="scalar"):
-        draft["s"].replace(total=pm.syntax("x.sum()"))
+        draft["s"].replace(total=pm.Source.raw("x.sum()"))
     assert isinstance(draft["s"].replace(total=pm.col("x").avg())["total"], pm.Expr)
 
 
@@ -387,8 +377,8 @@ def test_documented_scalars_remain_composable_and_bind_once(tmp_path):
     assert isinstance(total, pm.Expr)
     draft = (
         pm.draft()
-        .define(data=pm.sql(DATA).extend(pm.measure(total=total)))
-        .queries(result=pm.ref("data").pipe(pm.query(pm.aggregate(pm.col("total")))))
+        .sources(data=pm.sql(DATA).measure(total=total))
+        .queries(result=pm.source("data").pipe(pm.view().aggregate(pm.col("total"))))
     )
     path = tmp_path / "documented.py"
     path.write_text(draft.to_python())

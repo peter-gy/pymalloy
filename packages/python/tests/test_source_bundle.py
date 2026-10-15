@@ -23,8 +23,8 @@ def test_validated_bundle_relocates_imports_and_data_and_replays_exact_parameter
         )
     base_url = "https://example.test/models/base?revision=7"
     main_url = "https://example.test/models/reports/report"
-    base = pm.draft("// 🌈 source identity\r\n").define(
-        orders=pm.table(data).extend(pm.measure(revenue=pm.col("amount").sum()))
+    base = pm.draft("// 🌈 source identity\r\n").sources(
+        orders=pm.table(data).measure(revenue=pm.col("amount").sum())
     )
     source = pm.ModelSource(
         main_url,
@@ -170,8 +170,8 @@ def test_explicit_file_binding_keeps_spaces_and_quotes_literal(tmp_path):
     data.write_text("value\n42\n")
     candidate = (
         pm.draft()
-        .define(orders=pm.table(data))
-        .queries(all_orders=pm.ref("orders").pipe(pm.query(pm.select(pm.col("value")))))
+        .sources(orders=pm.table(data))
+        .queries(all_orders=pm.source("orders").pipe(pm.view().select(pm.col("value"))))
     )
     source = pm.ModelSource(candidate.url, candidate.text)
     # A string binding can name the exact quoted table path from native Malloy.
@@ -188,10 +188,10 @@ def test_bundle_replay_preserves_connection_alias(tmp_path, validated):
     data.write_text("amount\n42\n")
     candidate = (
         pm.draft()
-        .define(orders=pm.table(data, connection="warehouse"))
+        .sources(orders=pm.table(data, connection="warehouse"))
         .queries(
-            summary=pm.ref("orders").pipe(
-                pm.query(pm.aggregate(total=pm.col("amount").sum()))
+            summary=pm.source("orders").pipe(
+                pm.view().aggregate(total=pm.col("amount").sum())
             )
         )
     )

@@ -21,10 +21,8 @@ from pymalloy.result import Column, Result
 
 
 def benchmark(samples: int) -> dict:
-    wide = pm.query(
-        pm.aggregate(
-            **{f"metric_{i}": pm.col("amount").sum() + pm.lit(i) for i in range(1000)}
-        )
+    wide = pm.view().aggregate(
+        **{f"metric_{i}": pm.col("amount").sum() + pm.lit(i) for i in range(1000)}
     )
     wire = {
         "revision": 1,

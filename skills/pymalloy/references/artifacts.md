@@ -5,7 +5,7 @@ semantic model and imports, selected query, bound parameters, input identities,
 and output schema. Keep user situations and research annotations in the consuming
 project. PyMalloy's source bundle owns Malloy files and explicit data bindings.
 
-Use `pm.ref("orders").extend(...)` when deriving a source from an existing named
+Use `pm.source("orders").measure(...)` when deriving a source from an existing named
 source. Use `draft["orders"].replace(...)` when editing that source's definition.
 The latter returns its expression, so assigning it under another name copies the
 expression. Prefer native Malloy text for syntax that reads more clearly that way.
@@ -26,55 +26,43 @@ with tempfile.TemporaryDirectory() as temporary:
     data.write_text("id,region,amount\n1,North,12\n2,South,20\n3,North,8\n")
     candidate = (
         pm.draft("##! experimental.givens\ngiven: minimum :: number is 0\n")
-        .define(
+        .sources(
             orders=pm.table(data)
-            .extend(
-                pm.primary_key("id"),
-                pm.measure(
-                    revenue=pm.col("amount")
-                    .sum()
-                    .doc("Booked value in source price units.")
-                ),
+            .primary_key("id")
+            .measure(
+                revenue=pm.col("amount")
+                .sum()
+                .doc("Booked value in source price units.")
             )
             .doc("One order per id in this captured input.")
         )
-        .define(
-            selected=pm.ref("orders")
-            .extend(
-                pm.where(pm.col("amount") >= pm.given("minimum")),
-            )
+        .sources(
+            selected=pm.source("orders")
+            .where(pm.col("amount") >= pm.given("minimum"))
             .doc("Orders meeting the selected minimum amount.")
         )
         .queries(
-            by_region=pm.ref("selected").pipe(
-                pm.query(
-                    pm.group_by(pm.col("region")),
-                    pm.aggregate(pm.col("revenue")),
-                    pm.order_by(pm.col("region")),
-                )
+            by_region=pm.source("selected").pipe(
+                pm.view()
+                .group_by(pm.col("region"))
+                .aggregate(pm.col("revenue"))
+                .order_by(pm.col("region"))
             )
         )
     )
     parameters = {"minimum": 10}
     checks = {
-        "nonempty": pm.ref("orders").pipe(
-            pm.query(
-                pm.aggregate(rows=pm.count()),
-                pm.having(pm.col("rows") == 0),
-            )
+        "nonempty": pm.source("orders").pipe(
+            pm.view().aggregate(rows=pm.count()).having(pm.col("rows") == 0)
         ),
-        "unique_id": pm.ref("orders").pipe(
-            pm.query(
-                pm.group_by(pm.col("id")),
-                pm.aggregate(rows=pm.count()),
-                pm.having(pm.col("rows") > 1),
-            )
+        "unique_id": pm.source("orders").pipe(
+            pm.view()
+            .group_by(pm.col("id"))
+            .aggregate(rows=pm.count())
+            .having(pm.col("rows") > 1)
         ),
-        "non_null_id": pm.ref("orders").pipe(
-            pm.query(
-                pm.where(pm.col("id").is_null()),
-                pm.select(pm.col("id")),
-            )
+        "non_null_id": pm.source("orders").pipe(
+            pm.view().where(pm.col("id").is_null()).select(pm.col("id"))
         ),
     }
     accepted = (
