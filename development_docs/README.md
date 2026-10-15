@@ -50,6 +50,18 @@ The [testing guide](testing.md) maps contracts to focused checks and describes
 browser prerequisites. Packaging changes also need the
 [distribution checks](releasing.md#validate-distributions).
 
+## Continuous integration
+
+GitHub Actions runs the validation list on every pull request and on `main`.
+`.github/actions/setup` installs the locked Node.js, pnpm, and uv workspaces and
+builds the packaged assets once per job.
+
+| Workflow      | Jobs                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------ |
+| `ci.yml`      | Lint and type checks, JavaScript tests, Python 3.12 and 3.14, lower bounds, browsers |
+| `pages.yml`   | Builds the site for pull requests and deploys `main` to GitHub Pages                 |
+| `publish.yml` | Publishes a `vX.Y.Z` tag to PyPI with provenance and creates its GitHub release      |
+
 ## Work on documentation
 
 Public pages live in `docs/`, contributor pages in `development_docs/`, and

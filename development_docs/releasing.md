@@ -62,3 +62,18 @@ Build and preview the deployed URL layout locally:
 BASE_PATH=/pymalloy/ pnpm docs:build
 BASE_PATH=/pymalloy/ pnpm docs:preview
 ```
+
+## Publish a release
+
+Set the version, merge it to `main`, then push an annotated tag:
+
+```sh
+uv version --package pymalloy 0.2.0
+git tag -a v0.2.0 -m "pymalloy 0.2.0"
+git push origin v0.2.0
+```
+
+`publish.yml` checks that the tag matches the package version, builds the wheel
+and source archive, runs the installed-package tests, attests build provenance,
+and publishes to PyPI through trusted publishing from the `pypi` environment.
+It then creates the GitHub release with generated notes and the distributions.
