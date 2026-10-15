@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import get_args
+from typing import TYPE_CHECKING, get_args
 from urllib.parse import urlsplit
 
 from pymalloy._notebook import NotebookDisplay
@@ -70,7 +72,7 @@ class ModelSource(NotebookDisplay):
     ...     "import 'base.malloy'\nrun: values -> {select: n}",
     ...     {"memory://tour/base.malloy": "source: values is duckdb.sql('SELECT 42 AS n')"},
     ... )
-    >>> pm.run(source).rows()
+    >>> pm.connect().model(source).query().run().to_pylist()
     [{'n': 42}]
     """
 
@@ -115,3 +117,40 @@ def read_text(path: Path) -> str:
     """Read authored UTF-8 without changing line endings or string literal contents."""
     with path.open(encoding="utf-8", newline="") as handle:
         return handle.read()
+
+
+if TYPE_CHECKING:
+    from pymalloy._authoring.draft import Draft
+
+
+def open_source(
+    source: str | Path | ModelSource | Draft,
+    *,
+    url: str | None,
+    document_kind: DocumentKind | None,
+    root: Path,
+    materialize: bool = False,
+):
+    from pymalloy._authoring.draft import Draft
+
+    if isinstance(source, (Path, ModelSource, Draft)):
+        identity = source.resolve().as_uri() if isinstance(source, Path) else source.url
+        if url is not None and url != identity:
+            raise ValueError("url conflicts with source identity")
+    if isinstance(source, (Draft, ModelSource)) and document_kind is None:
+        document_kind = source.document_kind
+    if isinstance(source, Draft):
+        url = source.url
+        source = (
+            source._input()
+            if materialize
+            else (
+                source.text
+                if source.imports is None
+                else ModelSource(
+                    source.url, source.text, source.imports, source.document_kind
+                )
+            )
+        )
+    identity, text, imports = resolve_source(source, url=url, root=root)
+    return identity, text, imports, resolve_document_kind(identity, document_kind)

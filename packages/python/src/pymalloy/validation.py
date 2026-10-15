@@ -15,7 +15,7 @@ from pymalloy._model.source import ModelSource, read_text
 from pymalloy._protocol.givens import given_values
 from pymalloy._protocol.records import Given, NativeMetadata
 from pymalloy.analysis import CheckReport, Diagnostic
-from pymalloy.execution import ExecutionContext
+from pymalloy.errors import ExecutionContext, ValidationError
 from pymalloy.result import Result
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ class DocumentationPolicy:
     >>> policy = DocumentationPolicy(kinds=("measure",), severity="error")
     >>> candidate = pm.draft().define(values=pm.sql("SELECT 1 AS n").extend(
     ...     pm.measure(total=pm.col("n").sum().doc("Total observed n."))))
-    >>> candidate.check(documentation=policy).ok
+    >>> pm.connect().check(candidate, documentation=policy).ok
     True
     """
 
@@ -110,7 +110,7 @@ class DataCheck:
     Attributes
     ----------
     name : str
-        Assertion key supplied to Draft.validate.
+        Assertion key supplied to Connection.validate.
     status : {"passed", "failed", "error", "skipped"}
         Zero counterexamples, an observed counterexample, query failure, or an
         assertion not run because an earlier required stage failed.
@@ -136,7 +136,7 @@ class DataCheck:
 class Validation:
     """Evidence for a draft revision and its data at validation time.
 
-    Returned by Draft.validate. Inspect checks and diagnostics before saving or
+    Returned by Connection.validate. Inspect checks and diagnostics before saving or
     bundling. A successful report proves only the supplied assertions on the
     observed data, not the model's business meaning or future data quality.
 
@@ -162,7 +162,7 @@ class Validation:
     Examples
     --------
     >>> import pymalloy as pm
-    >>> accepted = pm.draft().define(values=pm.sql("SELECT 42 AS n")).validate()
+    >>> accepted = pm.connect().validate(pm.draft().define(values=pm.sql('SELECT 42 AS n')))
     >>> accepted.ok
     True
     >>> accepted.checks
@@ -204,17 +204,17 @@ class Validation:
         Returns
         -------
         Validation
-            This report, allowing ``draft.validate(...).require_valid()``.
+            This report, allowing ``connection.validate(draft, ...).require_valid()``.
 
         Raises
         ------
-        ValueError
+        ValidationError
             Validation failed, a check was skipped/errored, or strict warnings exist.
 
         Examples
         --------
         >>> import pymalloy as pm
-        >>> accepted = pm.draft().define(values=pm.sql("SELECT 42 AS n")).validate()
+        >>> accepted = pm.connect().validate(pm.draft().define(values=pm.sql('SELECT 42 AS n')))
         >>> accepted.require_valid() is accepted
         True
         """
@@ -230,7 +230,9 @@ class Validation:
             )
             if self.error:
                 failures.append(self.error)
-            raise ValueError("Model validation failed: " + "; ".join(failures))
+            raise ValidationError(
+                self, "Model validation failed: " + ", ".join(failures)
+            )
         return self
 
     @property
@@ -245,7 +247,7 @@ class Validation:
             raise ValueError("Validation has no captured source graph")
         return ModelSource(
             self.draft.url,
-            self.draft.syntax.render(materialize=True),
+            self.draft.text,
             self.draft.imports,
             self.draft.document_kind,
         )
@@ -281,7 +283,7 @@ class Validation:
         >>> import pymalloy as pm
         >>> from pathlib import Path
         >>> from tempfile import TemporaryDirectory
-        >>> accepted = pm.draft().define(values=pm.sql("SELECT 42 AS n")).validate()
+        >>> accepted = pm.connect().validate(pm.draft().define(values=pm.sql('SELECT 42 AS n')))
         >>> with TemporaryDirectory() as directory:
         ...     saved = accepted.save(Path(directory) / "model.malloy")
         ...     print(saved.is_file())

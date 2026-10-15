@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from pymalloy._model import DEFAULT_CONNECTION
-from pymalloy._model.errors import CompilationError, SchemaError
+from pymalloy.errors import CompilationError, SchemaError
 from pymalloy._model.selection import query_names
 from pymalloy.export._bundle import SourceBundle, bundle
 from pymalloy.export._document import Document, Markdown, Profile, QueryCell

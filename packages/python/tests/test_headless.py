@@ -1,14 +1,13 @@
 import os
 import subprocess
 import sys
-import time
 
 import duckdb
 import pytest
 
 import pymalloy as pm
-from pymalloy import CompilationError, ModelError
 from pymalloy.analysis import MarkdownCell, ParseReport, QueryCell
+from pymalloy.errors import CompilationError
 
 
 def test_headless_uses_packaged_runtime_without_widget_imports_or_project_config(
@@ -16,34 +15,7 @@ def test_headless_uses_packaged_runtime_without_widget_imports_or_project_config
 ):
     (tmp_path / "deno.json").write_text("invalid configuration")
     (tmp_path / "package.json").write_text("invalid configuration")
-    program = """
-import importlib.abc
-import sys
-from pathlib import Path
-blocked = {'anywidget', 'ipywidgets', 'traitlets', 'polars', 'pyarrow', 'duckdb'}
-class WidgetImports(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in blocked:
-            raise AssertionError(f'Unexpected dependency imported: {fullname}')
-sys.meta_path.insert(0, WidgetImports())
-import pymalloy as pm
-source = "run: duckdb.sql('SELECT 9007199254740993::BIGINT AS id') -> { select: id }"
-assert pm.format(source)
-blocked.remove('duckdb')
-blocked.remove('pyarrow')
-model = pm.model(source)
-query = model.query()
-assert query.run().rows() == [{'id': 9007199254740993}]
-assert '9007199254740993' in model.sql()
-assert model.inspect().model is not None
-assert model.source().text == source
-model.close()
-assert pm.check(source).diagnostics == []
-assert pm.run(pm.format(source)).rows() == [{'id': 9007199254740993}]
-Path('answer.malloy').write_text(source)
-from pymalloy.export import prepare
-assert prepare('answer.malloy').queries[0].name == 'run:0'
-"""
+    program = "\nimport importlib.abc\nimport sys\nfrom pathlib import Path\nblocked = {'anywidget', 'ipywidgets', 'traitlets', 'polars', 'pyarrow', 'duckdb'}\nclass WidgetImports(importlib.abc.MetaPathFinder):\n    def find_spec(self, fullname, path=None, target=None):\n        if fullname.split('.')[0] in blocked:\n            raise AssertionError(f'Unexpected dependency imported: {fullname}')\nsys.meta_path.insert(0, WidgetImports())\nimport pymalloy as pm\nsource = \"run: duckdb.sql('SELECT 9007199254740993::BIGINT AS id') -> { select: id }\"\nassert pm.format(source)\nblocked.remove('duckdb')\nblocked.remove('pyarrow')\nmodel = pm.connect().model(source)\nquery = model.query()\nassert query.run().to_pylist() == [{'id': 9007199254740993}]\nassert '9007199254740993' in model.query().sql()\nassert model.inspect().model is not None\nassert model.source().text == source\nmodel.close()\nassert pm.connect().check(source).diagnostics == ()\nassert pm.connect().model(pm.format(source)).query().run().to_pylist() == [{'id': 9007199254740993}]\nPath('answer.malloy').write_text(source)\nfrom pymalloy.export import prepare\nassert prepare('answer.malloy').queries[0].name == 'run:0'\n"
     subprocess.run(
         [sys.executable, "-c", program],
         cwd=tmp_path,
@@ -58,10 +30,10 @@ def test_compiler_frames_preserve_large_unicode_source_and_replies():
     source = (
         f'''run: duckdb.sql("""SELECT '{payload}' AS value""") -> {{ select: value }}'''
     )
-    model = pm.model(source)
+    model = pm.connect().model(source)
     try:
         assert model.source().text == source
-        assert model.run().rows() == [{"value": payload}]
+        assert model.query().run().to_pylist() == [{"value": payload}]
     finally:
         model.close()
 
@@ -73,7 +45,7 @@ def test_tooling_and_documents_return_typed_records_with_explicit_selection():
     parsed = pm.parse(source, url="file:///typed.malloy")
     assert isinstance(parsed, ParseReport)
     assert parsed.symbols[0].name == "one"
-    model = pm.model(source)
+    model = pm.connect().model(source)
     try:
         default = model.document()
         assert len(default) == 1 and isinstance(default[0], QueryCell)
@@ -89,33 +61,9 @@ def test_tooling_and_documents_return_typed_records_with_explicit_selection():
         model.close()
 
 
-def test_expired_schema_discovery_does_not_start_another_database_request(monkeypatch):
-    from pymalloy._headless.engine import Engine
-
-    now = [100.0]
-    descriptions = []
-    original = Engine.describe
-
-    def describe(self, need):
-        result = original(self, need)
-        descriptions.append(need)
-        now[0] = 102.0
-        return result
-
-    monkeypatch.setattr(time, "monotonic", lambda: now[0])
-    monkeypatch.setattr(Engine, "describe", describe)
-    with pytest.raises(TimeoutError):
-        pm.model(
-            "source: a is duckdb.sql('SELECT 1 AS value')\n"
-            "source: b is duckdb.sql('SELECT 2 AS value')\nrun: a -> {select:value}",
-            timeout=1,
-        )
-    assert len(descriptions) == 1
-
-
 def test_model_close_reaps_compiler_process(children):
-    model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
-    assert model.run().rows() == [{"n": 42}]
+    model = pm.connect().model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+    assert model.query().run().to_pylist() == [{"n": 42}]
     assert children and all(child.poll() is None for child in children)
     model.close()
     model.close()
@@ -123,25 +71,25 @@ def test_model_close_reaps_compiler_process(children):
 
 
 def test_one_shot_execution_releases_resources_on_success_and_failure(children):
-    assert pm.run("run: duckdb.sql('SELECT 42 AS n') -> {select:n}").rows() == [
-        {"n": 42}
-    ]
+    assert pm.connect().model(
+        "run: duckdb.sql('SELECT 42 AS n') -> {select:n}"
+    ).query().run().to_pylist() == [{"n": 42}]
     assert children and all(child.poll() is not None for child in children)
     with pytest.raises(CompilationError):
-        pm.run("run: missing")
+        pm.connect().model("run: missing").query().run()
     assert all(child.poll() is not None for child in children)
 
 
 def test_compiler_failure_closes_model_and_preserves_borrowed_connection(children):
     with duckdb.connect() as connection:
-        model = pm.model(
-            "run: duckdb.sql('SELECT 42 AS n') -> {select:n}", connection=connection
+        model = pm.connect(database=connection).model(
+            "run: duckdb.sql('SELECT 42 AS n') -> {select:n}"
         )
         assert children
         children[0].kill()
         children[0].wait(timeout=5)
-        with pytest.raises(ModelError, match="Compiler process"):
-            model.run()
+        with pytest.raises(pm.errors.CompilerError, match="Compiler process"):
+            model.query().run()
         assert model.closed
         model.close()
         assert connection.execute("SELECT 42").fetchone() == (42,)

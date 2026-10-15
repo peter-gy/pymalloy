@@ -196,7 +196,6 @@ class MalloyWidget(BundledWidget):
         runtime: Runtime | None = None,
         connection_name: str = DEFAULT_CONNECTION,
         auto_run: bool = True,
-        _transient: bool = False,
     ) -> None:
         self._initializing = True
         self._closed = False
@@ -228,7 +227,6 @@ class MalloyWidget(BundledWidget):
             givens=dict(givens) if givens is not None else {},
         )
         try:
-            self.set_trait("_transient", _transient)
             self.on_msg(self._view_message)
             self.set_trait(
                 "connection_name", subject.connection_name or connection_name
@@ -342,7 +340,7 @@ class MalloyWidget(BundledWidget):
             }
             if action != "inspect":
                 files.update(
-                    (item.reference, item.materialize().path.read_bytes())
+                    (item.reference, item._materialize().path.read_bytes())
                     for item in subject.inputs
                 )
                 prepared = True

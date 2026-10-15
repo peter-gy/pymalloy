@@ -24,7 +24,7 @@ def execute(**expressions):
             )
         )
     )
-    model = draft.compile()
+    model = pm.connect().model(draft)
     try:
         return model.query("result").run()
     finally:
@@ -44,7 +44,7 @@ def test_scalar_operators_precedence_reverse_operands_and_literals():
         selected=(a > 3) & ~(pm.col("id") == 2),
         other=(a <= 2) | (pm.col("id") != 1),
         literal=pm.lit("x'\"\\\n); run: missing"),
-    ).rows()
+    ).to_pylist()
     assert rows[0] == {
         "id": 1,
         "value": 122,
@@ -102,9 +102,9 @@ def test_namespaces_nulls_cases_and_temporal_types_survive_python_emission(tmp_p
     )
     path = tmp_path / "namespaces.py"
     path.write_text(pm.read_model(draft.text).to_python())
-    model = runpy.run_path(str(path))["model"].compile()
+    model = pm.connect().model(runpy.run_path(str(path))["model"])
     try:
-        rows = model.query("result").run().rows()
+        rows = model.query("result").run().to_pylist()
     finally:
         model.close()
     assert rows[0]["clean"] == "alpha."
@@ -166,9 +166,9 @@ def test_aggregate_scope_distinct_values_and_filtered_aggregates():
             )
         )
     )
-    model = draft.compile()
+    model = pm.connect().model(draft)
     try:
-        row = model.query("result").run().rows()[0]
+        row = model.query("result").run().to_pylist()[0]
         assert row == {
             "total": 82,
             "average": 82 / 3,
@@ -209,9 +209,9 @@ def test_aggregate_scope_distinct_values_and_filtered_aggregates():
             )
         )
     )
-    model = joined.compile()
+    model = pm.connect().model(joined)
     try:
-        assert model.query("result").run().rows() == [
+        assert model.query("result").run().to_pylist() == [
             {"parents": 2, "items": 3, "total": 60}
         ]
     finally:
@@ -256,9 +256,9 @@ def test_given_references_and_raw_escape_compose_symbolically():
             )
         )
     )
-    model = draft.compile()
+    model = pm.connect().model(draft)
     try:
-        assert model.query("result").run(givens={"minimum": 30}).rows() == [
+        assert model.query("result").run(givens={"minimum": 30}).to_pylist() == [
             {"total": 80}
         ]
     finally:
@@ -266,7 +266,7 @@ def test_given_references_and_raw_escape_compose_symbolically():
     result = execute(
         id=pm.col("id"), answer=pm.raw_expr("amount // trailing Malloy comment") + 1
     )
-    assert result.rows()[0]["answer"] == 41
+    assert result.to_pylist()[0]["answer"] == 41
 
 
 def test_literal_values_and_types_survive_constructed_and_parsed_python(tmp_path):
@@ -306,7 +306,7 @@ def test_literal_values_and_types_survive_constructed_and_parsed_python(tmp_path
         path.write_text(candidate.to_python())
         candidates.append(runpy.run_path(str(path))["model"])
     for candidate in candidates:
-        model = candidate.compile()
+        model = pm.connect().model(candidate)
         try:
             results.append(model.query("result").run())
         finally:
@@ -314,11 +314,11 @@ def test_literal_values_and_types_survive_constructed_and_parsed_python(tmp_path
     original = results[0]
     for result in results[1:]:
         assert result.columns == original.columns
-        assert result.rows() == original.rows()
-    assert original.rows()[0]["instant"] == datetime.datetime(
+        assert result.to_pylist() == original.to_pylist()
+    assert original.to_pylist()[0]["instant"] == datetime.datetime(
         2024, 5, 6, 10, 30, tzinfo=datetime.UTC
     )
-    assert original.rows()[0]["scientific"] == 1.0
+    assert original.to_pylist()[0]["scientific"] == 1.0
     assert next(c.type for c in original.columns if c.name == "scientific") == "DOUBLE"
 
 
@@ -346,9 +346,9 @@ query: result is data -> {select: doubled}
     path.write_text(ast.unparse(ast.fix_missing_locations(tree)))
     edited = runpy.run_path(str(path))["model"]
     assert "// keep model comment" in edited.text
-    model = edited.compile()
+    model = pm.connect().model(edited)
     try:
-        assert model.query("result").run().rows() == [{"doubled": 15}]
+        assert model.query("result").run().to_pylist() == [{"doubled": 15}]
     finally:
         model.close()
 
@@ -375,9 +375,9 @@ query: selected is events -> {where: created = @2022 aggregate: n is count()}
     generated.write_text(original.to_python())
     restored = runpy.run_path(str(generated))["model"]
     for draft in [original, restored]:
-        model = draft.compile()
+        model = pm.connect().model(draft)
         try:
-            assert model.query("selected").run().rows() == [{"n": 1}]
+            assert model.query("selected").run().to_pylist() == [{"n": 1}]
         finally:
             model.close()
 
@@ -394,9 +394,9 @@ def test_documented_scalars_remain_composable_and_bind_once(tmp_path):
     path.write_text(draft.to_python())
     restored = runpy.run_path(str(path))["model"]
     assert restored.text == draft.text
-    model = restored.compile()
+    model = pm.connect().model(restored)
     try:
-        assert model.query("result").run().rows() == [{"total": 83}]
+        assert model.query("result").run().to_pylist() == [{"total": 83}]
         source = next(s for s in model.inspect().model.sources if s.name == "data")
         total = next(f for f in source.schema.fields if f.name == "total")
         assert [note.value.strip() for note in total.annotations] == ['#" Revenue']

@@ -353,7 +353,7 @@ class Expr(NotebookDisplay):
         >>> expr = pm.col("amount").fill_null(0)
         >>> candidate = pm.draft().define(values=pm.sql("SELECT NULL::INTEGER AS amount"))
         >>> candidate = candidate.queries(result=pm.ref("values").pipe(pm.query(pm.select(amount=expr))))
-        >>> pm.run(candidate).rows()
+        >>> pm.connect().model(candidate).query().run().to_pylist()
         [{'amount': 0}]
         """
         return self._binary("??", value)
@@ -377,7 +377,7 @@ class Expr(NotebookDisplay):
         >>> expr = pm.col("amount").nullif(0)
         >>> candidate = pm.draft().define(values=pm.sql("SELECT 0::INTEGER AS amount"))
         >>> candidate = candidate.queries(result=pm.ref("values").pipe(pm.query(pm.select(amount=expr))))
-        >>> pm.run(candidate).rows()
+        >>> pm.connect().model(candidate).query().run().to_pylist()
         [{'amount': None}]
         """
         return self._call("nullif", value)
@@ -520,7 +520,7 @@ class Expr(NotebookDisplay):
         >>> expr = pm.lit("invalid").cast("number", safe=True)
         >>> candidate = pm.draft().define(values=pm.sql("SELECT 1 AS id"))
         >>> candidate = candidate.queries(result=pm.ref("values").pipe(pm.query(pm.select(value=expr))))
-        >>> pm.run(candidate).rows()
+        >>> pm.connect().model(candidate).query().run().to_pylist()
         [{'value': None}]
         """
         if not isinstance(type, str) or not type.strip():
@@ -724,7 +724,7 @@ def given(name: str) -> Expr:
     ...     pm.where(pm.col("amount") > pm.given("minimum")),
     ...     pm.select(pm.col("amount")),
     ... )))
-    >>> pm.run(candidate, givens={"minimum": 40}).rows()
+    >>> pm.connect().model(candidate).query().run(givens={'minimum': 40}).to_pylist()
     [{'amount': 42}]
     """
     if not isinstance(name, str) or not name.isidentifier():

@@ -2,7 +2,6 @@ import argparse
 import json
 import math
 import sys
-import time
 from importlib.metadata import version
 from pathlib import Path
 
@@ -51,7 +50,11 @@ def main() -> None:
         "--version", action="version", version=f"pymalloy {version('pymalloy')}"
     )
     commands = parser.add_subparsers(dest="command", required=True)
-    run = commands.add_parser("run", help="execute a query and write JSON records")
+    run = commands.add_parser(
+        "run",
+        help="execute a query and write JSON records",
+        description="Write JSON records. Decimal and temporal values are strings. Exact integers remain JSON integers.",
+    )
     run.add_argument("path", type=Path, help="local Malloy source file")
     run.add_argument(
         "-q", "--query", help="query name (default: the model's default query)"
@@ -147,6 +150,10 @@ def main() -> None:
         action="store_true",
         help="exit with status 1 if formatting would change the file",
     )
+    for command in (check, export):
+        command.add_argument(
+            "--timeout", type=float, default=120, help="operation deadline in seconds"
+        )
     for command in (run, check, export):
         command.add_argument(
             "--extension",
@@ -171,27 +178,34 @@ def main() -> None:
 
 def _tool(args: argparse.Namespace) -> None:
     try:
-        import duckdb
-
-        from pymalloy import CompilationError, PyMalloyError, check, format
+        from pymalloy import format, parse
+        from pymalloy.errors import CompilationError, PyMalloyError
     except ImportError as error:
         print(
             f"pymalloy: {error}. Install language tools with pip install 'pymalloy[headless]'",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
+    engine_errors: tuple[type[Exception], ...] = ()
     try:
         if args.command == "check":
-            report = check(
-                args.path.read_text(encoding="utf-8"),
-                path=args.path,
-                syntax_only=args.syntax_only,
-                data_root=args.data_root,
-                connection_name=args.connection_name,
-                extensions=args.extension,
-                database=args.database,
-                read_only=args.database is not None,
-            )
+            if args.syntax_only:
+                report = parse(args.path)
+            else:
+                import duckdb
+
+                from pymalloy import connect
+
+                engine_errors = (duckdb.Error,)
+                with connect(
+                    args.database if args.database is not None else ":memory:",
+                    data_root=args.data_root,
+                    name=args.connection_name,
+                    extensions=args.extension,
+                    read_only=args.database is not None,
+                    timeout=args.timeout,
+                ) as connection:
+                    report = connection.check(args.path)
             if args.json:
                 print(json.dumps(to_dict(report), ensure_ascii=False))
             else:
@@ -212,6 +226,12 @@ def _tool(args: argparse.Namespace) -> None:
                     raise SystemExit(1)
             else:
                 sys.stdout.write(formatted)
+    except ImportError as error:
+        print(
+            f"pymalloy: {error}. Install language tools with pip install 'pymalloy[headless]'",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
     except CompilationError as error:
         if error.diagnostics:
             for diagnostic in error.diagnostics:
@@ -227,7 +247,7 @@ def _tool(args: argparse.Namespace) -> None:
         TypeError,
         TimeoutError,
         PyMalloyError,
-        duckdb.Error,
+        *engine_errors,
     ) as error:
         print(f"pymalloy: {error}", file=sys.stderr)
         for note in getattr(error, "__notes__", ()):
@@ -284,6 +304,7 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
             extensions=args.extension,
             database=args.database,
             title=args.title,
+            timeout=args.timeout,
         )
         renderer = marimo if args.format == "marimo" else jupyter
         source = renderer.render(document, output_path=args.output)
@@ -312,8 +333,6 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
 
 def _run(args: argparse.Namespace) -> None:
     try:
-        from contextlib import closing
-
         import duckdb
 
         import pymalloy as pm
@@ -325,25 +344,23 @@ def _run(args: argparse.Namespace) -> None:
         raise SystemExit(1) from None
 
     try:
-        deadline = time.monotonic() + args.timeout
-        with closing(
-            pm.model(
-                args.path,
-                data_root=args.data_root,
-                connection_name=args.connection_name,
-                extensions=args.extension,
-                database=args.database,
-                read_only=args.database is not None,
-                timeout=args.timeout,
-            )
-        ) as model:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("Query execution exceeded its deadline")
-            result = model.query(args.query).run(givens=args.givens, timeout=remaining)
+        from pymalloy._headless.runtime import deadline_after
+
+        deadline = deadline_after(args.timeout)
+        with pm.Connection._open(
+            args.database if args.database is not None else ":memory:",
+            data_root=args.data_root,
+            name=args.connection_name,
+            extensions=args.extension,
+            read_only=args.database is not None,
+            timeout=args.timeout,
+            deadline=deadline,
+        ) as connection:
+            model = connection._model(args.path, deadline=deadline)
+            result = model.query(args.query)._execute(args.givens, deadline, None)
             print(
                 json.dumps(
-                    result.rows(), ensure_ascii=False, default=str, allow_nan=False
+                    result.to_pylist(), ensure_ascii=False, default=str, allow_nan=False
                 )
             )
     except ImportError as error:

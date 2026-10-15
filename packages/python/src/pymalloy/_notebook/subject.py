@@ -14,7 +14,6 @@ from pymalloy._model.source import DocumentKind, ModelSource
 from pymalloy._protocol.givens import given_values
 from pymalloy._protocol.records import (
     ExecutionKind,
-    Input,
     Inspection,
     NotebookBinding,
     NotebookInfo,
@@ -27,9 +26,12 @@ from pymalloy._protocol.records import (
     ScalarField,
     ScalarGiven,
 )
+from pymalloy._protocol.records import (
+    Input as WidgetInput,
+)
 
 if TYPE_CHECKING:
-    from pymalloy._model.inputs import DataInput
+    from pymalloy._model.inputs import Input
     from pymalloy.result import Result
 
 
@@ -40,13 +42,15 @@ class Subject:
     url: str | None = None
     document_kind: DocumentKind = "model"
     imports: Mapping[str, str] | None = None
-    inputs: tuple[DataInput, ...] = ()
+    inputs: tuple[Input, ...] = ()
     queries: tuple[QueryDescriptor, ...] = ()
     inspect: Callable[[], Inspection] | None = None
     preview: Callable[[str | None, Mapping[str, Any]], Result] | None = None
     connection_name: str | None = None
 
-    def perform(self, request: Input) -> tuple[NotebookResponse, list[memoryview]]:
+    def perform(
+        self, request: WidgetInput
+    ) -> tuple[NotebookResponse, list[memoryview]]:
         if request.action == "inspect" and self.info.execution != "result":
             raise ValueError("Choose Preview to execute this value")
         if request.action == "check":
@@ -62,7 +66,7 @@ class Subject:
         import pyarrow as pa
 
         sink = pa.BufferOutputStream()
-        table = result.arrow()
+        table = result.to_arrow()
         with pa.ipc.new_stream(sink, table.schema) as writer:
             writer.write_table(table)
         return NotebookResult(
@@ -136,11 +140,11 @@ def describe(value) -> Subject:
                 "Result",
                 value.sql,
                 "result",
-                f"Materialized result · {value.arrow().num_rows:,} rows. Display shows up to 20 rows without executing SQL again.",
+                f"Materialized result · {value.to_arrow().num_rows:,} rows. Display shows up to 20 rows without executing SQL again.",
             )
         )
         result.preview = lambda _query, _givens: Result(
-            value.sql, value.columns, value.arrow().slice(0, 20)
+            value.sql, value.columns, value.to_arrow().slice(0, 20)
         )
         return result
 

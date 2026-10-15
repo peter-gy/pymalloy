@@ -1,309 +1,328 @@
 from __future__ import annotations
 
-import math
-import time
+import threading
+import weakref
 from collections.abc import Mapping, Sequence
-from contextlib import closing
 from pathlib import Path
-from typing import Any, TypedDict, Unpack
+from typing import Any, Self
 
-import duckdb
+import duckdb as native_duckdb
 
 from pymalloy._authoring.draft import Draft
+from pymalloy._authoring.syntax import Fragment
 from pymalloy._model import DEFAULT_CONNECTION
 from pymalloy._model.source import DocumentKind, ModelSource
 from pymalloy.analysis import CheckReport, SourcePosition
-from pymalloy.result import Result
+from pymalloy.errors import ClosedError
+from pymalloy.validation import DocumentationPolicy, Validation, _checked
 
-from .runtime import Model, Query, _Runtime
+from .compiler import Compiler
+from .engine import Engine
+from .runtime import Model, Query, _Runtime, deadline_after
 from .tooling import compiler_lease
-from .validation import validate
 
-__all__ = ["Model", "Query", "check", "model", "run", "validate"]
-
-
-class _RuntimeOptions(TypedDict, total=False):
-    data_root: str | Path | None
-    database: str | Path | None
-    connection: duckdb.DuckDBPyConnection | None
-    config: Mapping[str, Any] | None
-    extensions: Sequence[str]
-    connection_name: str
-    document_kind: DocumentKind | None
-    read_only: bool
-    timeout: float
-    compiler_memory_mb: int
+__all__ = ["Connection", "Model", "Query", "connect"]
 
 
-class _ModelOptions(_RuntimeOptions, total=False):
-    url: str | None
+class Connection:
+    """Own native DuckDB execution and the lifetimes of compiled models.
+
+    Construct with ``pm.connect()``. Models and queries retain their connection.
+    Closing a model releases its compiler. Closing the connection settles work,
+    closes its child models, and closes an owned DuckDB connection.
+    """
+
+    _name: str
+    _timeout: float
+    _compiler_memory_mb: int
+    _root: Path
+    _lock: threading.RLock
+    _engine: Engine
+    _cleanup: weakref.finalize
+    _runtimes: weakref.WeakSet[_Runtime]
+
+    def __new__(cls):
+        raise TypeError("Create connections with pm.connect()")
+
+    @classmethod
+    def _open(
+        cls,
+        database: str | Path | native_duckdb.DuckDBPyConnection = ":memory:",
+        *,
+        data_root: str | Path | None = None,
+        read_only: bool = False,
+        config: Mapping[str, Any] | None = None,
+        extensions: Sequence[str] = (),
+        name: str = DEFAULT_CONNECTION,
+        timeout: float = 120,
+        compiler_memory_mb: int = 256,
+        deadline: float,
+    ) -> Self:
+        self = object.__new__(cls)
+        if not isinstance(name, str) or not name:
+            raise ValueError("name must be a nonempty string")
+        if type(compiler_memory_mb) is not int or compiler_memory_mb <= 0:
+            raise ValueError("compiler_memory_mb must be a positive integer")
+        self._name = name
+        self._timeout = timeout
+        self._compiler_memory_mb = compiler_memory_mb
+        self._root = Path(data_root or Path.cwd()).resolve()
+        self._lock = threading.RLock()
+        self._closed = False
+        self._runtimes = weakref.WeakSet()
+        borrowed = isinstance(database, native_duckdb.DuckDBPyConnection)
+        self._engine = Engine(
+            connection=database if borrowed else None,
+            database=None if borrowed else database,
+            data_root=data_root,
+            config=config,
+            extensions=extensions,
+            read_only=read_only,
+            deadline=deadline,
+        )
+        self._cleanup = weakref.finalize(self, self._engine.close)
+        return self
+
+    @property
+    def name(self) -> str:
+        """Return the Malloy connection identifier."""
+        return self._name
+
+    @property
+    def duckdb(self) -> native_duckdb.DuckDBPyConnection:
+        """Return the native connection while this owner is open."""
+        self._check_open()
+        return self._engine.connection
+
+    @property
+    def closed(self) -> bool:
+        """Return whether this connection has closed."""
+        return self._closed
+
+    def _check_open(self) -> None:
+        if self._closed:
+            raise ClosedError("Connection is closed. Create a new connection.")
+
+    def _deadline(self, timeout: float | None) -> float:
+        return deadline_after(self._timeout if timeout is None else timeout)
+
+    def _model(
+        self,
+        source: str | Path | ModelSource | Draft,
+        *,
+        url: str | None = None,
+        document_kind: DocumentKind | None = None,
+        timeout: float | None = None,
+        deadline: float,
+        compiler: Compiler | None = None,
+    ) -> Model:
+        self._check_open()
+        runtime = _Runtime(
+            self,
+            timeout=self._timeout if timeout is None else timeout,
+            deadline=deadline,
+            compiler=compiler,
+        )
+        try:
+            return runtime.compile(
+                source, url=url, document_kind=document_kind, deadline=deadline
+            )
+        except BaseException:
+            runtime.close()
+            raise
+
+    def model(
+        self,
+        source: str | Path | ModelSource | Draft,
+        *,
+        url: str | None = None,
+        document_kind: DocumentKind | None = None,
+        timeout: float | None = None,
+    ) -> Model:
+        """Compile source using this connection's engine.
+
+        Parameters
+        ----------
+        source : str, pathlib.Path, ModelSource, or Draft
+            Malloy text, a file, a closed source graph, or an authored revision.
+        url : str, optional
+            Identity for inline text. Must agree with a source carrying identity.
+        document_kind : {"model", "notebook"}, optional
+            Grammar override, otherwise inferred from source identity.
+        timeout : float, optional
+            Compilation and default model operation budget in seconds.
+            None uses the connection default.
+
+        Returns
+        -------
+        Model
+            Compiled source and query inventory owning one compiler process.
+        """
+        return self._model(
+            source,
+            url=url,
+            document_kind=document_kind,
+            timeout=timeout,
+            deadline=self._deadline(timeout),
+        )
+
+    def check(
+        self,
+        source: str | Path | ModelSource | Draft,
+        *,
+        url: str | None = None,
+        document_kind: DocumentKind | None = None,
+        position: SourcePosition | None = None,
+        documentation: DocumentationPolicy | None = None,
+        timeout: float | None = None,
+    ) -> CheckReport:
+        """Check syntax, names, types, and schemas against this connection.
+
+        Parameters
+        ----------
+        source : str, pathlib.Path, ModelSource, or Draft
+            Source accepted by model.
+        url : str, optional
+            Identity for inline text.
+        document_kind : {"model", "notebook"}, optional
+            Grammar override.
+        position : SourcePosition, optional
+            Zero-based line and code-point position for completions and help.
+        documentation : DocumentationPolicy, optional
+            Description-presence policy from pymalloy.validation.
+        timeout : float, optional
+            Budget in seconds, defaulting to the connection's timeout.
+
+        Returns
+        -------
+        CheckReport
+            Structured diagnostics, schema metadata, and query inventory.
+        """
+        self._check_open()
+        deadline = self._deadline(timeout)
+        with compiler_lease(deadline, memory_mb=self._compiler_memory_mb) as compiler:
+            runtime = _Runtime(
+                self, timeout=self._timeout, deadline=deadline, compiler=compiler
+            )
+            try:
+                return _checked(
+                    runtime.check(
+                        source,
+                        url=url,
+                        document_kind=document_kind,
+                        position=position,
+                        deadline=deadline,
+                    ),
+                    documentation,
+                )
+            finally:
+                runtime._cleanup.detach()
+                runtime._closed = True
+
+    def validate(
+        self,
+        draft: Draft,
+        checks: Mapping[str, Fragment] | None = None,
+        *,
+        givens: Mapping[str, Any] | None = None,
+        documentation: DocumentationPolicy | None = None,
+        timeout: float | None = None,
+    ) -> Validation:
+        """Capture bindings once and run counterexample queries on a draft.
+
+        Zero rows passes a check. A failed check retains one counterexample.
+        One deadline covers compilation, inspection, and every check.
+        """
+        from .validation import validate
+
+        self._check_open()
+        return validate(
+            self,
+            draft,
+            checks if checks is not None else {},
+            givens=givens,
+            documentation=documentation,
+            deadline=self._deadline(timeout),
+        )
+
+    def close(self) -> None:
+        """Settle work, close child models, and release the owned native engine."""
+        with self._lock:
+            if not self._closed:
+                self._closed = True
+                for runtime in tuple(self._runtimes):
+                    runtime.close()
+                self._cleanup()
+
+    def __enter__(self) -> Self:
+        self._check_open()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
 
-def model(
-    source: str | Path | ModelSource | Draft,
+def connect(
+    database: str | Path | native_duckdb.DuckDBPyConnection = ":memory:",
     *,
-    url: str | None = None,
     data_root: str | Path | None = None,
-    database: str | Path | None = None,
-    connection: duckdb.DuckDBPyConnection | None = None,
+    read_only: bool = False,
     config: Mapping[str, Any] | None = None,
     extensions: Sequence[str] = (),
-    connection_name: str = DEFAULT_CONNECTION,
-    document_kind: DocumentKind | None = None,
-    read_only: bool = False,
+    name: str = DEFAULT_CONNECTION,
     timeout: float = 120,
     compiler_memory_mb: int = 256,
-) -> Model:
-    """Compile source into a reusable model backed by native DuckDB.
-
-    Use a retained model when preparing several queries or varying parameters.
-    Use run for one execution whose resources can be released immediately.
-    Requires ``pymalloy[headless]``.
+) -> Connection:
+    """Open a native runtime owner or borrow an existing DuckDB connection.
 
     Parameters
     ----------
-    source : str, pathlib.Path, ModelSource, or Draft
-        Malloy text, file Path, closed source snapshot, or authored draft. A
-        string is text, not a filename. Use Path("orders.malloy") for a file.
-    url : str, optional
-        Absolute identity/base URL for inline text. File paths and snapshots
-        carry their own identity. Defaults to data_root/model.malloy when data_root is supplied, otherwise
-        model.malloy in the working directory.
+    database : str, pathlib.Path, or duckdb.DuckDBPyConnection, default ":memory:"
+        Database to open, or an existing connection to borrow. Borrowed settings,
+        registrations, and transactions remain caller-owned.
     data_root : str or pathlib.Path, optional
-        Search directory for relative data files on an owned connection. Source
-        identity separately controls imports. DuckDB checks the working directory
-        first. Rejected with a borrowed connection, which retains its existing settings.
-    database : str or pathlib.Path, optional
-        DuckDB database file. Omitted means a new in-memory database. Mutually
-        exclusive with connection.
-    connection : duckdb.DuckDBPyConnection, optional
-        Borrow the caller's connection. It is never closed by the model, and
-        its settings and transactions remain caller-owned.
-    config : mapping, optional
-        Native DuckDB settings for an owned connection, such as threads or
-        memory_limit. Rejected with a borrowed connection. An explicit
-        file_search_path conflicts with data_root.
-    extensions : sequence of str, default ()
-        DuckDB extensions to install/load before file-access restrictions are
-        applied. Installation may need network access. Nonempty values are
-        rejected for borrowed connections.
-    connection_name : str, default "duckdb"
-        Malloy connection identifier. This names the DuckDB adapter, not a
-        choice of database engine. Match connection= in table/sql/data constructors.
-    document_kind : {"model", "notebook"}, optional
-        Override extension-based classification. Notebook includes .malloynb
-        and .malloysql documents. Plain inline text defaults to model syntax.
+        Relative data search directory on an owned connection.
     read_only : bool, default False
-        Open the owned database read-only. True is rejected with a borrowed connection.
+        Open an owned database for reading.
+    config : mapping, optional
+        DuckDB settings for an owned connection. Defaults include UTC.
+    extensions : sequence of str, default ()
+        Extensions to install and load before file-access restrictions.
+    name : str, default "duckdb"
+        Malloy connection name matching authoring constructors' connection=.
     timeout : float, default 120
-        Positive finite seconds for startup/compilation and the default budget
-        for later operations. Each operation includes waiting, compilation and SQL.
+        Positive finite operation budget in seconds.
     compiler_memory_mb : int, default 256
-        V8 compiler heap budget in MiB, separate from DuckDB's memory_limit.
+        Per-model compiler heap limit in MiB.
 
     Returns
     -------
-    Model
-        Reusable query inventory and runtime. Call close for prompt release.
-        Queries keep their model alive. Materialized results survive closure.
+    Connection
+        Engine owner with model compilation, checking, and validation methods.
+        Closing it settles child models before releasing an owned engine.
 
     Raises
     ------
-    CompilationError
-        Malloy source or schema resolution fails, with compiler diagnostics.
-    CompilerError
-        The compiler process or protocol fails.
-    TimeoutError
-        The operation's shared deadline expires.
-
-    Notes
-    -----
-    A SQL timeout interrupts that statement and leaves a healthy model reusable.
-    A timeout during an in-flight compiler request makes that model terminal.
-    An interrupted caller-owned transaction may require a caller rollback.
+    ValueError
+        Options conflict, or data_root, read_only=True, config, or extensions are
+        supplied with a borrowed connection.
 
     Examples
     --------
     >>> import pymalloy as pm
-    >>> from pathlib import Path
-    >>> model = pm.model("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}")
-    >>> model.query().run().rows()
-    [{'answer': 42}]
-    >>> model.close()
-    >>> model.closed
-    True
+    >>> with pm.connect() as con:
+    ...     result = con.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}").query().run()
+    >>> result.to_pylist()
+    [{'n': 42}]
     """
-    deadline = time.monotonic() + timeout
-    runtime = _Runtime(
+    return Connection._open(
+        database,
         data_root=data_root,
-        database=database,
-        connection=connection,
+        read_only=read_only,
         config=config,
         extensions=extensions,
-        connection_name=connection_name,
-        read_only=read_only,
+        name=name,
         timeout=timeout,
         compiler_memory_mb=compiler_memory_mb,
-        deadline=deadline,
+        deadline=deadline_after(timeout),
     )
-    try:
-        return runtime.compile(
-            source, url=url, document_kind=document_kind, deadline=deadline
-        )
-    except BaseException:
-        runtime.close()
-        raise
-
-
-def run(
-    source: str | Path | ModelSource | Draft,
-    *,
-    givens: Mapping[str, Any] | None = None,
-    **options: Unpack[_ModelOptions],
-) -> Result:
-    """Execute a default query once and return materialized results.
-
-    Parameters
-    ----------
-    source : str, pathlib.Path, ModelSource, or Draft
-        Source accepted by model. A string is Malloy text. Use Path for files.
-    givens : mapping, optional
-        Values for declared Malloy parameters. Values are bound for this call.
-    **options
-        Options accepted by model, including data_root, database, connection,
-        connection_name, config and timeout. One deadline covers compilation
-        and execution. A supplied connection remains caller-owned.
-
-    Returns
-    -------
-    Result
-        SQL, columns and Arrow-backed values. Owned runtime resources are closed
-        before return. Use .rows(), .arrow(), or .polars() to read the data.
-
-    Notes
-    -----
-    Selects the last authored run, or the sole available query when there are no
-    runs. Multiple named queries/views require ``model(...).query(name).run()``.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> result = pm.run("run: duckdb.sql('SELECT 42 AS answer') -> {select: answer}")
-    >>> result.rows()
-    [{'answer': 42}]
-    """
-    deadline = time.monotonic() + options.get("timeout", 120)
-    with model(source, **options) as compiled:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("Query execution exceeded its deadline")
-        return compiled.run(givens=givens, timeout=remaining)
-
-
-def check(
-    source: str | Path | ModelSource | Draft,
-    *,
-    path: str | Path | None = None,
-    url: str | None = None,
-    connection_name: str = DEFAULT_CONNECTION,
-    document_kind: DocumentKind | None = None,
-    syntax_only: bool = False,
-    position: SourcePosition | None = None,
-    data_root: str | Path | None = None,
-    database: str | Path | None = None,
-    connection: duckdb.DuckDBPyConnection | None = None,
-    config: Mapping[str, Any] | None = None,
-    extensions: Sequence[str] = (),
-    read_only: bool = False,
-    timeout: float = 120,
-    compiler_memory_mb: int = 256,
-) -> CheckReport:
-    """Return compiler diagnostics and model metadata without executing result queries.
-
-    Parameters
-    ----------
-    source : str, pathlib.Path, ModelSource, or Draft
-        Source to check. Strings contain Malloy text, Paths name files.
-    path : str or pathlib.Path, optional
-        Identity hint for inline text, used for locations and relative imports.
-    url : str, optional
-        Absolute identity hint. Mutually exclusive with path.
-    connection_name : str, default "duckdb"
-        Malloy name for the native DuckDB adapter.
-    document_kind : {"model", "notebook"}, optional
-        Explicit parser mode, otherwise inferred from source identity.
-    syntax_only : bool, default False
-        Stop after syntax/tooling analysis. No table schema discovery or imported
-        model resolution is performed. Runtime dependencies are still required.
-    position : SourcePosition, optional
-        Zero-based line and Unicode code-point character position for contextual
-        completion and help metadata. Import from pymalloy.analysis.
-    data_root : str or pathlib.Path, optional
-        Search directory for data files on the owned connection.
-    database : str or pathlib.Path, optional
-        DuckDB database file, mutually exclusive with connection.
-    connection : duckdb.DuckDBPyConnection, optional
-        Caller-owned connection for schema discovery. It remains open.
-    config : mapping, optional
-        Native settings for an owned connection, as in model.
-    extensions : sequence of str, default ()
-        Extensions to install/load on an owned connection before restrictions.
-    read_only : bool, default False
-        Open an owned database read-only.
-    timeout : float, default 120
-        Positive finite deadline in seconds, including compiler acquisition,
-        startup and schema discovery.
-    compiler_memory_mb : int, default 256
-        Compiler V8 heap budget in MiB.
-
-    Returns
-    -------
-    CheckReport
-        ok, diagnostics, model/schema metadata, query inventory and tooling data.
-        Infrastructure failures raise exceptions instead of becoming diagnostics.
-
-    See Also
-    --------
-    Draft.check : Add opt-in documentation lint.
-    Draft.validate : Execute data assertions.
-    parse : Syntax-only tooling without a DuckDB connection.
-
-    Examples
-    --------
-    >>> import pymalloy as pm
-    >>> report = pm.check("run: missing_source")
-    >>> report.ok
-    False
-    >>> report.diagnostics[0].code
-    'source-or-query-not-found'
-    """
-    if not math.isfinite(timeout) or timeout <= 0:
-        raise ValueError("Operation timeout must be finite and positive")
-    deadline = time.monotonic() + timeout
-    with (
-        compiler_lease(deadline, memory_mb=compiler_memory_mb) as compiler,
-        closing(
-            _Runtime(
-                data_root=data_root,
-                database=database,
-                connection=connection,
-                config=config,
-                extensions=extensions,
-                connection_name=connection_name,
-                read_only=read_only,
-                timeout=timeout,
-                compiler_memory_mb=compiler_memory_mb,
-                deadline=deadline,
-                compiler=compiler,
-            )
-        ) as runtime,
-    ):
-        return runtime.check(
-            source,
-            path=path,
-            url=url,
-            syntax_only=syntax_only,
-            position=position,
-            document_kind=document_kind,
-            deadline=deadline,
-        )

@@ -1,39 +1,35 @@
 from __future__ import annotations
 
 import math
-import threading
 import time
 import weakref
 from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
 import duckdb
 import msgspec
 
 from pymalloy._authoring.draft import Draft
 from pymalloy._authoring.syntax import Fragment
-from pymalloy._model import DEFAULT_CONNECTION
-from pymalloy._model.errors import ModelError
-from pymalloy._model.inputs import DataInput
+from pymalloy._model.inputs import Input
 from pymalloy._model.selection import query_names
 from pymalloy._model.source import (
     DocumentKind,
     ModelSource,
-    resolve_document_kind,
-    resolve_source,
+    open_source,
 )
 from pymalloy._notebook import NotebookDisplay
-from pymalloy._protocol.givens import encode_givens, given_values
+from pymalloy._protocol.givens import encode_givens
 from pymalloy._protocol.records import (
     BeginRequest,
     CheckReady,
     CheckRequest,
-    Connection,
     DocumentCell,
     DocumentReady,
     DocumentRequest,
+    Given,
     InspectionPosition,
     InspectionReady,
     InspectRequest,
@@ -43,8 +39,9 @@ from pymalloy._protocol.records import (
     QueryRequest,
     QuerySelection,
     Request,
-    SourceReady,
-    SourceRequest,
+)
+from pymalloy._protocol.records import (
+    Connection as ConnectionRecord,
 )
 from pymalloy.analysis import (
     CheckReport,
@@ -52,72 +49,52 @@ from pymalloy.analysis import (
     QueryDescriptor,
     SourcePosition,
 )
-from pymalloy.execution import ExecutionContext, ExecutionError
+from pymalloy.errors import ClosedError, CompilerError, ExecutionContext, ExecutionError
 from pymalloy.result import Result
 
 from .compiler import Compiler
 from .deadline import interrupt_at
-from .engine import Engine
+
+if TYPE_CHECKING:
+    from .api import Connection
 
 
-def _close(compiler: Compiler | None, engine: Engine) -> None:
-    try:
-        if compiler is not None:
-            compiler.close()
-    finally:
-        engine.close()
+def deadline_after(timeout: float) -> float:
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("Operation timeout must be finite and positive")
+    return time.monotonic() + timeout
+
+
+def remaining(deadline: float) -> float:
+    budget = deadline - time.monotonic()
+    if budget <= 0:
+        raise TimeoutError("Malloy operation exceeded its deadline")
+    return budget
 
 
 class _Runtime:
-    """Compile and execute Malloy using an owned or borrowed DuckDB connection."""
+    """Own one model's compiler and borrow its connection's engine and lock."""
 
     def __init__(
         self,
+        owner: Connection,
         *,
-        data_root: str | Path | None = None,
-        database: str | Path | None = None,
-        connection: duckdb.DuckDBPyConnection | None = None,
-        config: Mapping[str, Any] | None = None,
-        extensions: Sequence[str] = (),
-        connection_name: str = DEFAULT_CONNECTION,
-        read_only: bool = False,
-        timeout: float = 120,
-        compiler_memory_mb: int = 256,
-        deadline: float | None = None,
+        timeout: float,
+        deadline: float,
         compiler: Compiler | None = None,
     ) -> None:
-        if not math.isfinite(timeout) or timeout <= 0:
-            raise ValueError("Model timeout must be finite and positive")
-        if not isinstance(connection_name, str) or not connection_name:
-            raise ValueError("connection_name must be a nonempty string")
-        self._connection = Connection(name=connection_name, dialect="duckdb")
-        deadline = deadline if deadline is not None else time.monotonic() + timeout
-        self._engine = Engine(
-            data_root=data_root,
-            database=database,
-            connection=connection,
-            config=config,
-            extensions=extensions,
-            read_only=read_only,
-            deadline=deadline,
+        self._owner = owner
+        self._connection = ConnectionRecord(name=owner.name, dialect="duckdb")
+        self._engine = owner._engine
+        self._compiler = compiler or Compiler(
+            memory_mb=owner._compiler_memory_mb, timeout=remaining(deadline)
         )
-        try:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("Model startup exceeded its deadline")
-            self._compiler = compiler or Compiler(
-                memory_mb=compiler_memory_mb, timeout=remaining
-            )
-        except BaseException:
-            self._engine.close()
-            raise
         self.timeout = timeout
-        self._root = Path(data_root or Path.cwd()).resolve()
-        self._lock = threading.RLock()
+        self._root = owner._root
+        self._lock = owner._lock
         self._closed = False
-        self._cleanup = weakref.finalize(
-            self, _close, self._compiler if compiler is None else None, self._engine
-        )
+        self._cleanup = weakref.finalize(self, self._compiler.close)
+        owner._runtimes.add(self)
 
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
@@ -129,31 +106,24 @@ class _Runtime:
 
     def _check_open(self) -> None:
         if self._closed:
-            raise ModelError("Model is closed. Create a new model.")
+            raise ClosedError("Model is closed. Create a new model.")
 
     @contextmanager
-    def operation(
-        self, timeout: float | None = None, *, deadline: float | None = None
-    ) -> Generator[float, None, None]:
-        budget = self.timeout if timeout is None else timeout
-        if not math.isfinite(budget) or budget <= 0:
-            raise ValueError("Operation timeout must be finite and positive")
-        deadline = deadline if deadline is not None else time.monotonic() + budget
-        remaining = deadline - time.monotonic()
-        if remaining <= 0 or not self._lock.acquire(timeout=remaining):
-            raise TimeoutError("Waiting for the model exceeded its deadline")
+    def operation(self, *, deadline: float) -> Generator[float, None, None]:
+        if not self._lock.acquire(timeout=remaining(deadline)):
+            raise TimeoutError("Waiting for the connection exceeded its deadline")
         try:
-            if time.monotonic() >= deadline:
-                raise TimeoutError("Waiting for the model exceeded its deadline")
+            remaining(deadline)
+            self._owner._check_open()
             self._check_open()
             try:
                 with interrupt_at(
                     self.connection,
                     deadline,
-                    message=f"Malloy operation exceeded {budget:g} seconds",
+                    message="Malloy operation exceeded its deadline",
                 ):
                     yield deadline
-            except (KeyboardInterrupt, SystemExit, ModelError):
+            except (KeyboardInterrupt, SystemExit, ClosedError, CompilerError):
                 self.close()
                 raise
             finally:
@@ -187,20 +157,22 @@ class _Runtime:
         deadline: float,
     ) -> Model:
         """Compile text, a Path, or a closed ModelSource snapshot."""
-        if document_kind is None and isinstance(source, (Draft, ModelSource)):
-            document_kind = source.document_kind
+        logical = source.text if isinstance(source, Draft) else None
         inputs = source.inputs if isinstance(source, Draft) else ()
-        if isinstance(source, Draft):
-            url = url or source.url
-            source = source._input()
-        identity, text, imports = resolve_source(source, url=url, root=self._root)
+        identity, text, imports, kind = open_source(
+            source,
+            url=url,
+            document_kind=document_kind,
+            root=self._root,
+            materialize=True,
+        )
         with self.operation(deadline=deadline):
             result = self.request(
                 BeginRequest(
                     url=identity,
                     source=text,
                     connection=self._connection,
-                    document_kind=resolve_document_kind(identity, document_kind),
+                    document_kind=kind,
                 ),
                 ModelReady,
                 deadline=deadline,
@@ -212,7 +184,7 @@ class _Runtime:
                 imports,
                 ModelSource(
                     result.source.url,
-                    result.source.text,
+                    logical if logical is not None else result.source.text,
                     result.source.imports,
                     result.source.document_kind,
                 ),
@@ -224,35 +196,25 @@ class _Runtime:
         self,
         source: str | Path | ModelSource | Draft,
         *,
-        path: str | Path | None = None,
         url: str | None = None,
         document_kind: DocumentKind | None = None,
-        syntax_only: bool = False,
         position: SourcePosition | None = None,
         deadline: float,
     ) -> CheckReport:
-        if type(syntax_only) is not bool:
-            raise TypeError("syntax_only must be a boolean")
         if position is not None and not isinstance(position, SourcePosition):
             raise TypeError("position must be a SourcePosition")
-        if path is not None and url is not None:
-            raise ValueError("Choose path or url")
-        if document_kind is None and isinstance(source, (Draft, ModelSource)):
-            document_kind = source.document_kind
-        if isinstance(source, Draft):
-            url = url or source.url
-            source = source._input()
-        identity, text, imports = resolve_source(
+        identity, text, imports, kind = open_source(
             source,
-            url=Path(path).resolve().as_uri() if path is not None else url,
+            url=url,
+            document_kind=document_kind,
             root=self._root,
+            materialize=True,
         )
         request = CheckRequest(
             source=text,
             url=identity,
-            syntax_only=syntax_only,
             connection=self._connection,
-            document_kind=resolve_document_kind(identity, document_kind),
+            document_kind=kind,
             position=position if position is not None else msgspec.UNSET,
         )
         with self.operation(deadline=deadline):
@@ -270,7 +232,7 @@ class _Runtime:
 class Model(NotebookDisplay):
     """A compiled model with retained source, schemas and query inventory.
 
-    Create with model or Draft.compile. Reuse queries to execute against current
+    Create with Connection.model. Reuse queries to execute against current
     data. Recompile after source/schema changes. Explicit close releases owned
     resources promptly, and optional context management is also supported.
 
@@ -280,18 +242,16 @@ class Model(NotebookDisplay):
         Available names, kinds and authored locations. Pass a name to query.
     compiler_version : str
         Malloy compiler version used to compile the model.
-    connection : duckdb.DuckDBPyConnection
-        The native data connection. A borrowed connection remains caller-owned.
     closed : bool
         Whether this model is closed and cannot accept more work.
 
     Examples
     --------
     >>> import pymalloy as pm
-    >>> model = pm.model("query: answer is duckdb.sql('SELECT 42 AS n') -> {select: n}")
+    >>> model = pm.connect().model("query: answer is duckdb.sql('SELECT 42 AS n') -> {select: n}")
     >>> [q.name for q in model.queries]
     ['answer']
-    >>> model.query("answer").run().rows()
+    >>> model.query("answer").run().to_pylist()
     [{'n': 42}]
     >>> model.close()
     """
@@ -303,7 +263,7 @@ class Model(NotebookDisplay):
         imports: Mapping[str, str] | None,
         source: ModelSource,
         compiler_version: str,
-        inputs: tuple[DataInput, ...],
+        inputs: tuple[Input, ...],
     ) -> None:
         self._inputs = inputs
         self._source = source
@@ -321,18 +281,15 @@ class Model(NotebookDisplay):
             queries=self.queries,
             inspect=self.inspect,
             preview=lambda selection, values: self.query(selection).preview(
-                givens=values, timeout=30
+                givens=values
             ),
             connection_name=self._owner._connection.name,
         )
 
-    def _request[T](
-        self,
-        request: Request,
-        response_type: type[T],
-        timeout: float | None = None,
+    def _request_at[T](
+        self, request: Request, response_type: type[T], deadline: float
     ) -> T:
-        with self._owner.operation(timeout) as deadline:
+        with self._owner.operation(deadline=deadline):
             return self._owner.request(
                 request, response_type, deadline=deadline, imports=self._imports
             )
@@ -361,9 +318,9 @@ class Model(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> model = pm.model("source: values is duckdb.sql('SELECT 42 AS n')")
+        >>> model = pm.connect().model("source: values is duckdb.sql('SELECT 42 AS n')")
         >>> query = model.query(pm.ref("values").pipe(pm.query(pm.select(pm.col("n")))))
-        >>> query.run().rows()
+        >>> query.run().to_pylist()
         [{'n': 42}]
         >>> model.close()
         """
@@ -404,34 +361,9 @@ class Model(NotebookDisplay):
             )
         return Query(self, info, info.name)
 
-    def source(self, *, timeout: float | None = None) -> ModelSource:
-        """Capture the model's source text and resolved imports.
-
-        Parameters
-        ----------
-        timeout : float, optional
-            Deadline in seconds. None uses the model's default operation budget.
-
-        Returns
-        -------
-        ModelSource
-            Detached source snapshot usable after model closure. Table data and
-            captured Python data owners are not included. Use bundle for data files.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> text = "run: duckdb.sql('SELECT 42 AS n') -> {select: n}"
-        >>> model = pm.model(text)
-        >>> captured = model.source()
-        >>> model.close()
-        >>> pm.run(captured).rows()
-        [{'n': 42}]
-        """
-        source = self._request(SourceRequest(), SourceReady, timeout).source
-        return ModelSource(
-            source.url, source.text, source.imports, source.document_kind
-        )
+    def source(self) -> ModelSource:
+        """Return logical root text and resolved imports retained at compilation."""
+        return self._source
 
     def inspect(
         self,
@@ -460,11 +392,20 @@ class Model(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> model = pm.model("source: values is duckdb.sql('SELECT 42 AS n')")
+        >>> model = pm.connect().model("source: values is duckdb.sql('SELECT 42 AS n')")
         >>> [s.name for s in model.inspect().model.sources]
         ['values']
         >>> model.close()
         """
+        return self._inspect(
+            position=position,
+            url=url,
+            deadline=deadline_after(
+                self._owner.timeout if timeout is None else timeout
+            ),
+        )
+
+    def _inspect(self, *, position=None, url=None, deadline: float) -> Inspection:
         if position is not None and not isinstance(position, SourcePosition):
             raise TypeError("position must be a SourcePosition")
         if url is not None and not isinstance(url, str):
@@ -480,7 +421,7 @@ class Model(NotebookDisplay):
             if position is not None
             else msgspec.UNSET
         )
-        return self._request(request, InspectionReady, timeout).inspection
+        return self._request_at(request, InspectionReady, deadline).inspection
 
     def document(
         self,
@@ -513,89 +454,35 @@ class Model(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> model = pm.connect().model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
         >>> [cell.name for cell in model.document()]
         ['run:0']
         >>> model.close()
         """
+        return self._document(
+            queries=queries,
+            all=all,
+            givens=givens,
+            deadline=deadline_after(
+                self._owner.timeout if timeout is None else timeout
+            ),
+        )
+
+    def _document(
+        self, *, queries=None, all=False, givens=None, deadline: float
+    ) -> tuple[DocumentCell, ...]:
         names = query_names(queries, all=all)
         request = DocumentRequest(
             all=all,
             givens=encode_givens(givens),
             queries=names if names is not None else msgspec.UNSET,
         )
-        return tuple(self._request(request, DocumentReady, timeout).cells)
-
-    @property
-    def connection(self) -> duckdb.DuckDBPyConnection:
-        """Return the native DuckDB connection while this model is open.
-
-        A borrowed connection and its transactions remain caller-owned. Changing
-        schemas requires recompilation. Access after model closure raises ModelError.
-        """
-        self._owner._check_open()
-        return self._owner.connection
+        return tuple(self._request_at(request, DocumentReady, deadline).cells)
 
     @property
     def closed(self) -> bool:
-        """Return whether this model has closed or suffered a terminal runtime failure."""
+        """Return whether this model has closed or its compiler has failed."""
         return self._owner.closed
-
-    def sql(
-        self, *, givens: Mapping[str, Any] | None = None, timeout: float | None = None
-    ) -> str:
-        """Prepare SQL for the default query without executing it.
-
-        Parameters
-        ----------
-        givens : mapping, optional
-            Values bound for this call's declared parameters.
-        timeout : float, optional
-            Operation deadline in seconds. None uses the model's default.
-
-        Returns
-        -------
-        str
-            The result of ``model.query().sql(...)``. Use query(name) when
-            the model has several named queries and no default run.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
-        >>> isinstance(model.sql(), str)
-        True
-        >>> model.close()
-        """
-        return self.query().sql(givens=givens, timeout=timeout)
-
-    def run(
-        self, *, givens: Mapping[str, Any] | None = None, timeout: float | None = None
-    ) -> Result:
-        """Execute the default query against current data.
-
-        Parameters
-        ----------
-        givens : mapping, optional
-            Values bound for this call's declared parameters.
-        timeout : float, optional
-            Operation deadline in seconds. None uses the model's default.
-
-        Returns
-        -------
-        Result
-            The result of ``model.query().run(...)``. Use query(name) when
-            the model has several named queries and no default run.
-
-        Examples
-        --------
-        >>> import pymalloy as pm
-        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
-        >>> model.run().rows()
-        [{'n': 42}]
-        >>> model.close()
-        """
-        return self.query().run(givens=givens, timeout=timeout)
 
     def __enter__(self) -> Self:
         self._owner._check_open()
@@ -605,18 +492,18 @@ class Model(NotebookDisplay):
         self.close()
 
     def close(self) -> None:
-        """Release the compiler and owned connection, invalidating retained queries.
+        """Release this model's compiler, invalidating retained queries.
 
-        Repeated calls are safe. Borrowed connections remain open. Already materialized
+        Repeated calls are safe. The parent connection remains open. Materialized
         Result objects retain their data after closure.
 
         Examples
         --------
         >>> import pymalloy as pm
-        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
-        >>> result = model.run()
+        >>> model = pm.connect().model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> result = model.query().run()
         >>> model.close()
-        >>> result.rows()
+        >>> result.to_pylist()
         [{'n': 42}]
         """
         self._owner.close()
@@ -644,11 +531,11 @@ class Query(NotebookDisplay):
     Examples
     --------
     >>> import pymalloy as pm
-    >>> model = pm.model("query: answer is duckdb.sql('SELECT 42 AS n') -> {select: n}")
+    >>> model = pm.connect().model("query: answer is duckdb.sql('SELECT 42 AS n') -> {select: n}")
     >>> query = model.query("answer")
     >>> query.name
     'answer'
-    >>> query.run().rows()
+    >>> query.run().to_pylist()
     [{'n': 42}]
     >>> model.close()
     """
@@ -658,7 +545,7 @@ class Query(NotebookDisplay):
         model: Model,
         info: QueryDescriptor,
         selection: QuerySelection,
-        inputs: tuple[DataInput, ...] = (),
+        inputs: tuple[Input, ...] = (),
     ) -> None:
         self._model = model
         self._inputs = (*model._inputs, *inputs)
@@ -677,18 +564,18 @@ class Query(NotebookDisplay):
             kind="Query" if self.kind == "run" else f"Query · {self.name}",
             queries=(self._info,),
             inspect=model.inspect,
-            preview=lambda _selection, values: self.preview(givens=values, timeout=30),
+            preview=lambda _selection, values: self.preview(givens=values),
             connection_name=model._owner._connection.name,
         )
         if isinstance(self._selection, MalloyQuery):
             subject.info = replace(subject.info, source=self._selection.malloy)
         return subject
 
-    def _sql(self, givens: Mapping[str, Any] | None, deadline: float) -> str:
+    def _sql(self, givens: Mapping[str, Given], deadline: float) -> str:
         return self._model._owner.request(
             QueryRequest(
                 selection=self._selection,
-                givens=encode_givens(givens),
+                givens=givens,
             ),
             QueryReady,
             deadline=deadline,
@@ -721,22 +608,26 @@ class Query(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> model = pm.connect().model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
         >>> isinstance(model.query().sql(), str)
         True
         >>> model.close()
         """
-        with self._model._owner.operation(timeout) as deadline:
-            return self._sql(givens, deadline)
+        with self._model._owner.operation(
+            deadline=deadline_after(
+                self._model._owner.timeout if timeout is None else timeout
+            )
+        ) as deadline:
+            return self._sql(encode_givens(givens), deadline)
 
     def _execute(
-        self, givens: Mapping[str, Any] | None, timeout: float | None, limit: int | None
+        self, givens: Mapping[str, Any] | None, deadline: float, limit: int | None
     ) -> Result:
         runtime = self._model._owner
         # Freeze the bindings before compilation, so caller mutation cannot change evidence.
         encoded = encode_givens(givens)
-        with runtime.operation(timeout) as deadline:
-            sql = self._sql(given_values(encoded), deadline)
+        with runtime.operation(deadline=deadline):
+            sql = self._sql(encoded, deadline)
             if time.monotonic() >= deadline:
                 raise TimeoutError("Query execution exceeded its deadline")
             try:
@@ -746,7 +637,14 @@ class Query(NotebookDisplay):
                     else runtime._engine.preview(sql, limit)
                 )
             except duckdb.Error as error:
-                context = ExecutionContext(
+                if (
+                    isinstance(error, duckdb.InterruptException)
+                    and time.monotonic() >= deadline
+                ):
+                    raise TimeoutError(
+                        "Query execution exceeded its deadline"
+                    ) from error
+                context = ExecutionContext._create(
                     source=ModelSource(
                         self._model._source.url,
                         self._model._source.text,
@@ -792,12 +690,16 @@ class Query(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> model = pm.model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
-        >>> model.query().run().rows()
+        >>> model = pm.connect().model("run: duckdb.sql('SELECT 42 AS n') -> {select: n}")
+        >>> model.query().run().to_pylist()
         [{'n': 42}]
         >>> model.close()
         """
-        return self._execute(givens, timeout, None)
+        return self._execute(
+            givens,
+            deadline_after(self._model._owner.timeout if timeout is None else timeout),
+            None,
+        )
 
     def preview(
         self,
@@ -830,11 +732,15 @@ class Query(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> model = pm.model("run: duckdb.sql('SELECT range AS n FROM range(10)') -> {select: n order_by: n}")
-        >>> model.query().preview(limit=2).rows()
+        >>> model = pm.connect().model("run: duckdb.sql('SELECT range AS n FROM range(10)') -> {select: n order_by: n}")
+        >>> model.query().preview(limit=2).to_pylist()
         [{'n': 0}, {'n': 1}]
         >>> model.close()
         """
         if type(limit) is not int or not 1 <= limit <= 10000:
             raise ValueError("Preview limit must be an integer from 1 to 10000")
-        return self._execute(givens, timeout, limit)
+        return self._execute(
+            givens,
+            deadline_after(self._model._owner.timeout if timeout is None else timeout),
+            limit,
+        )
