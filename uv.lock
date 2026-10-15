@@ -2411,7 +2411,7 @@ headless = [
 requires-dist = [
     { name = "agent-plugins", specifier = ">=0.2" },
     { name = "anywidget", specifier = ">=0.11" },
-    { name = "anywidget-bundle", specifier = ">=0.0.1" },
+    { name = "anywidget-bundle", specifier = ">=0.1.1" },
     { name = "deno", marker = "extra == 'headless'", specifier = ">=2.4.5,<3" },
     { name = "duckdb", marker = "extra == 'headless'", specifier = ">=1.5" },
     { name = "msgspec", specifier = ">=0.18.5" },
