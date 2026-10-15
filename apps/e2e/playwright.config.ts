@@ -20,6 +20,11 @@ export default defineConfig({
   projects: [
     { name: "marimo", testMatch: "marimo.spec.ts", use: { baseURL: "http://127.0.0.1:28441" } },
     {
+      name: "marimo-export",
+      testMatch: "marimo-export.spec.ts",
+      use: { baseURL: "http://127.0.0.1:28444" },
+    },
+    {
       name: "jupyterlab",
       testMatch: "jupyter.spec.ts",
       use: { baseURL: "http://127.0.0.1:28442" },
@@ -49,8 +54,16 @@ export default defineConfig({
             cwd: "../..",
             url: "http://127.0.0.1:28442/lab",
             reuseExistingServer: false,
-            timeout: 60_000,
+            timeout: 120_000,
             gracefulShutdown: { signal: "SIGTERM" as const, timeout: 10_000 },
+          },
+          {
+            command: "uv run --no-sync python apps/e2e/serve_marimo_export.py",
+            cwd: "../..",
+            url: "http://127.0.0.1:28444",
+            reuseExistingServer: false,
+            timeout: 120_000,
+            gracefulShutdown: { signal: "SIGTERM" as const, timeout: 5_000 },
           },
         ]),
     {

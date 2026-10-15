@@ -27,9 +27,16 @@ scalar representations. Native cancellation tests interrupt both active executio
 and the gap between statement parsing and execution, then reuse the same model.
 Documentation lint tests opt into `DocumentationPolicy` explicitly.
 
-`pnpm test` covers core, Node, the compiler service, Arrow conversion, and widget lifecycle. `pytest`
-runs `packages/python/tests`, including compiler processes and exported notebooks.
-Build assets and install Python extras first.
+`pnpm test` covers core, Node, the compiler service, Arrow conversion, and widget lifecycle.
+`uv run pytest` runs `packages/python/tests` and leaves tests marked `e2e` unselected.
+`uv run pytest -m e2e` installs the built wheel into fresh environments, runs exported
+marimo and Jupyter notebooks as separate processes, and drives the `pymalloy` console script.
+Build JavaScript assets with `pnpm build` before the wheel tests. Each test has a timeout
+so a stuck compiler or kernel ends the run.
+
+`pnpm e2e` is the browser gate. `pnpm canary` is part of the same gate: it packs the four
+public TypeScript packages, executes a Node query with exact integer and decimal values,
+and runs the packed browser bundle through the exact-value browser test.
 
 ## Browser tests
 
@@ -63,14 +70,15 @@ notebook. Execution of that notebook happens in the widget-only kernel.
 Run `uv sync --frozen --all-packages --all-extras` to return to the editable
 workspace afterward.
 
-Playwright starts and stops three servers defined in
+Playwright starts and stops four servers defined in
 `apps/e2e/playwright.config.ts`:
 
 | Host               | Port  | Boundary exercised                                                                                  |
 | ------------------ | ----- | --------------------------------------------------------------------------------------------------- |
-| marimo             | 28441 | MalloyWidget rendering, reactive Python readback, and input updates                                 |
+| marimo             | 28441 | Handwritten notebook: rendering, reactive Python readback, and input updates                        |
 | JupyterLab         | 28442 | Kernel communication, several views of one widget, recovery, and close                              |
 | Standalone Pyodide | 28443 | Base-package installation in browser Python, binary inputs, precise readback, and browser execution |
+| Exported marimo    | 28444 | Widget notebook produced by `pymalloy export --format marimo --profile widget`                      |
 
 Pyodide supplies an anywidget-model adapter to test the packaged frontend against
 browser Python. Its bootstrap loads `micropip` and the unvendored standard-library

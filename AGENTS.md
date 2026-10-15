@@ -39,19 +39,8 @@ DuckDB execution, data access, and resource lifetime.
 
 ## Validation
 
-```sh
-pnpm install --frozen-lockfile
-pnpm build
-uv sync --all-packages --all-extras
-pnpm check
-pnpm test
-uv run pytest
-uv run ruff check packages/python examples apps/e2e
-uv run ty check
-```
+Run the command list in [contributor setup](development_docs/README.md#validate-a-change).
 
-Add `pnpm e2e` for browser, widget, lifecycle, and cross-language changes. Add
-`uv build --package pymalloy` and isolated installation for packaging changes.
 Add `pnpm docs:build` and desktop/narrow inspection for documentation changes.
 Keep dependencies scoped to the package that imports them and preserve both lockfiles.
 

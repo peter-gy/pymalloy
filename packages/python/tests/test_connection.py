@@ -204,29 +204,6 @@ def test_source_identity_rejects_conflicting_url(tmp_path, kind):
         pm.parse(source, url="memory://other/model.malloy")
 
 
-def test_syntax_only_cli_ignores_corrupt_database(tmp_path):
-    source = tmp_path / "model.malloy"
-    source.write_text("run: duckdb.table('absent.csv') -> {select: *}")
-    database = tmp_path / "corrupt.duckdb"
-    database.write_bytes(b"not a database")
-    result = subprocess.run(
-        [
-            "pymalloy",
-            "check",
-            str(source),
-            "--syntax-only",
-            "--database",
-            str(database),
-            "--json",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["diagnostics"] == []
-
-
 def test_cli_check_preserves_crlf_inside_sql_literal(tmp_path):
     source = tmp_path / "model.malloy"
     source.write_bytes(
@@ -365,24 +342,3 @@ def test_compiler_failure_closes_its_model_and_preserves_siblings(children):
         assert not second.closed
         assert second.query().run().to_pylist() == [{"value": 42}]
         assert connection.duckdb.execute("SELECT 42").fetchone() == (42,)
-
-
-def test_cli_run_encodes_decimal_temporal_and_exact_integer_values(tmp_path):
-    source = tmp_path / "values.malloysql"
-    source.write_text(
-        ">>>sql connection:duckdb\n"
-        "SELECT 1.2300::DECIMAL(12,4) AS amount, DATE '2026-01-02' AS day, "
-        "TIMESTAMP '2026-01-02 03:04:05' AS moment, 9007199254740993::BIGINT AS id"
-    )
-    result = subprocess.run(
-        ["pymalloy", "run", str(source)], capture_output=True, text=True, check=False
-    )
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == [
-        {
-            "amount": "1.2300",
-            "day": "2026-01-02",
-            "moment": "2026-01-02 03:04:05",
-            "id": 9007199254740993,
-        }
-    ]

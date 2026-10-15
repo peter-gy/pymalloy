@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,8 +13,6 @@ import nbformat
 from fixtures.model import SALES, SOURCE, UPDATED_SALES
 from jupyterlab.handlers.announcements import NeverCheckForUpdate
 from jupyterlab.labapp import LabApp
-
-from pymalloy.export import jupyter, prepare
 
 CELLS = [
     f"""import asyncio
@@ -156,10 +155,28 @@ def main() -> None:
         )
         (root / "sales.csv").write_text(SALES)
         output = notebooks / "exported.ipynb"
-        document = prepare(model, profile="widget", queries=["run:0"])
-        exported = nbformat.reads(
-            jupyter.render(document, output_path=output), as_version=4
+        completed = subprocess.run(
+            [
+                "pymalloy",
+                "export",
+                str(model),
+                "--format",
+                "jupyter",
+                "--profile",
+                "widget",
+                "--query",
+                "run:0",
+                "-o",
+                str(output),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
         )
+        if completed.returncode != 0:
+            raise SystemExit(completed.stderr or completed.stdout)
+        exported = nbformat.read(output, as_version=4)
         exported.metadata.kernelspec = notebook.metadata.kernelspec
         exported.cells.extend(
             nbformat.v4.new_code_cell(source)
