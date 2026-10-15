@@ -4,7 +4,7 @@ Start with ``import pymalloy as pm``. Constructors build immutable syntax.
 Malloy resolves language semantics, and runtime adapters execute with DuckDB.
 
 Choose an entry point
---------------------
+---------------------
 table, sql, data
     Start from a table/file, SQL source, or captured Python dataframe.
 col, lit, given
@@ -30,11 +30,13 @@ Polars directly for ``Result.to_polars()``. The headless extra already includes 
 Examples
 --------
 >>> import pymalloy as pm
->>> candidate = pm.draft().sources(values=pm.sql("SELECT 42 AS amount"))
->>> candidate = candidate.queries(answer=pm.source("values").pipe(
-...     pm.view().select(pm.col("amount"))
-... ))
->>> pm.connect().model(candidate).query().run().to_pylist()
+>>> model = (
+...     pm.draft()
+...     .sources(values=pm.sql("SELECT 42 AS amount"))
+...     .queries(answer=pm.source("values").pipe(pm.view().select("amount")))
+... )
+>>> with pm.connect() as con:
+...     con.model(model).query("answer").run().to_pylist()
 [{'amount': 42}]
 """
 
