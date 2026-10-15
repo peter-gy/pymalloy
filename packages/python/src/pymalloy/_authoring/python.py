@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING
 
 from pymalloy._authoring.annotations import annotation_content
 from pymalloy._authoring.identifiers import identifier
-from pymalloy._authoring.operations import KINDS, to_python
+from pymalloy._authoring.operations import KINDS, normalize, to_python
 from pymalloy._authoring.syntax import Syntax
 from pymalloy._authoring.tables import TableReference
 from pymalloy._model import DEFAULT_CONNECTION
+from pymalloy._protocol.records import Scalar, ScalarField, ScalarLiteral
 from pymalloy.expressions import Expr
 
 if TYPE_CHECKING:
@@ -49,6 +50,7 @@ def _annotation_suffix(notes: list[Syntax]) -> str | None:
 class _Emitter:
     def __init__(self, inputs: Mapping[str, str]) -> None:
         self.inputs = inputs
+        self.datetime = False
 
     def _binding(
         self, node: Syntax, depth: int, category: str = "Source"
@@ -84,7 +86,9 @@ class _Emitter:
         if suffix is None:
             return None
         rendered = (
-            self._fragment(
+            self._stage(values[0], depth)
+            if category == "Nest" and not suffix and isinstance(values[0], Syntax)
+            else self._fragment(
                 values[0],
                 depth,
                 "View" if node.kind == "query" and category != "Draft" else "Source",
@@ -110,7 +114,15 @@ class _Emitter:
             if isinstance(part, Expr):
                 if names:
                     return None
-                args.append(self._fragment(part, depth))
+                if (
+                    node._operation
+                    and node._operation.kind in {"group_by", "aggregate", "select"}
+                    and isinstance(part._node, ScalarField)
+                    and all(identifier(name) == name for name in part._node.path)
+                ):
+                    args.append(repr(".".join(part._node.path)))
+                else:
+                    args.append(self._fragment(part, depth))
             elif isinstance(part, Syntax) and part.kind in {
                 "source",
                 "query",
@@ -130,6 +142,42 @@ class _Emitter:
     def _clause(self, node: Syntax, depth: int) -> str | None:
         operation = node._operation
         if operation is None:
+            if node.parts and isinstance(node.parts[0], str):
+                if node.parts[0].strip() == "calculate:":
+                    args = self._arguments(node, depth + 1)
+                    return None if args is None else _call(".calculate", args, depth)
+                if node.parts[0].startswith("rename:"):
+                    # The compiler projects rename clauses as opaque text.
+                    token = r"(?:[A-Za-z_][A-Za-z_0-9]*|`(?:[^`\\]|\\.)*`)"
+                    entries = re.fullmatch(
+                        r"rename:\s*((?:"
+                        + token
+                        + r"\s+is\s+"
+                        + token
+                        + r"\s*,?\s*)+)",
+                        node.text,
+                    )
+                    if entries is not None:
+
+                        def decode(value: str) -> str:
+                            return (
+                                re.sub(r"\\(.)", r"\1", value[1:-1])
+                                if value.startswith("`")
+                                else value
+                            )
+
+                        args = []
+                        for new, old in re.findall(
+                            "(" + token + r")\s+is\s+(" + token + ")", entries[1]
+                        ):
+                            name = decode(new)
+                            value = repr(decode(old))
+                            args.append(
+                                f"{name}={value}"
+                                if name.isidentifier() and not keyword.iskeyword(name)
+                                else "**{" + repr(name) + ": " + value + "}"
+                            )
+                        return _call(".rename", args, depth)
             return self._join(node, depth)
         kind, values = operation.kind, operation.arguments
         method = KINDS[kind][0]
@@ -152,7 +200,9 @@ class _Emitter:
                 else None
             )
         else:
-            args = self._arguments(node, depth + 1)
+            args = self._arguments(
+                node, depth + 1, "Nest" if kind == "nest" else "Source"
+            )
         return None if not args else _call("." + method, args, depth)
 
     def _join(self, node: Syntax, depth: int) -> str | None:
@@ -223,6 +273,16 @@ class _Emitter:
         return base + "".join(suffixes)
 
     def _constructor(self, node: Syntax, depth: int, category: str) -> str | None:
+        if (
+            len(node.parts) == 3
+            and isinstance(node.parts[0], Syntax)
+            and isinstance(node.parts[1], str)
+            and node.parts[1].strip() == "+"
+            and isinstance(node.parts[2], Syntax)
+        ):
+            return self._chain(
+                node.parts[2], self._fragment(node.parts[0], depth, "View"), depth
+            )
         operation = node._operation
         if operation is None:
             return None
@@ -237,7 +297,7 @@ class _Emitter:
         children = [part for part in node.parts if not isinstance(part, str)]
         if kind == "ref":
             return (
-                f"pm.View.raw({node.text!r})"
+                f"pm.view({values[0]!r})"
                 if category == "View"
                 else f"pm.{constructor}({values[0]!r})"
             )
@@ -257,18 +317,37 @@ class _Emitter:
         if kind == "extend" and len(children) == 2 and isinstance(children[1], Syntax):
             return self._chain(children[1], self._fragment(children[0], depth), depth)
         if kind == "pipe" and len(children) >= 2:
-            args = [
-                repr(child._operation.arguments[0])
-                if isinstance(child, Syntax)
-                and child._operation
-                and child._operation.kind == "ref"
-                else self._fragment(child, depth + 1, "View")
-                for child in children[1:]
-            ]
-            return _call(
-                self._fragment(children[0], depth, category) + ".pipe", args, depth
-            )
+            stages: list[Syntax] = []
+            separator = ""
+            base = None
+            for part in node.parts:
+                if isinstance(part, str):
+                    separator += part
+                elif isinstance(part, Syntax):
+                    if base is None:
+                        base = part
+                    elif separator.strip() == "->":
+                        stages.append(part)
+                    elif separator.strip() == "+" and stages:
+                        stages[-1] = Syntax((stages[-1], separator, part))
+                    else:
+                        return None
+                    separator = ""
+                else:
+                    return None
+            if base is None or separator.strip():
+                return None
+            args = [self._stage(stage, depth + 1) for stage in stages]
+            return _call(self._fragment(base, depth, category) + ".pipe", args, depth)
         return None
+
+    def _stage(self, node: Syntax | Expr, depth: int) -> str:
+        if isinstance(node, Syntax):
+            if len(node.parts) == 1 and isinstance(node.parts[0], Syntax):
+                return self._stage(node.parts[0], depth)
+            if node._operation and node._operation.kind == "ref":
+                return repr(node._operation.arguments[0])
+        return self._fragment(node, depth, "View")
 
     def _fragment(
         self, node: Syntax | Expr | TableReference, depth: int, category: str = "Source"
@@ -284,6 +363,15 @@ class _Emitter:
             return f"pm.table({node.path!r}{connection})"
         if isinstance(node, Expr):
             result = to_python(node._node)
+
+            def date_literal(scalar: Scalar) -> None:
+                if isinstance(scalar, ScalarLiteral) and scalar.type in {
+                    "date",
+                    "timestamp",
+                }:
+                    self.datetime = True
+
+            normalize(node._node, visit=date_literal)
             for route, text in node._annotations:
                 result += f".annotate({text!r}, route={route!r})"
             return result
@@ -322,8 +410,44 @@ class _Emitter:
         if draft.imports is not None:
             options.append(f"imports={dict(draft.imports)!r}")
         calls = [_call("pm.draft", options, 0)]
+        pending_method = None
+        pending_args: list[str] = []
+        pending_names: set[str] = set()
+        raw: list[str | Syntax | Expr | TableReference] = []
+
+        def append_raw() -> None:
+            if not raw:
+                return
+            node = Syntax(tuple(raw), kind="document")
+            if node._scope:
+                source = repr(node.text)
+                if node.inputs:
+                    owners = ", ".join(
+                        self.inputs[value.name] + ".inputs[0]" for value in node.inputs
+                    )
+                    source = (
+                        f"pm.ModelSource({draft.url!r}, {source}, inputs=({owners},))"
+                    )
+                value = _call("pm.read_model", [source, f"url={draft.url!r}"], 1)
+            elif node.inputs:
+                value = self._fragment(node, 1)
+            else:
+                value = repr(node.text)
+            calls.append(_call(".append", [value], 0))
+            raw.clear()
+
+        def flush() -> None:
+            nonlocal pending_method
+            if pending_method is not None:
+                calls.append(_call("." + pending_method, pending_args, 0))
+            pending_method = None
+            pending_args.clear()
+            pending_names.clear()
+
         for part in draft.syntax.parts:
             if isinstance(part, str) and not part.strip():
+                if raw:
+                    raw.append(part)
                 continue
             if (
                 isinstance(part, Syntax)
@@ -332,24 +456,25 @@ class _Emitter:
             ):
                 args = self._arguments(part, 1, "Draft")
                 if args is not None:
+                    append_raw()
                     method = (
                         "sources" if part._operation.kind == "source" else "queries"
                     )
-                    calls.append(_call("." + method, args, 0))
+                    if pending_method != method or pending_names.intersection(
+                        part.names
+                    ):
+                        flush()
+                    pending_method = method
+                    pending_args.extend(args)
+                    pending_names.update(part.names)
                     continue
-            if isinstance(part, Syntax) and (
-                part.kind in {"source", "query", "field"} or part.names
-            ):
-                # Parsing recovers editing scopes in declarations with opaque grammar.
-                return (
-                    f"import pymalloy as pm\n\n{name} = pm.read_model({draft.text!r}, url={draft.url!r})\n"
-                    if draft.imports is None
-                    else f"import pymalloy as pm\n\n{name} = pm.read_model(pm.ModelSource({draft.url!r}, {draft.text!r}, {dict(draft.imports)!r}))\n"
-                )
-            value = repr(part) if isinstance(part, str) else self._fragment(part, 1)
-            calls.append(_call(".append", [value], 0))
+            flush()
+            raw.append(part)
+        flush()
+        append_raw()
         return (
-            "import datetime\nimport pymalloy as pm\n\n"
+            ("import datetime\n" if self.datetime else "")
+            + "import pymalloy as pm\n\n"
             + name
             + " = "
             + "".join(calls)

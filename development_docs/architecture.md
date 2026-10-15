@@ -58,14 +58,14 @@ runtimes on demand.
 
 Private packages own related implementation files:
 
-| Package      | Files and role                                                                                                                                                                                                                             |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `_authoring` | `draft.py` coordinates edits, `syntax.py` owns fragments, `operations.py` renders scalar operations, and `python.py` reconstructs Python. Annotations, identifiers, generated lexer keywords, and table-reference syntax live beside them. |
-| `_model`     | `source.py` owns source identity and snapshots, `inputs.py` captures data, `persistence.py` publishes source, and `selection.py` validates query selection. Shared errors and the default connection name belong here.                     |
-| `_protocol`  | `records.py` contains generated frozen, strict msgspec types. `givens.py`, `codec.py`, and `snapshot.py` encode values, decode results, and freeze boundary data.                                                                          |
-| `_notebook`  | `subject.py` projects authored metadata and deferred native operations. Display hooks and `lifetime.py` own implicit views.                                                                                                                |
-| `_headless`  | Compiler processes, tooling leases, native engine execution, deadlines, and retained runtime models.                                                                                                                                       |
-| `export`     | Public notebook/bundle APIs and their private document, planning, file-access, and serialization modules.                                                                                                                                  |
+| Package      | Files and role                                                                                                                                                                                                                                        |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_authoring` | `draft.py` coordinates edits, `syntax.py` owns private syntax nodes, `operations.py` renders scalar operations, and `python.py` reconstructs Python. Annotations, identifiers, generated lexer keywords, and table-reference syntax live beside them. |
+| `_model`     | `source.py` owns source identity and snapshots, `inputs.py` captures data, `persistence.py` publishes source, and `selection.py` validates query selection. Shared errors and the default connection name belong here.                                |
+| `_protocol`  | `records.py` contains generated frozen, strict msgspec types. `givens.py`, `codec.py`, and `snapshot.py` encode values, decode results, and freeze boundary data.                                                                                     |
+| `_notebook`  | `subject.py` projects authored metadata and deferred native operations. Display hooks and `lifetime.py` own implicit views.                                                                                                                           |
+| `_headless`  | Compiler processes, tooling leases, native engine execution, deadlines, and retained runtime models.                                                                                                                                                  |
+| `export`     | Public notebook/bundle APIs and their private document, planning, file-access, and serialization modules.                                                                                                                                             |
 
 `_protocol` is independent of runtime and authoring code. `_model` depends on
 protocol types and imports Arrow when capturing data. Authoring consumes both
@@ -87,7 +87,7 @@ Timezone-aware Arrow values retain their timezone through PyArrow conversion.
 ## Source and data
 
 `ModelSource` is a closed source snapshot: root URL, document kind, root text,
-and imported text keyed by URL. Hosts infer kind from file extensions once unless
+imported text keyed by URL, and captured input owners. Hosts infer kind from file extensions once unless
 the caller supplies it. Compiler jobs consume the explicit kind. Default inline
 filenames are `model.malloy`. Native hosts resolve that name against the current directory,
 while browser-only text uses the shared memory URL. These bases determine relative

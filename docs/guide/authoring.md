@@ -53,11 +53,13 @@ Sources and views are immutable values. Reuse them across drafts.
 Use `pm.col("amount")` for a column and `pm.lit("North")` for a literal.
 Arithmetic and comparisons build symbolic expressions, checked by Malloy.
 
-Positional strings in `group_by`, `aggregate`, `select`, and `order_by` name
-field paths split on dots. `view.select("customer.name")` means
+Positional strings in `group_by`, `aggregate`, and `select` name field paths
+split on dots. `view.select("customer.name")` means
 `view.select(pm.col("customer", "name"))`. Keyword values require `Expr`.
 `pm.col("customer.name")` names a field containing a literal dot. Strings beside
-expressions remain literal values.
+expressions remain literal values. `order_by` strings name output columns, so
+follow `group_by("customer.name")` with `order_by("name")`. Dotted `order_by`
+strings raise `ValueError`.
 
 Each validation query returns counterexamples. Zero rows passes. A failed check
 retains one example in `report.checks[i].result.to_pylist()`. Compilation or query errors

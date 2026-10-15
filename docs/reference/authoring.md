@@ -23,7 +23,7 @@ integer, finite float or `Decimal`, boolean, `date`, `datetime`, or `None`.
 scientific notation and signed zero. Generated Python uses it when numeric spelling
 affects the compiler-inferred type. It accepts numeric data, not expression code.
 
-`Expr` values are immutable. Syntax fragments and drafts compare by identity. Arithmetic, comparisons, `&`, `|`, and `~` construct
+`Expr` values are immutable. Sources, views, and drafts compare by identity. Arithmetic, comparisons, `&`, `|`, and `~` construct
 operations. Python values passed beside an expression become literals. Use
 parentheses around comparisons when combining predicates. Expressions reject
 Python truth testing and iteration. `.equals(other)` compares operation trees.
@@ -64,19 +64,21 @@ expressions so temporal range and partial-filter semantics are preserved.
 
 `table(path, *, connection="duckdb")`, `sql(text, *, connection="duckdb")`,
 `data(frame, *, name=None, connection="duckdb")`, and `source(name)` return
-immutable `Source` values. `view()` creates an empty `View`. Construction builds
+immutable `Source` values. `view()` creates an empty `View`, and `view(name)`
+references a saved view for refinement. Construction builds
 Malloy text. `data` also captures an Arrow snapshot and requires PyArrow.
 
-| Source method                           | Behavior                                  |
-| --------------------------------------- | ----------------------------------------- |
-| `.dimension(**fields: Expr)`            | Declare row-level fields                  |
-| `.measure(**fields: Expr)`              | Declare reusable aggregate fields         |
-| `.view(**views: View)`                  | Declare saved query stages                |
-| `.primary_key(field: str)`              | Declare row identity                      |
-| `.join_one(name, source, *, on)`        | Declare a to-one relationship             |
-| `.join_many(name, source, *, on)`       | Declare a to-many relationship            |
-| `.join_cross(name, source, *, on=None)` | Declare a cross join, optionally filtered |
-| `.where(predicate: Expr)`               | Filter source rows                        |
+| Source method                           | Behavior                                              |
+| --------------------------------------- | ----------------------------------------------------- |
+| `.dimension(**fields: Expr)`            | Declare row-level fields                              |
+| `.measure(**fields: Expr)`              | Declare reusable aggregate fields                     |
+| `.rename(**names: str)`                 | Rename fields with new names mapped to existing names |
+| `.view(**views: View)`                  | Declare saved query stages                            |
+| `.primary_key(field: str)`              | Declare row identity                                  |
+| `.join_one(name, source, *, on)`        | Declare a to-one relationship                         |
+| `.join_many(name, source, *, on)`       | Declare a to-many relationship                        |
+| `.join_cross(name, source, *, on=None)` | Declare a cross join, optionally filtered             |
+| `.where(predicate: Expr)`               | Filter source rows                                    |
 
 Source declaration methods append clauses in authored order to one trailing
 `extend` block. Malloy checks keys, field types, and relationship semantics.
@@ -86,22 +88,62 @@ Source declaration methods append clauses in authored order to one trailing
 | `.group_by(*fields, **named)`  | Set the output grain                          |
 | `.aggregate(*fields, **named)` | Choose aggregate values                       |
 | `.select(*fields, **named)`    | Project detail fields                         |
+| `.calculate(**fields: Expr)`   | Calculate window values in the current stage  |
 | `.where(predicate: Expr)`      | Filter input rows                             |
 | `.having(predicate: Expr)`     | Filter aggregate groups                       |
 | `.nest(**views: View \| str)`  | Add nested results or saved views             |
 | `.order_by(*fields)`           | Order fields or explicit Expr.asc/desc values |
 | `.limit(rows: int)`            | Bound the output row count                    |
 
-Positional strings in `group_by`, `aggregate`, `select`, and `order_by` name field
-paths split on dots. Keyword values require `Expr`. `col("customer", "name")`
+Positional strings in `group_by`, `aggregate`, and `select` name field paths split
+on dots. `select("*")` selects every field. `order_by` strings name one output
+column. After `group_by("customer.name")`, use `order_by("name")`. A dotted
+`order_by` string raises `ValueError`. Keyword field expressions require `Expr`.
+`col("customer", "name")`
 keeps explicit path components, while `col("customer.name")` names a field with
 a literal dot. Strings beside expressions remain literal values.
 
 Both types expose `.text`, `.names`, `.inputs`, `[name]`, `.replace(**definitions)`,
 `.doc(text)`, `.annotate(text, *, route="")`, and `.pipe(*stages: View | str)`.
 A pipeline string names a saved view. View clauses append to the final stage.
+`view("by_region").limit(1).where(col("amount") > 0)` adds both clauses to one
+refinement of `by_region`. A second `limit` in the same stage raises `ValueError`.
 `Source.raw(*parts)` and `View.raw(*parts)` concatenate trusted text, sources,
 views, and scalar expressions verbatim.
+
+`calculate` accepts window expressions through `pymalloy.expressions.call`, and
+`rename` maps each new name to an existing field:
+
+```python
+orders = pm.sql("SELECT * FROM (VALUES ('N', 6), ('S', 4)) t(region, amount)").rename(
+    booked="amount"
+)
+summary = pm.view().group_by("region").aggregate(
+    revenue=pm.col("booked").sum()
+).order_by("region").calculate(
+    prior=pm.expressions.call("lag", pm.col("revenue"))
+)
+with pm.connect() as con:
+    result = con.model(pm.draft().queries(report=orders.pipe(summary))).query().run()
+print(result.to_pylist())
+# [{'region': 'N', 'revenue': Decimal('6'), 'prior': None}, {'region': 'S', 'revenue': Decimal('4'), 'prior': Decimal('6')}]
+```
+
+Use raw text for Malloy clauses such as `index`, `timezone`, `accept`, `except`,
+source arguments, and joins using `with`. Malloy checks their grammar and types:
+
+```python
+orders = pm.Source.raw(pm.sql("SELECT 2 amount, 9 extra"), " extend { accept: amount }")
+with pm.connect() as con:
+    result = con.model(pm.draft().queries(report=orders.pipe(pm.view().select("*")))).query().run()
+print(result.to_pylist())
+# [{'amount': 2}]
+```
+
+Bind annotated views with `.view(totals=stage.doc("Totals"))`, or annotate a
+complete query before `.queries(chart=query.annotate("bar_chart"))`. `pipe`
+raises `ValueError` for an annotated stage because Malloy attaches annotations
+to named bindings.
 
 Lookup returns `Source` for source bindings, `View` for saved views and nests,
 and `Expr` for fields. Draft query bindings return `Source`. Lookup stops at
@@ -114,12 +156,9 @@ the same field name, `.replace` rejects that ambiguous name. Replace the contain
 query with new query constructors, or edit the preserved fragments in its emitted
 Python representation.
 
-`syntax(*parts, kind="expression", name=None)` composes literal strings, nested
-fragments, and scalar `Expr` leaves. Use it for source or query grammar outside the constructors.
-Named `source`, `query`, and `field` bindings contain one expression child,
-optional annotation leaves, and clause containers for syntax such as a join
-condition. `Draft.to_python()` emits readable constructors for supported structure
-and uses `syntax(...)` for comments and grammar outside those constructors.
+`Draft.to_python()` emits authoring method chains for supported structure. It
+retains other clauses through `Source.raw`, `View.raw`, or `Expr.raw`, and complete
+statements through `Draft.append`.
 
 ## Draft
 
@@ -143,7 +182,7 @@ slots but does not resolve schemas or validate business meaning.
 | `[name]`                                | Named source or query expression                                                         |
 | `.sources(**sources)`                   | Add or replace named source expressions                                                  |
 | `.queries(**queries)`                   | Add or replace named query expressions                                                   |
-| `.append(*parts)`                       | Append literal text or syntax verbatim                                                   |
+| `.append(*parts)`                       | Append text, sources, views, or declarations from another draft                          |
 | `.include(url: str \| Path)`            | Add an import to a live draft                                                            |
 | `.diff(previous=None)`                  | Unified diff against another draft or the originally loaded file                         |
 | `.format()`                             | Format with Malloy and rebuild editable syntax                                           |
@@ -169,7 +208,7 @@ ownership of the originally loaded file.
 
 `connection.validate(draft, checks, *, givens=None, documentation=None, timeout=None)` compiles once and executes a
 mapping of names to `Source` values, such as
-`source("orders").pipe(query(where(col("amount") < 0), select(col("id"))))`. Zero rows passes. A failed
+`source("orders").pipe(view().where(col("amount") < 0).select("id"))`. Zero rows passes. A failed
 check retains one row. The timeout budget covers compilation, metadata, and all
 assertions. Validation closes its compiler before returning the report.
 
@@ -184,7 +223,7 @@ Statuses are `passed`, `failed`, `error`, or `skipped`. Compiler errors, runtime
 errors, and every nonpassed check make `ok` false.
 
 `report.require_valid(warnings_as_errors=False)` returns the same report or raises
-`ValueError`. `report.save(path=None, overwrite=False, warnings_as_errors=False)`
+`pymalloy.errors.ValidationError`. `report.save(path=None, overwrite=False, warnings_as_errors=False)`
 requires validity and saves the captured revision.
 
 Documentation lint runs when a `DocumentationPolicy` is supplied. Its default

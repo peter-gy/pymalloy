@@ -374,9 +374,14 @@ class Syntax(NotebookDisplay):
         Examples
         --------
         >>> import pymalloy as pm
-        >>> chart = pm.view().aggregate(n=pm.count()).annotate("bar_chart")
-        >>> chart.text.startswith("# bar_chart")
-        True
+        >>> chart = pm.sql("SELECT 1 amount").view(
+        ...     totals=pm.view().aggregate(n=pm.count()).annotate("bar_chart")
+        ... )
+        >>> candidate = pm.draft().queries(report=chart.pipe("totals").doc("Row count."))
+        >>> with pm.connect() as con:
+        ...     rows = con.model(candidate).query().run().to_pylist()
+        >>> rows
+        [{'n': 1}]
         """
         if self.kind != "expression":
             raise TypeError("Annotate an expression or clause before binding it")
