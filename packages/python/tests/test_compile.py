@@ -253,7 +253,7 @@ def test_export_file_guard_preserves_catalog_table_precedence(tmp_path, monkeypa
     assert run_notebook(output)["run_0"].to_dicts() == [{"amount": 7}]
 
 
-@pytest.mark.parametrize("profile", ["precompiled", "headless"])
+@pytest.mark.parametrize("profile", ["precompiled", "native"])
 def test_native_exports_require_declared_sql_reader_inputs(
     tmp_path, monkeypatch, profile
 ):
@@ -277,11 +277,11 @@ def test_native_exports_require_declared_sql_reader_inputs(
     try:
         assert values["run_0"].to_dicts() == [{"value": 42}]
     finally:
-        if profile == "headless":
+        if profile == "native":
             values["model"].close()
 
 
-@pytest.mark.parametrize("profile", ["precompiled", "headless"])
+@pytest.mark.parametrize("profile", ["precompiled", "native"])
 def test_raw_sql_notebook_cannot_read_undeclared_files(tmp_path, monkeypatch, profile):
     root = tmp_path / "data"
     root.mkdir()
@@ -293,17 +293,15 @@ def test_raw_sql_notebook_cannot_read_undeclared_files(tmp_path, monkeypatch, pr
     output = tmp_path / "report.py"
     output.write_text(marimo.render(document, output_path=output))
     monkeypatch.chdir(tmp_path)
-    expected = ExecutionError if profile == "headless" else duckdb.PermissionException
+    expected = ExecutionError if profile == "native" else duckdb.PermissionException
     with pytest.raises(expected, match="disabled"):
         run_notebook(output)
 
 
-def test_export_uses_one_compiler_for_discovery_and_compilation(tmp_path, children):
+def test_export_replays_after_the_source_is_deleted(tmp_path):
     source = tmp_path / "model.malloy"
     source.write_text("run: duckdb.sql('SELECT 42 AS value') -> {select: value}")
     document = prepare(source)
-    assert len(children) == 1
-    assert children[0].poll() is not None
     target = tmp_path / "report.py"
     target.write_text(marimo.render(document, output_path=target))
     source.unlink()

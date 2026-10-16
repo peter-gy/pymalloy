@@ -297,8 +297,8 @@ class Draft(NotebookDisplay):
     def format(self) -> Draft:
         """Return a draft formatted by Malloy's formatter.
 
-        Requires the headless compiler. Reparse the formatted source into editable
-        syntax while retaining identity, captured imports, and managed data owners.
+        Reparse the formatted source with the embedded compiler while retaining
+        identity, captured imports, and managed data owners.
 
         Returns
         -------
@@ -315,7 +315,7 @@ class Draft(NotebookDisplay):
         >>> formatted.format().text == formatted.text
         True
         """
-        from pymalloy._headless.tooling import parse_syntax
+        from pymalloy._compiler.tooling import parse_syntax
 
         formatted = from_wire(
             parse_syntax(self.text, url=self.url, format=True),
@@ -446,7 +446,7 @@ def draft(
     Returns
     -------
     Draft
-        An editable value. Construction requires neither Deno nor a database.
+        An immutable, editable syntax value.
 
     See Also
     --------
@@ -484,9 +484,9 @@ def read_model(source: str | Path | ModelSource, *, url: str | None = None) -> D
 
     Notes
     -----
-    Requires ``pymalloy[headless]`` for the native Malloy parser. A file-backed
-    unchanged draft saves byte-equivalent UTF-8 source and detects previously
-    observed external edits. Parsing does not prove semantic validity.
+    Native wheels include the Malloy parser. A file-backed unchanged draft saves
+    byte-equivalent UTF-8 source and detects previously observed external edits.
+    Parsing does not prove semantic validity.
 
     Examples
     --------
@@ -501,7 +501,7 @@ def read_model(source: str | Path | ModelSource, *, url: str | None = None) -> D
     >>> revised["orders"]["revenue"].equals(pm.col("amount").sum() * 2)
     True
     """
-    from pymalloy._headless.tooling import parse_syntax
+    from pymalloy._compiler.tooling import parse_syntax
 
     identity, text, imports = resolve_source(source, url=url, root=Path.cwd())
     kind = (

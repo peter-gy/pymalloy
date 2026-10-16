@@ -10,6 +10,7 @@
     "packages/widget": { "ignoreDependencies": ["process"] },
     "packages/protocol": { "entry": ["src/records.ts"] },
     "apps/e2e": {
+      "entry": ["pyodide/resolve.mjs"],
       "vite": { "config": "standalone/vite.config.ts" },
     },
     "packages/browser": {
@@ -17,8 +18,15 @@
       "ignoreDependencies": ["process", "@types/emscripten"],
     },
     "packages/python": {
-      // The build command delegates to scripts; headless and widget supply its staged assets.
-      "ignoreDependencies": ["@pymalloy/scripts", "@pymalloy/headless", "@pymalloy/widget"],
+      "entry": ["rust/bootstrap.js"],
+      // The build command delegates to scripts. Workspace dependencies supply staged assets.
+      "ignoreDependencies": [
+        "@pymalloy/scripts",
+        "@pymalloy/compiler",
+        "@pymalloy/pyodide",
+        "@pymalloy/widget",
+      ],
     },
+    "packages/pyodide": { "ignoreDependencies": ["process"] },
   },
 }

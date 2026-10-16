@@ -5,13 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import unquote, urlsplit
 
 import msgspec
 from msgspec import structs
 
 from pymalloy._model import DEFAULT_CONNECTION
-from pymalloy._model.source import ModelSource, read_text
+from pymalloy._model.source import ModelSource, local_path, read_text
 from pymalloy._protocol.givens import given_values
 from pymalloy._protocol.records import Given, NativeMetadata
 from pymalloy.analysis import CheckReport, Diagnostic
@@ -292,21 +291,24 @@ class Validation:
         """
         self.require_valid(warnings_as_errors=warnings_as_errors)
         if self.draft.imports:
-            root = urlsplit(self.draft.url)
+            try:
+                root = local_path(self.draft.url)
+            except ValueError:
+                raise ValueError(
+                    "Save validated imports beside the original model, or save the draft and revalidate at its destination"
+                ) from None
             target = Path(path).resolve() if path is not None else self.draft.path
-            if (
-                root.scheme != "file"
-                or target is None
-                or target.parent != Path(unquote(root.path)).parent
-            ):
+            if target is None or target.parent != root.parent:
                 raise ValueError(
                     "Save validated imports beside the original model, or save the draft and revalidate at its destination"
                 )
             for url, text in self.draft.imports.items():
-                imported = urlsplit(url)
-                if (
-                    imported.scheme != "file"
-                    or read_text(Path(unquote(imported.path))) != text
-                ):
+                try:
+                    imported = local_path(url)
+                except ValueError:
+                    raise ValueError(
+                        f"Imported model changed since validation: {url}"
+                    ) from None
+                if read_text(imported) != text:
                     raise ValueError(f"Imported model changed since validation: {url}")
         return self.draft.save(path, overwrite=overwrite)

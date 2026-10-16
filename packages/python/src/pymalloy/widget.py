@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import math
+import sys
 from collections.abc import Mapping
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -69,6 +72,19 @@ def _json_value(value: Any) -> Any:
     raise t.TraitError("Givens must contain finite JSON values with string keys")
 
 
+def _comm_builtins(value: Any) -> Any:
+    if sys.platform != "emscripten":
+        return to_builtins(value)
+    jsnull = import_module("pyodide.ffi").jsnull
+
+    def convert_null(item: Any) -> None:
+        if item is not jsnull:
+            raise TypeError(f"Unsupported widget comm value: {type(item).__name__}")
+
+    # Pyodide preserves JavaScript null as jsnull. Comm records use JSON null.
+    return to_builtins(value, enc_hook=convert_null)
+
+
 def _decode_state(wire: dict[str, Any]) -> dict[str, Any]:
     from msgspec import ValidationError
 
@@ -84,15 +100,16 @@ class MalloyWidget(BundledWidget):
     r"""Inspect PyMalloy values and run queries in a notebook widget.
 
     Display in a notebook supporting anywidget, such as marimo or Jupyter.
-    Browser execution uses ``pymalloy`` and DuckDB WebAssembly. A native Model
-    or Query supplies its own Python execution context from ``pymalloy[headless]``.
+    Browser execution uses DuckDB WebAssembly. Bound models and queries use
+    their existing Python connection, including ``pymalloy.browser`` connections
+    in Pyodide, the Python runtime compiled for WebAssembly.
 
     Parameters
     ----------
     source : str, Expr, Sort, Source, View, Draft, ModelSource, Model, Query, or Result
-        Authored syntax, a complete model, a bound native query, or materialized
+        Authored syntax, a complete model, a bound query, or materialized
         results. Syntax shows its Malloy text, references and annotations.
-        Complete drafts run in the browser. Native models and queries preview
+        Complete drafts run in the browser. Bound models and queries preview
         at most 20 rows on their existing Python connection, using the model's
         timeout, inherited from its connection unless overridden. Results show
         up to 20 retained rows without executing SQL.
@@ -111,7 +128,7 @@ class MalloyWidget(BundledWidget):
         Omitted uses the bundled runtime's defaults, downloaded on first use.
     connection_name : str, default "duckdb"
         Malloy name for the browser's DuckDB connection. Fixed for its lifetime.
-        Native models and queries supply their own connection name.
+        Bound models and queries supply their own connection name.
     auto_run : bool, default True
         Execute when a browser attaches or inputs change. Set False to inspect
         first and use the Check and Run buttons. Automatic notebook
@@ -133,11 +150,11 @@ class MalloyWidget(BundledWidget):
     for asynchronous readback. pymalloy.analysis.to_dict creates mutable copies.
     Construction alone does not execute anything until a browser view is attached.
     Call close when finished. New inputs supersede older in-flight results.
-    Native models and queries remain owned by the caller. Closing their widget
+    Bound models and queries remain owned by the caller. Closing their widget
     leaves the model and connection open. Isolated expressions and query clauses
     expose authored structure until composed into a model that supplies context.
-    Native values reject browser-only files and runtime options. A bound Query
-    accepts its own query name or None. Supply a Model to select other queries.
+    Bound models, queries and results reject files and runtime options. A bound
+    Query accepts its own query name or None. Supply a Model to select other queries.
 
     Examples
     --------
@@ -168,7 +185,9 @@ class MalloyWidget(BundledWidget):
     auto_run = t.Bool(default_value=True)
     _request = t.Dict(default_value=None, allow_none=True).tag(sync=True)
     _transient = t.Bool(default_value=False, read_only=True).tag(sync=True)
-    query = t.Unicode(default_value=None, allow_none=True).tag(sync=True)
+    query = t.Unicode(default_value=None, allow_none=True).tag(
+        sync=True, from_json=lambda value, _widget: _comm_builtins(value)
+    )
     connection_name = t.Unicode(default_value=DEFAULT_CONNECTION, read_only=True)
     givens = _ImmutableMapping(Mapping, default_value=freeze({}))
     files = _ImmutableMapping(Mapping, default_value=freeze({}))
@@ -201,6 +220,7 @@ class MalloyWidget(BundledWidget):
         self._initializing = True
         self._closed = False
         self._views: set[str] = set()
+        self._requests: set[asyncio.Task[None]] = set()
         self._prepared = False
         self._dirty = True
         self._revision = 0
@@ -262,7 +282,7 @@ class MalloyWidget(BundledWidget):
                 )
                 if subject.info.execution in {"python", "result"}:
                     raise t.TraitError(
-                        "files and runtime apply to browser sources. Native values use their existing Python context"
+                        "files and runtime apply to browser sources. Bound models and results use their existing execution context"
                     )
         if name == "query" and value is not None and not value.strip():
             raise t.TraitError("Query must be a nonempty name or None")
@@ -327,7 +347,7 @@ class MalloyWidget(BundledWidget):
             self.files or self.runtime
         ):
             raise t.TraitError(
-                "files and runtime apply to browser sources. Native values use their existing Python context"
+                "files and runtime apply to browser sources. Bound models and results use their existing execution context"
             )
         prepared = self._prepared and not self._dirty
         definition_changed = self._dirty or (
@@ -364,6 +384,7 @@ class MalloyWidget(BundledWidget):
             action=action,
         )
         # Materialization and encoding must succeed before publishing a revision.
+        self._cancel_requests()
         self._subject, self._prepared, self._dirty = subject, prepared, False
         self._revision = inputs.revision
         self._definition_revision = definition["revision"]
@@ -405,10 +426,17 @@ class MalloyWidget(BundledWidget):
 
     def _view_message(self, _widget, content, buffers) -> None:
         try:
-            message = convert(content, WidgetMessage, strict=True)
-        except ValidationError:
+            message = convert(_comm_builtins(content), WidgetMessage, strict=True)
+        except (ValidationError, TypeError):
             return
         if isinstance(message, NotebookRequest):
+            if self._subject.respond is not None:
+                task = asyncio.get_event_loop().create_task(
+                    self._answer_async(message, self._subject, buffers)
+                )
+                self._requests.add(task)
+                task.add_done_callback(self._requests.discard)
+                return
             response, output = self._perform(message.input, buffers)
             self.send(
                 to_builtins(
@@ -427,6 +455,59 @@ class MalloyWidget(BundledWidget):
             self._views.remove(message.id)
             if not self._views:
                 self.close()
+
+    def _cancel_requests(self) -> None:
+        for task in tuple(self._requests):
+            task.cancel()
+
+    async def _answer_async(
+        self, message: NotebookRequest, subject: Subject, buffers
+    ) -> None:
+        request = message.input
+        if self._closed or to_builtins(request) != self._input or buffers:
+            response, output = (
+                NotebookError(
+                    message="The displayed revision is no longer current",
+                    diagnostics=(),
+                ),
+                [],
+            )
+        else:
+            try:
+                assert subject.respond is not None
+                response, output = await subject.respond(request)
+                if self._closed or to_builtins(request) != self._input:
+                    response, output = (
+                        NotebookError(
+                            message="The displayed revision is no longer current",
+                            diagnostics=(),
+                        ),
+                        [],
+                    )
+            except asyncio.CancelledError:
+                response, output = (
+                    NotebookError(
+                        message="The displayed request was cancelled", diagnostics=()
+                    ),
+                    [],
+                )
+            except Exception as error:  # noqa: BLE001 - Every comm request must receive a settled failure response.
+                response, output = (
+                    NotebookError(
+                        message=str(error),
+                        diagnostics=getattr(error, "diagnostics", ()),
+                    ),
+                    [],
+                )
+        if not self._closed:
+            self.send(
+                to_builtins(
+                    NotebookReply(
+                        kind="pymalloy-response", id=message.id, response=response
+                    )
+                ),
+                buffers=output,
+            )
 
     def _perform(
         self, request: Input, buffers
@@ -451,7 +532,7 @@ class MalloyWidget(BundledWidget):
         if type(wire.get("revision")) is not int:
             raise t.TraitError("Browser state revision must be an integer")
         # The decoder and resynchronization retain one detached result tree.
-        accepted = to_builtins(wire)
+        accepted = _comm_builtins(wire)
         decoded = _decode_state(accepted)
         self._decoded_state = decoded
         self._accepted_wire = accepted
@@ -490,5 +571,6 @@ class MalloyWidget(BundledWidget):
         if getattr(self, "_closed", True):
             return
         self._closed = True
+        self._cancel_requests()
         self.set_trait("state", _empty_state("closed"))
         super().close()

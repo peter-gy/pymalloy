@@ -71,7 +71,7 @@ expressions so temporal range and partial-filter semantics are preserved.
 immutable `Source` values. `view()` creates an empty `View`, and `view(name)`
 references a saved view for refinement. Construction builds
 Malloy text. `data` captures an [Arrow](https://arrow.apache.org/docs/) columnar
-snapshot and requires PyArrow. A `Path` table argument becomes an absolute file
+snapshot. A `Path` table argument becomes an absolute file
 reference. A string retains native table/file spelling. `connection` names the
 Malloy connection, default `"duckdb"`. `data`'s `name` argument defaults to a generated input name.
 See [data capture](../guide/dataframes.md) for producer types and precision limits.
@@ -189,8 +189,9 @@ imports live when compiled. A mapping supplies a closed import snapshot.
 
 Parse plain Malloy with the installed compiler and preserve its exact text.
 Strings mean Malloy text, `Path` means a local file, and `ModelSource` carries
-captured imports. Requires `pymalloy[headless]`. Parsing establishes named editing
-slots but does not resolve schemas or validate business meaning.
+captured imports. Native wheels include this parser. Parsing establishes named
+editing slots. Use `Connection.check` or validation to resolve schemas and test
+data assertions.
 
 | Member                                         | Behavior                                                                                 |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -248,8 +249,9 @@ requires validity and saves the captured revision.
 
 Documentation lint runs when a `DocumentationPolicy` is supplied. Its default
 severity is advisory. Assertions provide evidence about the data at check time.
-Operational failures, including timeouts and compiler crashes, raise exceptions
-rather than becoming validation findings.
+Operational failures, including timeouts and compiler boundary failures, raise
+exceptions. The [runtime error contract](runtime.md#errors) describes compiler
+lifetime and managed interruption.
 
 ## Persistence
 

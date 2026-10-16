@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +18,7 @@ from pymalloy._protocol.records import (
     NotebookInfo,
     NotebookInput,
     NotebookInspection,
+    NotebookMalloyResult,
     NotebookResponse,
     NotebookResult,
     QueryDescriptor,
@@ -28,8 +29,12 @@ from pymalloy._protocol.records import (
 from pymalloy._protocol.records import (
     Input as WidgetInput,
 )
+from pymalloy._protocol.records import (
+    Result as WireResult,
+)
 
 if TYPE_CHECKING:
+    from pymalloy._browser.model import Result as BrowserResult
     from pymalloy._model.inputs import Input
     from pymalloy.result import Result
 
@@ -46,6 +51,11 @@ class Subject:
     inspect: Callable[[], Inspection] | None = None
     preview: Callable[[str | None, Mapping[str, Any]], Result] | None = None
     connection_name: str | None = None
+    respond: (
+        Callable[[WidgetInput], Awaitable[tuple[NotebookResponse, list[memoryview]]]]
+        | None
+    ) = None
+    result: WireResult | None = None
 
     def perform(
         self, request: WidgetInput
@@ -56,6 +66,8 @@ class Subject:
             if self.inspect is None:
                 raise ValueError("This value has no compiled model to inspect")
             return NotebookInspection(inspection=self.inspect()), []
+        if self.result is not None:
+            return NotebookMalloyResult(result=self.result), []
         if self.preview is None:
             raise ValueError("This value has no Python execution context")
         selection = request.query
@@ -111,6 +123,71 @@ def native(
         inspect=inspect,
         preview=preview,
         connection_name=connection_name,
+    )
+
+
+def asynchronous(
+    source: ModelSource,
+    *,
+    kind: str,
+    queries,
+    inspect: Callable[[], Awaitable[Inspection]],
+    preview: Callable[[str | None, Mapping[str, Any]], Awaitable[BrowserResult]],
+    connection_name: str,
+) -> Subject:
+    from msgspec import convert
+
+    subject = Subject(
+        info(
+            kind,
+            source.text,
+            "python",
+            "Preview uses the existing browser model and connection. It returns at most 20 rows.",
+        ),
+        source=source.text,
+        url=source.url,
+        document_kind=source.document_kind,
+        imports=source.imports,
+        queries=tuple(queries),
+        connection_name=connection_name,
+    )
+
+    async def respond(
+        request: WidgetInput,
+    ) -> tuple[NotebookResponse, list[memoryview]]:
+        if request.action == "inspect":
+            raise ValueError("Choose Preview to execute this value")
+        if request.action == "check":
+            return NotebookInspection(inspection=await inspect()), []
+        if request.query is not None and all(
+            query.name != request.query for query in subject.queries
+        ):
+            raise ValueError(f"Unknown query for this displayed value: {request.query}")
+        result = await preview(request.query, given_values(request.givens))
+        return NotebookMalloyResult(
+            result=convert(result._malloy(), WireResult, strict=True)
+        ), []
+
+    subject.respond = respond
+    return subject
+
+
+def materialized(result: dict[str, Any]) -> Subject:
+    from msgspec import convert
+
+    rows = result["data"]["array_value"]
+    bounded = {
+        **result,
+        "data": {**result["data"], "array_value": rows[:20]},
+    }
+    return Subject(
+        info(
+            "Result",
+            result.get("sql", ""),
+            "result",
+            f"Materialized result · {len(rows):,} rows. Display shows up to 20 rows without executing SQL again.",
+        ),
+        result=convert(bounded, WireResult, strict=True),
     )
 
 

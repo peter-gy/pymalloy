@@ -5,8 +5,13 @@ dist/
 wheels/
 *.egg-info/
 .venv/
+.venv-py314/
+.pixi/
 .pytest_cache/
 .ruff_cache/
+target/
+packages/python/src/pymalloy/_native*.so
+packages/python/src/pymalloy/_native*.pyd
 node_modules/
 .vitepress/cache/
 _assets/

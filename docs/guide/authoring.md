@@ -1,9 +1,8 @@
 # Author and validate a model
 
 Compose [Malloy](https://docs.malloydata.dev/) sources and views as immutable Python
-values. Construction uses the base package. Install `pymalloy[headless]` to
-validate the model against [DuckDB](https://duckdb.org/docs/stable/), an embedded
-SQL engine, and save an accepted revision.
+values. Validate the model against [DuckDB](https://duckdb.org/docs/stable/), an
+embedded SQL engine, and save an accepted revision.
 
 ```python
 from pathlib import Path

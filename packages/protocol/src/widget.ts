@@ -54,12 +54,20 @@ export interface NotebookResult {
   columns: Column[];
   connectionName: string;
 }
+export interface NotebookMalloyResult {
+  kind: "malloy";
+  result: Result;
+}
 export interface NotebookError {
   kind: "error";
   message: string;
   diagnostics: Diagnostic[];
 }
-export type NotebookResponse = NotebookInspection | NotebookResult | NotebookError;
+export type NotebookResponse =
+  | NotebookInspection
+  | NotebookResult
+  | NotebookMalloyResult
+  | NotebookError;
 export interface ActionRequest {
   /** @asType integer @minimum 0 */
   revision: number;

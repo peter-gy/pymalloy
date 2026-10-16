@@ -131,13 +131,12 @@ def benchmark(samples: int) -> dict:
         "python": platform.python_version(),
         "platform": platform.platform(),
         "versions": {
-            name: version(name)
-            for name in ("pymalloy", "duckdb", "deno", "pyarrow", "polars")
+            name: version(name) for name in ("pymalloy", "duckdb", "pyarrow", "polars")
         },
         "compiler": compiler,
         "samples": samples,
         "input_rows": 100000,
-        "notes": "Times include only the named boundary. Cold starts use fresh Python processes with an existing OS/Deno cache. Schema timing isolates DuckDB DESCRIBE; it is not inferred by subtracting compile times. Each result is newly materialized before conversion.",
+        "notes": "Times include only the named boundary. Cold starts use fresh Python processes with an existing OS page cache. Schema timing isolates DuckDB DESCRIBE. Each result is newly materialized before conversion.",
         "seconds": {
             name: {"median": statistics.median(values), "samples": values}
             for name, values in timings.items()

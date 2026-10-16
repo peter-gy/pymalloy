@@ -7,9 +7,16 @@ description: Create, edit, inspect, and validate Malloy semantic models from Pyt
 
 Use `import pymalloy as pm`. [Malloy](https://docs.malloydata.dev/) owns language
 semantics. PyMalloy builds syntax, resolves schemas, executes queries, and records
-evidence. The base package provides construction, widgets, and installed guidance.
-Install `pymalloy[headless]` for parser-backed editing and native execution.
-`pm.data` requires PyArrow. Install dataframe libraries directly.
+evidence. Install `pymalloy` for construction, parser-backed editing, validation,
+native execution, and widgets. It installs
+[PyArrow](https://arrow.apache.org/docs/python/) for `pm.data` input capture.
+Install producer dataframe libraries separately.
+
+In a browser Python kernel such as JupyterLite or marimo WebAssembly, use
+`from pymalloy import browser` and `async with browser.connect() as con`.
+Await model compilation, inspection, and query execution. Read
+[Browser Python](references/browser.md) for captured inputs, results, and
+connection lifetime before adapting a native workflow.
 
 ## Ground and revise a model
 
@@ -53,6 +60,7 @@ user settled and clarify unresolved choices when they materially change results.
   and deterministic ranking.
 - [Artifact recipe](references/artifacts.md): validate, bundle, relocate, replay.
 - [Failure triage](references/triage.md): compiler, schema, engine, and assertion evidence.
+- [Browser Python](references/browser.md): asynchronous queries and widgets in Pyodide.
 
 Read these through `pymalloy.agent.agent_skill().file(path).read_text()` when
 working from an installed package. Public function docstrings own exact signatures

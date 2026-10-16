@@ -28,7 +28,7 @@ class NotebookQuery:
 
 class Profile(StrEnum):
     PRECOMPILED = "precompiled"
-    HEADLESS = "headless"
+    NATIVE = "native"
     WIDGET = "widget"
 
 
@@ -52,7 +52,7 @@ def native_extensions(
         raise ValueError("extensions must contain nonempty extension names")
     if profile == Profile.WIDGET and values:
         raise ValueError(
-            "Native extensions apply only to precompiled or headless notebooks"
+            "Native extensions apply only to precompiled or native notebooks"
         )
     required = ("httpfs",) if remote_files and profile != Profile.WIDGET else ()
     return tuple(dict.fromkeys((*values, *required)))
@@ -96,7 +96,7 @@ class Document:
             )
         if (self.profile == Profile.PRECOMPILED) != (self.source is None):
             raise ValueError(
-                "Headless and widget documents require captured model source"
+                "Native and widget documents require captured model source"
             )
 
     @property

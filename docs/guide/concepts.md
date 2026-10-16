@@ -72,15 +72,20 @@ review records, and visualization requirements belong to the producing project.
 
 ## Results and lifetime
 
-A Python connection owns or borrows a DuckDB connection. Each model owns one
-[Deno](https://docs.deno.com/) compiler process. Closing a model releases that
-compiler. Closing the connection closes its child models and owned database.
+A native Python connection owns or borrows a DuckDB connection. Each native
+model owns an embedded compiler on a dedicated thread. Closing a model releases that compiler.
+Closing the connection closes its child models and owned database.
 Borrowed databases and transactions remain caller-owned.
 
 Operations serialize across a Python connection's models. A SQL timeout interrupts
 the statement and leaves a healthy model reusable. A compiler request timeout
 closes the affected model. Results retain their materialized data after closure.
 
-Node and browser callers use `Session` for asynchronous work. A widget owns a
-browser session and publishes revision-bound results to Python.
-[Widgets](widget.md) describes its asynchronous state.
+[Browser Python](browser-python.md) uses asynchronous `browser.Connection`
+owners over DuckDB WebAssembly workers. Models retain their connection and file
+snapshot. Results remain readable after closure. Node and browser JavaScript
+callers use `Session` for asynchronous work.
+
+A widget created from source owns a browser session. A widget created from a
+compiled model borrows its connection. Both publish revision-bound results to
+Python. [Widgets](widget.md) describes their asynchronous state.

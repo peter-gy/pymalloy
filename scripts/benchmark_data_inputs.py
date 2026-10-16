@@ -67,9 +67,7 @@ def benchmark(rows: int, samples: int) -> dict:
         "rows": rows,
         "samples": samples,
         "arrow_bytes": contiguous.nbytes,
-        "versions": {
-            name: version(name) for name in ("pymalloy", "pyarrow", "polars", "deno")
-        },
+        "versions": {name: version(name) for name in ("pymalloy", "pyarrow", "polars")},
         "notes": "Warm codecs. Snapshot captures immutable data; parquet includes write/readback verification/hash. Bundle includes native compiler startup, source rewriting, Python grammar generation, and filesystem publication.",
         "seconds": {
             name: {"median": statistics.median(values), "samples": values}

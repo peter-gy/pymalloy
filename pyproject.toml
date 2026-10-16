@@ -9,7 +9,7 @@ pymalloy = { workspace = true }
 
 [dependency-groups]
 dev = [
-  "pymalloy[headless]",
+  "pymalloy",
   "polars>=2",
   "marimo[recommended]>=0.25.1",
   "nbformat>=5.11",
@@ -25,7 +25,15 @@ dev = [
   "basedpyright>=1.40.2",
 ]
 
-release = ["twine>=7.0.0"]
+release = ["hatchling>=1.31.0", "maturin>=1.11.5,<2", "packaging>=26", "twine>=7.0.0"]
+
+notebook-hosts = [
+  "jupyterlite-core[contents,translation]==0.8.6",
+  "jupyterlite-pyodide-kernel==0.8.6",
+  "anywidget==0.11.0",
+  "marimo==0.25.1",
+  "nbformat>=5.11",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["packages/python/tests"]

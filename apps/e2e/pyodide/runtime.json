@@ -1,0 +1,49 @@
+{
+  "hosts": {
+    "standalone": "314.0.7",
+    "jupyterlite": "314.0.7",
+    "marimo": "314.0.0"
+  },
+  "runtimes": {
+    "314.0.7": {
+      "pythonVersion": "3.14.2",
+      "indexURL": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/",
+      "requirements": {
+        "agent-plugins": "0.2.4",
+        "anywidget": "0.11.0",
+        "anywidget-bundle": "0.1.1",
+        "msgspec": "0.20.0",
+        "traitlets": "5.14.3"
+      },
+      "files": {
+        "pyodide.mjs": "6f1d60f7bf529beb300f0f47983c921d3982363640ba20af0e38efdddbc66109",
+        "pyodide.asm.mjs": "f7cdc8ece80678ceb712f8e65ebe6d3a83203a180c399865f49612a051693635",
+        "pyodide.asm.wasm": "cc36e3cab04fdfc9a63ff13eb52eae2b911bf46c025cc7b281f394bd3de1d5e6",
+        "python_stdlib.zip": "fa1957e5777068fc4f7437f96d860ae2fbe9c19732ba06c84e004ec16dd7dd7a",
+        "pyodide-lock.json": "5dc2fc119108bc148c7457dc86e7675b5c87e1cafd420b9c34c1eaef7b36c010"
+      },
+      "abiVersion": "2026_0",
+      "lockFile": "pylock.314.0.7.json"
+    },
+    "314.0.0": {
+      "pythonVersion": "3.14.2",
+      "indexURL": "https://cdn.jsdelivr.net/pyodide/v314.0.0/full/",
+      "requirements": {
+        "agent-plugins": "0.2.4",
+        "anywidget": "0.11.0",
+        "anywidget-bundle": "0.1.1",
+        "msgspec": "0.20.0",
+        "traitlets": "5.14.3"
+      },
+      "files": {
+        "pyodide.mjs": "3abfa8bfc2d1dc9d733f4b0b5c3b35bb469295e455abf13f5c0fac70a1c2e961",
+        "pyodide.asm.mjs": "7808c4d7a9fee23a02b0c8b7bbd51b1358e8d41bbe89e5c0ee9c0c4db7b9328f",
+        "pyodide.asm.wasm": "4d23bd074cc536a96660c9168e223e3aaf01944096ad829737a9c87fec4b28eb",
+        "python_stdlib.zip": "1215cd239a270c13a3ecb1a84c84b7b3241baf7ea7f54615f00d79ff69c82787",
+        "pyodide-lock.json": "f545248ab161ead36adf7110a358334974e97b08f40c7219e97077d380f7247b"
+      },
+      "abiVersion": "2026_0",
+      "lockFile": "pylock.314.0.0.json"
+    }
+  }
+}

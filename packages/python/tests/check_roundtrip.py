@@ -229,7 +229,7 @@ def main():
         "root": str(root),
         "data_root": str(data_root),
         "revision": checkout_revision(root),
-        "versions": {name: version(name) for name in ("pymalloy", "duckdb", "deno")},
+        "versions": {name: version(name) for name in ("pymalloy", "duckdb")},
         "discovered": len(paths),
         "policy": {
             "threads": 1,

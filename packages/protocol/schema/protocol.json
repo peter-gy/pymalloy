@@ -11,6 +11,9 @@
         "response": {
           "$ref": "#/definitions/Response"
         },
+        "hostAnswers": {
+          "$ref": "#/definitions/HostAnswers"
+        },
         "input": {
           "$ref": "#/definitions/Input"
         },
@@ -48,6 +51,7 @@
       "required": [
         "request",
         "response",
+        "hostAnswers",
         "input",
         "notebookReply",
         "widgetMessage",
@@ -66,9 +70,6 @@
       "anyOf": [
         {
           "$ref": "#/definitions/BeginRequest"
-        },
-        {
-          "$ref": "#/definitions/StepRequest"
         },
         {
           "$ref": "#/definitions/QueryRequest"
@@ -132,121 +133,6 @@
     "DocumentKind": {
       "type": "string",
       "enum": ["model", "notebook"]
-    },
-    "StepRequest": {
-      "type": "object",
-      "properties": {
-        "op": {
-          "type": "string",
-          "const": "step"
-        },
-        "fulfilled": {
-          "$ref": "#/definitions/HostAnswers"
-        }
-      },
-      "required": ["op", "fulfilled"],
-      "additionalProperties": false
-    },
-    "HostAnswers": {
-      "type": "object",
-      "properties": {
-        "urls": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/URLAnswer"
-          }
-        },
-        "schemas": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/SchemaAnswer"
-          }
-        }
-      },
-      "required": ["urls", "schemas"],
-      "additionalProperties": false
-    },
-    "URLAnswer": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/URLValue"
-        },
-        {
-          "$ref": "#/definitions/HostError"
-        }
-      ]
-    },
-    "URLValue": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "value"
-        },
-        "value": {
-          "type": "string"
-        }
-      },
-      "required": ["kind", "value"],
-      "additionalProperties": false
-    },
-    "HostError": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "error"
-        },
-        "error": {
-          "type": "string"
-        }
-      },
-      "required": ["kind", "error"],
-      "additionalProperties": false
-    },
-    "SchemaAnswer": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/SchemaValue"
-        },
-        {
-          "$ref": "#/definitions/HostError"
-        }
-      ]
-    },
-    "SchemaValue": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "value"
-        },
-        "value": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Column"
-          }
-        }
-      },
-      "required": ["kind", "value"],
-      "additionalProperties": false
-    },
-    "Column": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "Output column name."
-        },
-        "type": {
-          "type": "string",
-          "description": "Native type description, distinct from an Arrow schema."
-        }
-      },
-      "required": ["name", "type"],
-      "additionalProperties": false,
-      "description": "An output field name and its native database type text.",
-      "title": "Column"
     },
     "QueryRequest": {
       "type": "object",
@@ -592,9 +478,6 @@
     "Response": {
       "anyOf": [
         {
-          "$ref": "#/definitions/CompilerReady"
-        },
-        {
           "$ref": "#/definitions/CompileNeeds"
         },
         {
@@ -631,17 +514,6 @@
           "$ref": "#/definitions/SyntaxReady"
         }
       ]
-    },
-    "CompilerReady": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "ready"
-        }
-      },
-      "required": ["kind"],
-      "additionalProperties": false
     },
     "CompileNeeds": {
       "type": "object",
@@ -3662,6 +3534,107 @@
       "required": ["type", "source", "connection", "path"],
       "additionalProperties": false
     },
+    "HostAnswers": {
+      "type": "object",
+      "properties": {
+        "urls": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/URLAnswer"
+          }
+        },
+        "schemas": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/SchemaAnswer"
+          }
+        }
+      },
+      "required": ["urls", "schemas"],
+      "additionalProperties": false
+    },
+    "URLAnswer": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/URLValue"
+        },
+        {
+          "$ref": "#/definitions/HostError"
+        }
+      ]
+    },
+    "URLValue": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "value"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "value"],
+      "additionalProperties": false
+    },
+    "HostError": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "error"],
+      "additionalProperties": false
+    },
+    "SchemaAnswer": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SchemaValue"
+        },
+        {
+          "$ref": "#/definitions/HostError"
+        }
+      ]
+    },
+    "SchemaValue": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "value"
+        },
+        "value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Column"
+          }
+        }
+      },
+      "required": ["kind", "value"],
+      "additionalProperties": false
+    },
+    "Column": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Output column name."
+        },
+        "type": {
+          "type": "string",
+          "description": "Native type description, distinct from an Arrow schema."
+        }
+      },
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "description": "An output field name and its native database type text.",
+      "title": "Column"
+    },
     "Input": {
       "type": "object",
       "properties": {
@@ -3720,6 +3693,9 @@
           "$ref": "#/definitions/NotebookResult"
         },
         {
+          "$ref": "#/definitions/NotebookMalloyResult"
+        },
+        {
           "$ref": "#/definitions/NotebookError"
         }
       ]
@@ -3760,6 +3736,287 @@
       },
       "required": ["kind", "sql", "columns", "connectionName"],
       "additionalProperties": false
+    },
+    "NotebookMalloyResult": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "malloy"
+        },
+        "result": {
+          "$ref": "#/definitions/Result"
+        }
+      },
+      "required": ["kind", "result"],
+      "additionalProperties": false
+    },
+    "Result": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "$ref": "#/definitions/Data"
+        },
+        "schema": {
+          "$ref": "#/definitions/Schema"
+        },
+        "sql": {
+          "type": "string"
+        },
+        "connection_name": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "model_annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        },
+        "query_timezone": {
+          "type": "string"
+        },
+        "source_annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          }
+        }
+      },
+      "required": ["schema", "connection_name"],
+      "additionalProperties": false
+    },
+    "Data": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/DataWithRecordCell"
+        },
+        {
+          "$ref": "#/definitions/DataWithArrayCell"
+        }
+      ]
+    },
+    "DataWithRecordCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Cell"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "record_cell"
+        }
+      },
+      "required": ["kind", "record_value"]
+    },
+    "Cell": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CellWithStringCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithBooleanCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithDateCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithTimestampCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithNumberCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithJSONCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithRecordCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithArrayCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithNullCell"
+        },
+        {
+          "$ref": "#/definitions/CellWithSQLNativeCell"
+        }
+      ]
+    },
+    "CellWithStringCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "string_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "string_cell"
+        }
+      },
+      "required": ["kind", "string_value"]
+    },
+    "CellWithBooleanCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "boolean_value": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": "string",
+          "const": "boolean_cell"
+        }
+      },
+      "required": ["boolean_value", "kind"]
+    },
+    "CellWithDateCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "date_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "date_cell"
+        }
+      },
+      "required": ["date_value", "kind"]
+    },
+    "CellWithTimestampCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timestamp_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "timestamp_cell"
+        }
+      },
+      "required": ["kind", "timestamp_value"]
+    },
+    "CellWithNumberCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "number_value": {
+          "type": "number"
+        },
+        "subtype": {
+          "$ref": "#/definitions/NumberSubtype"
+        },
+        "string_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "number_cell"
+        }
+      },
+      "required": ["kind", "number_value"]
+    },
+    "CellWithJSONCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "json_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "json_cell"
+        }
+      },
+      "required": ["json_value", "kind"]
+    },
+    "CellWithRecordCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Cell"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "record_cell"
+        }
+      },
+      "required": ["kind", "record_value"]
+    },
+    "CellWithArrayCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "array_value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Cell"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "array_cell"
+        }
+      },
+      "required": ["array_value", "kind"]
+    },
+    "CellWithNullCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "null_cell"
+        }
+      },
+      "required": ["kind"]
+    },
+    "CellWithSQLNativeCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sql_native_value": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "sql_native_cell"
+        }
+      },
+      "required": ["kind", "sql_native_value"]
+    },
+    "DataWithArrayCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "array_value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Cell"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "const": "array_cell"
+        }
+      },
+      "required": ["array_value", "kind"]
     },
     "NotebookError": {
       "type": "object",
@@ -4032,273 +4289,6 @@
       "required": ["revision", "status", "queries", "result", "error", "diagnostics", "inspection"],
       "additionalProperties": false,
       "title": "State"
-    },
-    "Result": {
-      "type": "object",
-      "properties": {
-        "data": {
-          "$ref": "#/definitions/Data"
-        },
-        "schema": {
-          "$ref": "#/definitions/Schema"
-        },
-        "sql": {
-          "type": "string"
-        },
-        "connection_name": {
-          "type": "string"
-        },
-        "annotations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Annotation"
-          }
-        },
-        "model_annotations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Annotation"
-          }
-        },
-        "query_timezone": {
-          "type": "string"
-        },
-        "source_annotations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Annotation"
-          }
-        }
-      },
-      "required": ["schema", "connection_name"],
-      "additionalProperties": false
-    },
-    "Data": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/DataWithRecordCell"
-        },
-        {
-          "$ref": "#/definitions/DataWithArrayCell"
-        }
-      ]
-    },
-    "DataWithRecordCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "record_value": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Cell"
-          }
-        },
-        "kind": {
-          "type": "string",
-          "const": "record_cell"
-        }
-      },
-      "required": ["kind", "record_value"]
-    },
-    "Cell": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/CellWithStringCell"
-        },
-        {
-          "$ref": "#/definitions/CellWithBooleanCell"
-        },
-        {
-          "$ref": "#/definitions/CellWithDateCell"
-        },
-        {
-          "$ref": "#/definitions/CellWithTimestampCell"
-        },
-        {
-          "$ref": "#/definitions/CellWithNumberCell"
-        },
-        {
-          "$ref": "#/definitions/CellWithJSONCell"
-        },
-        {
-          "$ref": "#/definitions/CellWithRecordCell"
-        },
-        {
-          "$ref": "#/definitions/CellWithArrayCell"
-        },
-        {
-          "$ref": "#/definitions/CellWithNullCell"
-        },
-        {
-          "$ref": "#/definitions/CellWithSQLNativeCell"
-        }
-      ]
-    },
-    "CellWithStringCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "string_value": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string",
-          "const": "string_cell"
-        }
-      },
-      "required": ["kind", "string_value"]
-    },
-    "CellWithBooleanCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "boolean_value": {
-          "type": "boolean"
-        },
-        "kind": {
-          "type": "string",
-          "const": "boolean_cell"
-        }
-      },
-      "required": ["boolean_value", "kind"]
-    },
-    "CellWithDateCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "date_value": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string",
-          "const": "date_cell"
-        }
-      },
-      "required": ["date_value", "kind"]
-    },
-    "CellWithTimestampCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "timestamp_value": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string",
-          "const": "timestamp_cell"
-        }
-      },
-      "required": ["kind", "timestamp_value"]
-    },
-    "CellWithNumberCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "number_value": {
-          "type": "number"
-        },
-        "subtype": {
-          "$ref": "#/definitions/NumberSubtype"
-        },
-        "string_value": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string",
-          "const": "number_cell"
-        }
-      },
-      "required": ["kind", "number_value"]
-    },
-    "CellWithJSONCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "json_value": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string",
-          "const": "json_cell"
-        }
-      },
-      "required": ["json_value", "kind"]
-    },
-    "CellWithRecordCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "record_value": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Cell"
-          }
-        },
-        "kind": {
-          "type": "string",
-          "const": "record_cell"
-        }
-      },
-      "required": ["kind", "record_value"]
-    },
-    "CellWithArrayCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "array_value": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Cell"
-          }
-        },
-        "kind": {
-          "type": "string",
-          "const": "array_cell"
-        }
-      },
-      "required": ["array_value", "kind"]
-    },
-    "CellWithNullCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "null_cell"
-        }
-      },
-      "required": ["kind"]
-    },
-    "CellWithSQLNativeCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "sql_native_value": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string",
-          "const": "sql_native_cell"
-        }
-      },
-      "required": ["kind", "sql_native_value"]
-    },
-    "DataWithArrayCell": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "array_value": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Cell"
-          }
-        },
-        "kind": {
-          "type": "string",
-          "const": "array_cell"
-        }
-      },
-      "required": ["array_value", "kind"]
     }
   }
 }

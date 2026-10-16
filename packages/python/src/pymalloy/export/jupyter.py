@@ -10,11 +10,12 @@ from pymalloy.export._python import literal
 
 
 def render(document: Document, *, output_path: str | Path) -> str:
-    """Render notebook JSON with data paths relative to `output_path`.
+    """Render notebook JSON with data paths anchored to `output_path`.
 
+    Paths on another Windows drive remain absolute.
     Execute the kernel from the exported notebook's directory. Query cells
     display widgets or materialize Polars dataframes according to the profile.
-    Headless and precompiled COPY cells write their destinations.
+    Native and precompiled COPY cells write their destinations.
     """
     notebook = plan(
         document, output_path, base="Path.cwd()", imports="from pathlib import Path"

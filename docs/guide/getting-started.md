@@ -1,16 +1,16 @@
 # Run your first Python query
 
-Install PyMalloy with native execution and [Polars](https://docs.pola.rs/), a
-columnar dataframe library. Use Python 3.12 or newer.
+Install PyMalloy and [Polars](https://docs.pola.rs/), a columnar dataframe
+library. Use Python 3.12 or newer.
 
 ```sh
-pip install 'pymalloy[headless]' polars
+pip install pymalloy polars
 ```
 
 [Malloy](https://docs.malloydata.dev/) compiles a semantic model to SQL.
 [DuckDB](https://duckdb.org/docs/stable/), an embedded database engine, runs it.
-The `headless` extra supplies both DuckDB and [Deno](https://docs.deno.com/),
-the JavaScript runtime hosting the Malloy compiler.
+PyMalloy includes the compiler and installs DuckDB and
+[PyArrow](https://arrow.apache.org/docs/python/) for columnar results.
 
 ## Author and run
 

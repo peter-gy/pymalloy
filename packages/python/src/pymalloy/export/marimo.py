@@ -17,7 +17,10 @@ def _markdown(text: str) -> str:
 
 
 def render(document: Document, *, output_path: str | Path) -> str:
-    """Render a Python notebook with data paths relative to `output_path`."""
+    """Render a Python notebook with data paths anchored to `output_path`.
+
+    Paths on another Windows drive remain absolute.
+    """
     notebook = plan(
         document, output_path, base="mo.notebook_dir()", imports="import marimo as mo"
     )

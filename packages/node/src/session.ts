@@ -135,8 +135,8 @@ export class Session {
       return this.operations.model(compiled, {
         assertAvailable: () => this.operations.assertHealthy(),
         host: () => this.host(captured),
-        run: (sql, template) => {
-          return this.backend.run(sql, template, this.operations.signal);
+        run: (sql, template, limit) => {
+          return this.backend.run(sql, template, this.operations.signal, limit);
         },
         submit: (task, options) => this.operations.run(task, options),
         release: () => {},

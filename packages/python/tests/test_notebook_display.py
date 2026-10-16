@@ -172,7 +172,7 @@ def test_native_query_display_uses_the_borrowed_connection_and_preserves_exact_v
             finally:
                 widget.close()
             assert not model.closed
-            with pytest.raises(TraitError, match="existing Python context"):
+            with pytest.raises(TraitError, match="existing execution context"):
                 pm.MalloyWidget(model, files={"values_table": "id\n1\n"})
         finally:
             model.close()

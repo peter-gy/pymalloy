@@ -5,15 +5,22 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[4]
 ASSETS = REPO / "packages" / "python" / "src" / "pymalloy" / "_assets"
 
 
+def executable(venv: Path, name: str) -> Path:
+    if os.name == "nt":
+        return venv / "Scripts" / f"{name}.exe"
+    return venv / "bin" / name
+
+
 def create_venv(path: Path) -> Path:
     subprocess.run(
-        ["uv", "venv", "--python", "3.12", str(path)],
+        ["uv", "venv", "--python", sys.executable, str(path)],
         check=True,
         timeout=120,
     )
@@ -22,7 +29,14 @@ def create_venv(path: Path) -> Path:
 
 def pip_install(venv: Path, *packages: str) -> None:
     subprocess.run(
-        ["uv", "pip", "install", "--python", str(venv / "bin" / "python"), *packages],
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(executable(venv, "python")),
+            *packages,
+        ],
         check=True,
         timeout=300,
     )
@@ -39,7 +53,9 @@ def isolated_env(venv: Path) -> dict[str, str]:
         env.pop(name, None)
     env["PYTHONPATH"] = ""
     env["VIRTUAL_ENV"] = str(venv)
-    env["PATH"] = os.pathsep.join((str(venv / "bin"), env.get("PATH", "")))
+    env["PATH"] = os.pathsep.join(
+        (str(executable(venv, "python").parent), env.get("PATH", ""))
+    )
     return env
 
 
@@ -68,7 +84,7 @@ def run_in_venv(
     timeout: float = 60,
 ) -> subprocess.CompletedProcess[str]:
     return run_command(
-        [str(venv / "bin" / args[0]), *args[1:]],
+        [str(executable(venv, args[0])), *args[1:]],
         cwd=cwd,
         env=isolated_env(venv),
         timeout=timeout,
@@ -89,12 +105,21 @@ def run_to_completion(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        start_new_session=True,
+        start_new_session=os.name != "nt",
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
     )
     try:
         stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
         stdout, stderr = process.communicate()
         raise AssertionError(
             f"{command[0]} did not exit within {timeout}s\nstdout:\n{stdout}\nstderr:\n{stderr}"

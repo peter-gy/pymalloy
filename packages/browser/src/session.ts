@@ -28,6 +28,7 @@ import {
   fields,
   describeSQL,
   stableResult,
+  previewSQL,
 } from "@malloy-runtime/duckdb";
 import { type File, type Files, modelURL, snapshot, readImport } from "./files";
 
@@ -60,8 +61,11 @@ export class Session {
   ) {
     this.operations = new Runtime(async () => {
       try {
-        await this.connection.cancelSent();
+        // DuckDB worker termination leaves RPC promises pending. Terminal session
+        // failure also settles cancellation before the owned queue is released.
+        await Promise.race([this.connection.cancelSent(), this.failure]);
       } catch (error) {
+        if (this.stopped) return;
         this.fail(error instanceof Error ? error : new Error(String(error)));
         throw error;
       }
@@ -128,7 +132,7 @@ export class Session {
         removeAbortListener,
         options.connectionName ?? compilerConnection.name,
       );
-      void failure.catch(() => session.close());
+      void failure.catch(() => session.close().catch(() => undefined));
       return session;
     } catch (error) {
       removeAbortListener();
@@ -173,7 +177,8 @@ export class Session {
           if (this.stopped) throw new Error("Session is closed");
         },
         host: () => this.host(files, root, captured),
-        run: async (sql, template) => {
+        run: async (sql, template, limit) => {
+          if (limit !== undefined) sql = previewSQL(sql, limit);
           const cached = schemas.get(sql);
           let columns = cached?.columns ?? (await this.describe(`DESCRIBE ${sql}`));
           const table = await this.query(sql);
@@ -228,12 +233,13 @@ export class Session {
       syntaxOnly?: boolean;
       documentKind?: DocumentKind;
       position?: SourcePosition;
+      source?: ModelSource;
     } & OperationOptions = {},
   ) {
     const { signal, files: inputFiles, ...input } = options;
     const files = snapshot(inputFiles);
     const captured = structuredClone(input);
-    const root = new URL(captured.url ?? modelURL);
+    const root = new URL(captured.source?.url ?? captured.url ?? modelURL);
     return this.enqueue(
       async () => {
         await this.activate(files);
@@ -243,10 +249,11 @@ export class Session {
             source: text,
             connection: { ...compilerConnection, name: this.connectionName },
             syntaxOnly: captured.syntaxOnly,
-            documentKind: captured.documentKind ?? documentKind(root),
+            documentKind:
+              captured.documentKind ?? captured.source?.documentKind ?? documentKind(root),
             position: captured.position,
           }),
-          this.host(files, root),
+          this.host(files, root, captured.source),
         );
       },
       { signal },
@@ -262,14 +269,21 @@ export class Session {
   close(): Promise<void> {
     if (!this.closing) {
       this.stopped = true;
-      void this.operations.close();
+      const settled = this.operations.close();
       this.operations.release();
       this.removeAbortListener();
       this.imports.abort();
       this.activeSnapshot = undefined;
       this.activeFiles = [];
       this.fail(new Error("Session is closed"));
-      this.closing = this.database.terminate().finally(() => this.worker.terminate());
+      this.closing = Promise.allSettled([
+        settled,
+        this.database.terminate().finally(() => this.worker.terminate()),
+      ]).then((outcomes) => {
+        for (const outcome of outcomes) {
+          if (outcome.status === "rejected") throw outcome.reason;
+        }
+      });
     }
     return this.closing;
   }

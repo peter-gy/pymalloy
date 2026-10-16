@@ -5,7 +5,7 @@ Malloy defines fields, measures, joins, and queries and compiles them to SQL.
 [DuckDB](https://duckdb.org/docs/stable/) executes the SQL.
 
 ```sh
-pip install 'pymalloy[headless]'
+pip install pymalloy
 ```
 
 ```python
@@ -40,14 +40,15 @@ The draft prints ordinary Malloy source. The query returns:
 
 Drafts are immutable. Validate assumptions with named counterexample queries,
 capture prepared Python data with `pm.data(frame)`, and bundle the accepted model
-with its inputs. The base `pymalloy` package supports authoring and browser widgets.
-The `headless` extra adds native execution and compiler tooling.
+with its inputs. The package includes the compiler, DuckDB execution, data
+capture, and browser widgets.
 
 - [Run Python queries](https://peter-gy.github.io/pymalloy/guide/getting-started)
 - [Author a model](https://peter-gy.github.io/pymalloy/guide/authoring) or
   [edit an existing model](https://peter-gy.github.io/pymalloy/guide/editing)
 - [Capture Python data](https://peter-gy.github.io/pymalloy/guide/dataframes)
-- [Show a widget](https://peter-gy.github.io/pymalloy/guide/widget)
+- [Show a widget](https://peter-gy.github.io/pymalloy/guide/widget) or
+  [run Python in the browser](https://peter-gy.github.io/pymalloy/guide/browser-python)
 - [Export a notebook](https://peter-gy.github.io/pymalloy/guide/export) or
   [ship a source bundle](https://peter-gy.github.io/pymalloy/guide/bundles)
 - Use the [Node](https://peter-gy.github.io/pymalloy/reference/node) or
@@ -55,3 +56,7 @@ The `headless` extra adds native execution and compiler tooling.
 
 For versioned agent guidance, start with `help(pymalloy.agent)` after
 `import pymalloy.agent`.
+
+PyMalloy builds on [Malloy](https://github.com/malloydata/malloy), which provides
+the language compiler and renderer. PyMalloy is an independent project and is
+not affiliated with or endorsed by the Malloy project.

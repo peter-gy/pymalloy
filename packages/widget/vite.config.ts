@@ -1,7 +1,6 @@
 import stylex from "@stylexjs/unplugin/vite";
 import anywidgetBundle from "anywidget-bundle";
 import { defineConfig } from "vite-plus";
-import { bundleNotices } from "@pymalloy/scripts/bundle-notices";
 
 export default defineConfig(({ mode }) => ({
   plugins:
@@ -13,7 +12,6 @@ export default defineConfig(({ mode }) => ({
             unstable_moduleResolution: { type: "commonJS", rootDir: import.meta.dirname },
           }),
           anywidgetBundle({ app: "./src/index.ts", outDir: "./dist" }),
-          bundleNotices("widget.LICENSE.txt"),
         ],
   test: { include: ["tests/**/*.test.ts"], testTimeout: 5000 },
   build: {

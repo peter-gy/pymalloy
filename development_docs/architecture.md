@@ -13,10 +13,14 @@ Runtime adapters fulfil those requests and execute SQL with
 | `packages/duckdb`                        | DuckDB schema/type conversion, file settings, result materialization                   |
 | `packages/node`                          | Native Node sessions, local source readers, connection lifetime                        |
 | `packages/browser`                       | WebAssembly workers, virtual files, browser execution                                  |
+| `packages/pyodide`                       | Packaged JavaScript entry for Python browser owners and exact wire values              |
 | `packages/widget`                        | anywidget revisions, notebook actions, result rendering                                |
 | `packages/protocol`                      | Python-facing wire contracts and record generation inputs                              |
-| `packages/headless`                      | Deno compiler service and framed stdin/stdout                                          |
-| `pymalloy._headless`                     | Connection owner, model compiler processes, DuckDB execution, deadlines                |
+| `packages/compiler`                      | Self-contained embedded compiler entry and TypeScript session owner                    |
+| `packages/python/rust`                   | Private PyO3 extension, embedded V8 threads, cancellation, heap budgets                |
+| `pymalloy._compiler`                     | Native compiler host fulfilment and shared language-tooling lease                      |
+| `pymalloy._runtime`                      | Connection owner, native DuckDB execution, operation deadlines                         |
+| `pymalloy._browser`                      | Asynchronous Pyodide owners, JavaScript runtime access, exact result decoding          |
 | `pymalloy._authoring`                    | Syntax, scoped edits, annotations, Python reconstruction                               |
 | `pymalloy._model`                        | Source snapshots, captured inputs, file access, persistence                            |
 | `pymalloy._protocol`                     | Generated Python records, exact values, immutable snapshots                            |
@@ -27,6 +31,26 @@ Runtime adapters fulfil those requests and execute SQL with
 Core depends on Malloy. DuckDB helpers depend on core. Runtime adapters depend on
 both. Python-facing protocol records consume compiler types. Keep filesystem and
 database APIs in adapters and format-specific serialization in exporters.
+
+## Toolchain and dependency ownership
+
+[Pixi](https://pixi.prefix.dev/latest/) resolves the developer interpreters,
+compilers, and system libraries in `pixi.lock`. Its `default` and `py314`
+environments supply native toolchains and Python 3.12 or 3.14. The `js`
+environment supplies JavaScript tooling for documentation. Each command runs
+inside its selected environment through `pixi run --locked`.
+
+Language package managers own their dependency graphs: `pnpm-lock.yaml` for
+JavaScript, `uv.lock` for Python libraries, and `packages/python/Cargo.lock` for
+Rust crates. uv creates `.venv` or `.venv-py314` with the selected Pixi Python
+interpreter. `packages/python/rust_tools.py` validates compiler and Cargo tool
+versions before Rust checks. System SDKs come from the Microsoft and Apple
+installations described in [contributor setup](README.md#host-prerequisites).
+
+Builds stage JavaScript assets before compiling the Python extension. Native
+release jobs use a manylinux container on Linux and an explicit macOS 12
+deployment target on macOS. Developer host requirements include the browser
+acceptance tools. [Packaging](releasing.md) owns wheel compatibility floors.
 
 ## Compile and execute
 
@@ -59,7 +83,8 @@ virtual-file mappings and activate their files before discovery or execution.
 ## Resources and cancellation
 
 `pm.connect()` owns an engine and one lock shared by its models. Each model owns
-one compiler process and retains its connection. Queries retain their model.
+an embedded compiler on a dedicated thread and retains its connection. Queries
+retain their model.
 Closing a connection waits for work, closes child models, then closes its owned
 engine. Closing a model releases its compiler and leaves siblings usable.
 Borrowed connections retain caller settings, registrations, and transactions.
@@ -71,27 +96,73 @@ and settles the statement before queued work proceeds. Healthy engines remain
 reusable. Python carries one deadline through lock acquisition, compiler requests,
 and execution. A completed value or body exception survives a late deadline.
 
-[Deno](https://docs.deno.com/) is the JavaScript runtime for Python's compiler.
-An in-flight compiler timeout kills the process because framing cannot resume
-that request. Compiler crashes, protocol failures, and heap exhaustion close the
-affected model. SQL timeouts leave healthy compilers reusable. Browser worker
-failure closes the session and settles pending work.
+### Browser Python ownership
 
-### Python compiler transport
+`pymalloy.browser.connect()` creates an asynchronous connection in Pyodide.
+`pymalloy._browser` owns Python operations, task cancellation, deadlines, and
+model lifetimes. `packages/pyodide` supplies the packaged JavaScript entry and
+delegates compilation and execution to `packages/browser` through its existing
+`Session`.
+That session owns DuckDB WebAssembly and its worker. Models retain their
+connection, immutable source inputs, and virtual-file snapshots. Queries retain
+their model. Connection closure aborts pending work, waits for it to settle, and
+releases the JavaScript session and worker. Model closure invalidates its queries
+while preserving sibling models.
 
-Each process owns one retained model and one pending compiler job. Frames contain
-a four-byte unsigned big-endian length followed by UTF-8 JSON, capped at 64 MiB.
-Startup returns `{kind: "ready"}`. Each request has one typed reply. Authored
-failures use `kind: "error"` with diagnostics. Internal failures use
-`kind: "failure"`. Python validates replies before dispatching them.
-Deno runs the self-contained bundle with configuration, npm resolution, and
-remote imports disabled, and receives no filesystem or network permissions.
+Python/JavaScript calls exchange owned JSON records. Exact givens and result
+cells use the shared protocol codec. Browser results retain immutable serialized
+data and decode fresh Python containers on access. Widget previews of a browser
+model borrow its connection and carry the same stable Malloy result tree as
+JavaScript execution. Closing an inspector preserves its borrowed model.
 
-Format, parse, syntax projection, and check lease a shared serialized compiler.
-It exits after 30 seconds idle. Lease waiting and startup consume the deadline.
-Checks resolve schemas and imports afresh. Diagnostic replies keep the process
-reusable. Failed processes are discarded. Idle teardown sends EOF so Deno can
-persist its code cache. Active failure terminates it. Both paths have bounded waits.
+The browser runtime matrix and dependency locks live under `apps/e2e/pyodide`.
+Standalone, JupyterLite, and marimo WebAssembly tests install the same release
+wheel. Each host uses the dependency lock for its declared runtime.
+[Testing](testing.md#pin-the-browser-python-runtime) owns the runtime upgrade
+commands.
+
+### Native compiler ownership
+
+[PyO3](https://pyo3.rs/) exposes the private Rust extension as `pymalloy._native`.
+The [deno_core](https://docs.rs/deno_core/) Rust library embeds the
+[V8](https://v8.dev/) JavaScript engine. Each model's compiler thread owns its
+isolate, JavaScript context, retained Malloy model, and active compiler job.
+Python sends typed operation data and receives a result, diagnostics, or source
+and schema needs. Python fulfils those needs between JavaScript steps. Rust
+releases Python's interpreter lock while waiting. Query rows stay in Python's
+DuckDB adapter.
+
+The compiler entry exposes `start`, `step`, and `close` inside the isolate.
+`packages/protocol` owns request, answer, and result records. Python validates
+native output before dispatching it. JavaScript retains Malloy objects, and Rust
+owns thread lifetime, job identity, cancellation, and conversion at the native
+boundary. Filesystem, network, and database access belong to the Python host.
+
+Active compiler interruption terminates its isolate and closes that model.
+Compiler boundary failures and managed heap exhaustion also discard the affected
+compiler. Authored diagnostics leave a healthy compiler reusable. SQL timeouts
+leave healthy compilers reusable. Browser worker failure closes the session and
+settles pending work. Cancellation is tied to the active operation so a late
+interrupt cannot terminate the next call. Close settles active work before
+releasing its owner.
+
+`compiler_memory_mb` is a managed JavaScript heap budget. Native allocations and
+DuckDB memory have separate owners. Fatal V8 failures can terminate Python, and
+a native engine stall can delay managed cancellation. Applications requiring
+compiler crash containment must scope execution to a separate application
+process.
+
+Format, parse, syntax projection, and check lease a shared serialized tooling
+compiler with a separate owning thread. It closes after 30 seconds idle. Lease
+waiting and startup consume the deadline. Checks resolve schemas and imports
+afresh. Diagnostics keep the compiler reusable. Failed compilers are discarded.
+
+Python and Rust compiler owners retain their creator process ID. Operation,
+close, finalizer, and tooling entry paths check it before acquiring inherited
+locks. Child cleanup abandons inherited native handles. Post-initialization
+`fork` cannot reuse connections or compiler owners. Child compilation uses the
+`spawn` multiprocessing start method. Same-owner signal-handler reentry must fail
+before acquiring an operation lock.
 
 ### Widget revisions and views
 
@@ -105,7 +176,8 @@ Capture materialization and given encoding must succeed before revisions advance
 Initialization owns the browser session and input listeners. Each view owns DOM
 and renderer cleanup. Native preview messages carry correlation IDs, input
 revisions, and [Arrow IPC](https://arrow.apache.org/docs/format/Columnar.html#serialization-and-interprocess-communication-ipc)
-columnar buffers. Closing a widget preserves borrowed native models.
+columnar buffers. Browser Python previews use exact protocol records and the
+stable Malloy result tree. Closing a widget preserves borrowed models.
 Implicit marimo inspectors close on cell rerun through an isolated host lifecycle
 seam. Implicit Jupyter inspectors close when their last view unmounts.
 Explicit widgets remain caller-owned.
@@ -162,14 +234,40 @@ script owns dataframe preparation and its rebuild dependencies.
 `scripts/generate-records.ts` produces JSON Schema, frozen Python msgspec records,
 and the pinned Malloy keyword lexicon in a temporary directory. It formats them
 and validates the full decoder graph before replacing tracked outputs.
-`pnpm records:check` compares generated bytes and runs in `pnpm check`.
+`pixi run --locked pnpm records:check` compares generated bytes and runs in
+`pixi run --locked check-js`.
 Change generation inputs and regenerate these artifacts together.
 
 The build stages widget modules, bootstrap/manifest, stylesheet, compiler bundle,
-per-artifact dependency notices, and installed agent guidance into Python assets.
-Hatch verifies them before packaging. [Packaging](releasing.md) owns distribution
-checks. Base imports and syntax construction stay independent of Deno, DuckDB,
-and optional dataframe libraries.
+Pyodide runtime and installed agent guidance
+into Python assets. `packages/pyodide` emits one closed JavaScript bundle whose
+manifest records the bundle and protocol digests and Malloy version. Staging
+checks those digests before copying the runtime. Browser packaging verifies its
+staged bundle digest.
+Staging collects web-platform JavaScript from the locked extension crates in
+`native.runtime.json`. Rust verifies its digest and package versions, then embeds
+a source table keyed by `ext:` module specifier. Isolate initialization resolves
+all extension sources through that table. A compiler manifest records build inputs
+and the bundle digest. Rust
+embeds the verified bundle in the native extension. A private Python build
+backend verifies SHA-256-pinned V8 archives and bindings, then delegates native
+wheel construction to [Maturin](https://www.maturin.rs/).
+Linux builds using Conda GCC select its original `builtin.specs` so the wheel's
+runtime library search path stays independent of the developer environment.
+[Hatch](https://hatch.pypa.io/) builds the
+explicit browser wheel. Both builders verify staged assets.
+The Python package's [uv cache keys](https://docs.astral.sh/uv/concepts/cache/#dynamic-metadata)
+track Rust sources, Python sources, and staged assets so workspace installation
+rebuilds the extension when its inputs change.
+[Packaging](releasing.md) owns distribution checks. Importing `pymalloy` and
+constructing syntax leave database and dataframe libraries unloaded.
+
+Native wheels include the extension and browser assets in one distribution.
+Their runtime requirements install DuckDB, PyArrow, and timezone data.
+The browser wheel keeps the same Python distribution name and version. Its
+asynchronous Python adapter and widget use the JavaScript compiler and
+DuckDB WebAssembly in Pyodide. Native Python uses the embedded compiler and
+DuckDB connection through the synchronous runtime API.
 
 ## Notebook exports
 

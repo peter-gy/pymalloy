@@ -1,7 +1,7 @@
 # PyMalloy
 
-PyMalloy runs Malloy in a browser widget, in headless Python or native Node sessions, and
-in exported notebooks. Malloy owns language semantics. Runtime adapters own
+PyMalloy runs Malloy in native Python and Node sessions, browser widgets, and
+exported notebooks. Malloy owns language semantics. Runtime adapters own
 DuckDB execution, data access, and resource lifetime.
 
 ## Ownership
@@ -13,10 +13,13 @@ DuckDB execution, data access, and resource lifetime.
   `packages/browser` owns DuckDB WebAssembly workers and virtual files.
 - `packages/widget` owns anywidget synchronization and rendering. `MalloyWidget` in
   `packages/python` owns Python inputs and detached state snapshots.
-- `packages/protocol` owns Python wire records shared by the widget and headless host.
-- `packages/headless` owns the bundled Deno compiler service and framed stdin/stdout.
-- `pymalloy._headless` owns Connection lifetimes, optional headless dependencies,
-  per-model Deno processes, native DuckDB execution, and deadlines. Keep the base widget import Deno-free.
+- `packages/protocol` owns Python records shared by the widget and compiler host.
+- `packages/compiler` owns the embedded compiler entry and closed JavaScript bundle.
+- `packages/python/rust` owns the PyO3 extension, V8 threads, native jobs, and teardown.
+- `pymalloy._compiler` owns source/schema fulfilment and compiler-only tooling.
+- `pymalloy._runtime` owns Connection lifetimes, native DuckDB execution, and
+  deadlines. Native installs include DuckDB, PyArrow, and timezone data. Keep
+  widget construction independent of native compiler startup.
 - Exporters own format-specific serialization and reproducible notebook data access.
 - `apps` compose packages. Public guides and reference live in `docs`, contributor
   guidance in `development_docs`, and the public site's configuration in `apps/docs`.
@@ -45,7 +48,11 @@ DuckDB execution, data access, and resource lifetime.
 
 Run the command list in [contributor setup](development_docs/README.md#validate-a-change).
 
-Keep dependencies scoped to the package that imports them and preserve both lockfiles.
+Use `pixi run --locked` for repository commands. `pixi.toml` and `pixi.lock` own
+interpreters, compilers, Cargo tools, and Linux browser libraries. Keep Python
+libraries in `uv.lock`, JavaScript packages in `pnpm-lock.yaml`, and Rust crates
+in `packages/python/Cargo.lock`. Scope dependencies to the package that imports
+them and update each owning manifest and lockfile together.
 
 Test consumer behavior through APIs, files, kernel results, and browser state.
 Keep implementation trivia out of assertions. Document contracts and hidden

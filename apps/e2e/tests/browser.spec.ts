@@ -1,4 +1,5 @@
 import type { WidgetModel } from "../../../packages/widget/src/protocol";
+import type { Result } from "../../../packages/browser/src";
 import { expect, test } from "./fixture";
 test("retained models own competing file mappings and preserve exact result values", async ({
   page,
@@ -492,6 +493,97 @@ test("repeated SQL cells observe schema changes and expose detached columns", as
     changed: [{ name: "value", type: "VARCHAR" }],
     rows: [{ value: "hi" }],
   });
+});
+
+test("checks captured imports through their source identities", async ({ page }) => {
+  await page.goto("/runtime.html");
+  const output = await page.evaluate(async () => {
+    const entry = "/runtime.mjs";
+    const { Session } = await import(entry);
+    const session = await Session.open({
+      bundles: {
+        mvp: {
+          mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
+          mainWorker: new URL("/duckdb/duckdb-browser-mvp.worker.js", location.href).href,
+        },
+      },
+    });
+    try {
+      const source = {
+        url: "file:///captured/model.malloy",
+        documentKind: "model",
+        text: "import 'dependency.malloy'\nrun: numbers -> {select: n}",
+        imports: {
+          "file:///captured/dependency.malloy": "source: numbers is duckdb.sql('SELECT 42 AS n')",
+        },
+      };
+      const report = await session.check(source.text, { source });
+      return {
+        ok: report.ok,
+        diagnostics: report.diagnostics,
+        queries: report.queries.map((query: { name: string }) => query.name),
+      };
+    } finally {
+      await session.close();
+    }
+  });
+  expect(output).toEqual({ ok: true, diagnostics: [], queries: ["run:0"] });
+});
+
+test("closing a browser session settles active and queued queries before returning", async ({
+  page,
+}) => {
+  await page.goto("/runtime.html");
+  const output = await page.evaluate(async () => {
+    const entry = "/runtime.mjs";
+    const { Session } = await import(entry);
+    const session = await Session.open({
+      bundles: {
+        mvp: {
+          mainModule: new URL("/duckdb/duckdb-mvp.wasm", location.href).href,
+          mainWorker: new URL("/duckdb/duckdb-browser-mvp.worker.js", location.href).href,
+        },
+      },
+    });
+    const model = await session.model({
+      text: `
+        query: slow is duckdb.sql('SELECT range AS value FROM range(1000000000000)') -> {aggregate: total is value.sum()}
+        query: fast is duckdb.sql('SELECT 42 AS answer') -> {select: answer}
+      `,
+    });
+    // oxlint-disable-next-line typescript/unbound-method -- Restored in finally, called with its original receiver.
+    const post = Worker.prototype.postMessage;
+    let started!: () => void;
+    const dispatched = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    Worker.prototype.postMessage = function (message, transfer) {
+      post.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
+      if (message.type === "START_PENDING_QUERY" && !message.data[1].startsWith("DESCRIBE"))
+        started();
+    };
+    try {
+      const events: string[] = [];
+      const observe = (name: string, operation: Promise<Result>) =>
+        operation.then(
+          () => events.push(`${name} resolved`),
+          () => events.push(`${name} rejected`),
+        );
+      const controller = new AbortController();
+      const active = observe("active", model.query("slow").run({ signal: controller.signal }));
+      const queued = observe("queued", model.query("fast").run());
+      await dispatched;
+      controller.abort();
+      await session.close();
+      const beforeReturn = [...events].sort();
+      await Promise.all([active, queued]);
+      return { closed: session.closed, beforeReturn };
+    } finally {
+      Worker.prototype.postMessage = post;
+      await session.close();
+    }
+  });
+  expect(output).toEqual({ closed: true, beforeReturn: ["active rejected", "queued rejected"] });
 });
 
 test("cancelling one browser query preserves its model and queued work", async ({ page }) => {

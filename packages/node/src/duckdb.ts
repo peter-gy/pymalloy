@@ -1,4 +1,4 @@
-import { stableResult } from "@malloy-runtime/duckdb";
+import { previewSQL, stableResult } from "@malloy-runtime/duckdb";
 import {
   type DuckDBConnection,
   StatementType,
@@ -37,7 +37,13 @@ export class DuckDBBackend {
       prepared.destroySync();
     }
   }
-  async run(sql: string, template?: Result["malloy"], signal?: AbortSignal): Promise<Result> {
+  async run(
+    sql: string,
+    template?: Result["malloy"],
+    signal?: AbortSignal,
+    limit?: number,
+  ): Promise<Result> {
+    if (limit !== undefined) sql = previewSQL(sql, limit);
     signal?.throwIfAborted();
     const statements = await this.connection.extractStatements(sql);
     if (statements.count !== 1)

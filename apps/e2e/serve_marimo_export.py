@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 import sys
@@ -64,8 +63,7 @@ def main() -> None:
         raise SystemExit(completed.stderr or completed.stdout)
     output.write_text(_with_region_control(output.read_text()))
     model.unlink()
-    os.execvp(
-        sys.executable,
+    subprocess.run(
         [
             sys.executable,
             "-m",
@@ -81,6 +79,7 @@ def main() -> None:
             "--session-ttl",
             "0",
         ],
+        check=True,
     )
 
 

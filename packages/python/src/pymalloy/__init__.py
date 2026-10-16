@@ -22,10 +22,9 @@ MalloyWidget
 
 Notes
 -----
-The base package includes symbolic authoring, browser widgets, and agent guidance.
-Native execution and compiler tooling require ``pymalloy[headless]``. Widgets
-run without Deno. Install PyArrow directly for Python dataframe capture and
-Polars directly for ``Result.to_polars()``. The headless extra already includes PyArrow.
+Native wheels include authoring, compiler tooling, DuckDB execution, browser
+widgets, and agent guidance. PyArrow supplies dataframe capture and columnar
+results. Install Polars separately for ``Result.to_polars()``.
 
 Examples
 --------
@@ -52,8 +51,8 @@ from pymalloy.expressions import Expr, Sort, case, col, count, given, lit
 from pymalloy.result import Result
 
 if TYPE_CHECKING:
-    from pymalloy._headless.api import Connection, Model, Query, connect
-    from pymalloy._headless.tooling import format, parse
+    from pymalloy._compiler.tooling import format, parse
+    from pymalloy._runtime.connection import Connection, Model, Query, connect
     from pymalloy.widget import MalloyWidget
 
 __all__ = [
@@ -97,11 +96,11 @@ def __getattr__(name: str):
 
         return MalloyWidget
     if name in {"connect", "Connection", "Model", "Query"}:
-        from pymalloy._headless import load_api
+        from pymalloy._runtime import connection
 
-        return getattr(load_api(), name)
+        return getattr(connection, name)
     if name in {"format", "parse"}:
-        from pymalloy._headless import tooling
+        from pymalloy._compiler import tooling
 
         return getattr(tooling, name)
     raise AttributeError(name)

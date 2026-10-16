@@ -15,10 +15,10 @@ hero:
 
 [Malloy](https://docs.malloydata.dev/) defines sources, measures, joins, and queries
 and compiles them to SQL. [DuckDB](https://duckdb.org/docs/stable/) executes the SQL.
-Install `pymalloy[headless]` for Python execution:
+Install PyMalloy:
 
 ```sh
-pip install 'pymalloy[headless]'
+pip install pymalloy
 ```
 
 ```python
@@ -60,6 +60,7 @@ The query returns North revenue `42` and South revenue `30` as exact decimal val
 | Bring prepared Python data into a model          | [Capture Python data](/guide/dataframes)                 |
 | Bind typed query parameters                      | [Givens](/guide/givens)                                  |
 | Display and update a notebook widget             | [Widgets](/guide/widget)                                 |
+| Run Python in a browser notebook                 | [Browser Python](/guide/browser-python)                  |
 | Inspect intermediate values in a notebook        | [Notebook editing](/guide/notebook-editing)              |
 | Share an executable notebook                     | [Export notebooks](/guide/export)                        |
 | Ship Malloy files and copied inputs              | [Source bundles](/guide/bundles)                         |

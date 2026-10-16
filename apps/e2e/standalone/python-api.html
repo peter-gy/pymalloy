@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Browser Python API acceptance</title>
+  </head>
+  <body>
+    <h1>Browser Python API acceptance</h1>
+    <output aria-label="Kernel status">Loading Python</output>
+    <script type="module">
+      import { python } from "./python.js";
+      const pyodide = await python();
+      pyodide.globals.set("asset_root", new URL("/duckdb/", location.href).href);
+      await pyodide.runPythonAsync(`
+import asyncio
+import json
+import pymalloy as pm
+from pymalloy import browser
+loop_failures = []
+def record_loop_failure(_loop, context):
+    loop_failures.append(context.get("message"))
+asyncio.get_event_loop().set_exception_handler(record_loop_failure)
+runtime = browser.Runtime(
+    mvp=browser.Bundle(module=asset_root + "duckdb-mvp.wasm", worker=asset_root + "duckdb-browser-mvp.worker.js"),
+    eh=browser.Bundle(module=asset_root + "duckdb-eh.wasm", worker=asset_root + "duckdb-browser-eh.worker.js"),
+)
+`);
+      window.runBrowserPython = async (source) => {
+        const result = await pyodide.runPythonAsync(source);
+        await pyodide.runPythonAsync("assert not loop_failures, loop_failures");
+        return result;
+      };
+      document.querySelector('[aria-label="Kernel status"]').textContent = "Python ready";
+    </script>
+  </body>
+</html>

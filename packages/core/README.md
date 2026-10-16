@@ -11,7 +11,7 @@ console.log(formatSource(source).source);
 ```
 
 `@malloy-runtime/compiler/jobs` supplies synchronous jobs to hosts such as the
-headless compiler service. `CompiledModel.begin({ url, source?, documentKind?, connection: {name, dialect} })` returns a job.
+embedded Python compiler. `CompiledModel.begin({ url, source?, documentKind?, connection: {name, dialect} })` returns a job.
 `job.step(fulfilled?)` returns needs or a result. Hosts supply URL text and Malloy
 field definitions for each schema request. The compiler owns language semantics,
 query descriptors, model snapshots, diagnostics, and ordered notebook cells.

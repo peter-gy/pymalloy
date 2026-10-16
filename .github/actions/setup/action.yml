@@ -1,45 +1,60 @@
 name: Set up workspace
-description: Install the locked Node.js, pnpm, and uv workspaces and build the packaged assets.
-
+description: Install the locked Pixi environment and prepare workspace dependencies.
 inputs:
-  python-version:
-    description: Python version for the uv environment.
+  environment:
+    description: Pixi environment to install.
     required: false
-    default: "3.12"
+    default: default
   build:
-    description: Build JavaScript packages and install the Python workspace with its staged assets.
+    description: Build assets and install the Python workspace.
     required: false
     default: "true"
-
+outputs:
+  rust-cache-key:
+    description: Rust dependency cache key.
+    value: ${{ steps.rust-cache.outputs.cache-primary-key }}
+  rust-cache-hit:
+    description: Whether the Rust dependency cache matched.
+    value: ${{ steps.rust-cache.outputs.cache-hit }}
 runs:
   using: composite
   steps:
-    - name: Set up Vite+ and Node.js
-      uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+    - name: Install the locked Pixi environment
+      uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
       with:
-        node-version-file: .node-version
-        cache: true
-        run-install: |
-          - args: ["--frozen-lockfile"]
-
-    - name: Enable pnpm
-      shell: bash
-      run: corepack enable pnpm
-
-    - name: Set up uv and Python
-      if: inputs.build == 'true'
-      uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        pixi-version: v0.81.0
+        environments: ${{ inputs.environment }}
+        locked: "true"
+        activate-environment: "false"
+        cache-write: ${{ github.ref == 'refs/heads/main' }}
+    - name: Restore Rust dependencies
+      id: rust-cache
+      if: inputs.environment != 'js'
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        enable-cache: true
-        cache-dependency-glob: uv.lock
-        python-version: ${{ inputs.python-version }}
-
-    - name: Build packages
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/pymalloy-v8
+        key: rust-${{ runner.os }}-${{ runner.arch }}-${{ inputs.environment }}-${{ hashFiles('pixi.lock', 'packages/python/Cargo.lock', 'packages/python/native-archives.json') }}
+    - name: Install JavaScript dependencies
+      if: inputs.build == 'false'
+      shell: bash
+      env:
+        PIXI_ENVIRONMENT: ${{ inputs.environment }}
+      run: pixi run --locked -e "$PIXI_ENVIRONMENT" setup-js
+    - name: Build and install the workspace
       if: inputs.build == 'true'
       shell: bash
-      run: pnpm build
-
-    - name: Install Python workspace
-      if: inputs.build == 'true'
-      shell: bash
-      run: uv sync --all-packages --all-extras --frozen
+      env:
+        PIXI_ENVIRONMENT: ${{ inputs.environment }}
+      run: pixi run --locked -e "$PIXI_ENVIRONMENT" setup
+    - name: Save Rust dependencies
+      if: github.ref == 'refs/heads/main' && inputs.build == 'true' && inputs.environment != 'js' && steps.rust-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/pymalloy-v8
+        key: ${{ steps.rust-cache.outputs.cache-primary-key }}

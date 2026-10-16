@@ -2,7 +2,7 @@
 
 `pymalloy.export.bundle` writes a [Malloy](https://docs.malloydata.dev/) source
 graph, copied inputs, a manifest, and a replay script into a new directory.
-Install `pymalloy[headless]` to prepare and replay it.
+Prepare the model, validate it, and replay the bundled query:
 
 ```python
 import runpy

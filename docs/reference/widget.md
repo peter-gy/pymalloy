@@ -17,8 +17,8 @@ widget
 
 `MalloyWidget(source, *, files=None, query=None, givens=None, runtime=None,
 connection_name="duckdb", auto_run=True)` creates an
-anywidget for text, `Expr`, `Sort`, `Source`, `View`, `Draft`, `ModelSource`, native
-`Model` or `Query`, and materialized `Result` values. `files`, `query`, `givens`,
+anywidget for text, `Expr`, `Sort`, `Source`, `View`, `Draft`, `ModelSource`,
+native or browser `Model` and `Query`, and materialized `Result` values. `files`, `query`, `givens`,
 `auto_run`, and `source` can be assigned after construction. Assign complete mappings to update
 files or givens. `files`, `givens`, and `state` are recursively read-only mappings.
 Nested sequences are tuples. Reads reuse the published snapshot, and retained
@@ -28,8 +28,8 @@ creates editable dictionaries and lists when needed.
 `state` contains `status`, `queries`, `sql`, `columns`, `rows`, `result`,
 `inspection`, `diagnostics`, and `error`. Status is `idle`, `loading`, `ready`, `error`, or
 `closed`. Observe `state` for asynchronous updates. Observers receive the same
-immutable snapshot. `close()` is idempotent and releases the browser session. Native models and
-connections remain owned by the caller.
+immutable snapshot. `close()` is idempotent and releases its owned browser
+session. Models and connections supplied by the caller remain caller-owned.
 
 `connection_name` chooses the Malloy connection served by the browser's DuckDB
 runtime. It is read-only for the widget's lifetime and must match the connection
@@ -52,26 +52,28 @@ Assets must be reachable and permitted by the browser's
 [cross-origin resource sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS)
 and worker policies. `bundle_status` reports packaged frontend loading.
 
-[Native queries, models, and results](runtime.md) are available with the
-headless extra. The base install includes widgets and agent guidance. Browser-backed sources
-compile and execute in the browser.
+[Native models and queries](runtime.md) use their Python connection.
+[Browser Python models and queries](browser-python.md) use their existing
+DuckDB WebAssembly connection. Authored source values create a browser session
+for the widget. See [browser Python setup](../guide/browser-python.md) for
+Pyodide.
 
 Set `auto_run=False` to require an explicit **Check** or **Run**
 action. PyMalloy values displayed directly as cell outputs use this setting.
 Check resolves the model and schemas, which can read data for schema discovery.
-A native `Model` or `Query` offers **Preview** using its existing
-connection using the model's timeout, inherited from its connection unless
+A native or browser `Model` or `Query` offers **Preview** using its existing
+connection and the model's timeout, inherited from its connection unless
 overridden. Materialized `Result` values show up to
 20 retained rows. See [notebook editing](../guide/notebook-editing.md) for the
 behavior of each value type.
 
-For native `Model`, `Query`, and `Result` values, omit `files` and `runtime`:
-their Python context supplies data access. A widget bound to a `Query` accepts
+For native or browser `Model`, `Query`, and `Result` values, omit `files` and
+`runtime`. Their retained context supplies data access. A widget bound to a `Query` accepts
 that query's name or `None`. Pass its `Model` to choose among the model's queries.
 
 A `Draft` can carry `pm.data(frame)` inputs. MalloyWidget sends their captured
-[Parquet](https://parquet.apache.org/docs/) columnar-file bytes as managed virtual files when compilation or execution is requested. This requires [PyArrow](https://arrow.apache.org/docs/python/), the Python
-columnar-data library, installed directly or through the headless extra. User `files` cannot shadow managed names. See the
+[Parquet](https://parquet.apache.org/docs/) columnar-file bytes as managed virtual files when compilation or execution is requested.
+User `files` cannot shadow managed names. See the
 [dataframe guide](../guide/dataframes.md).
 
 ## Validation and lifecycle
@@ -85,7 +87,7 @@ Construction with `auto_run=True` materializes captured inputs. With `False`,
 materialization waits for Check or Run. Attaching a browser view starts requested
 execution. Assignments after `close()` are rejected. Closing releases attached
 browser resources and publishes `status="closed"`. Retained snapshots remain
-readable. A native model or query supplies its own connection name and remains
+readable. A model or query supplies its own connection name and remains
 caller-owned.
 
 Source identity and captured imports use [`ModelSource`](runtime.md#modelsource).

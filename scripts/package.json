@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./bundle-notices": "./bundle-notices.ts",
+    "./compiler-bundle": "./compiler-bundle.ts",
     "./lexicon": "./lexicon.ts"
   },
   "scripts": {

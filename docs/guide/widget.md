@@ -2,8 +2,8 @@
 
 `MalloyWidget` runs [Malloy](https://docs.malloydata.dev/) queries in a notebook
 browser using [DuckDB WebAssembly](https://duckdb.org/docs/stable/clients/wasm/overview.html),
-a browser build of the SQL engine. Install the base package in your notebook's
-Python environment:
+a browser build of the SQL engine. For a browser-hosted Python kernel, follow
+[browser Python setup](browser-python.md). In a native Python kernel, install:
 
 ```sh
 pip install pymalloy
@@ -69,9 +69,10 @@ construct with `auto_run=False`.
 ## Choose source and runtime assets
 
 `source` accepts text, a `Draft`, or `ModelSource`, including captured Python
-inputs. Authored values, native models, queries, and results also have
-[notebook inspectors](notebook-editing.md). Native values use the existing Python
-connection and reject browser `files` and `runtime` options.
+inputs. Authored values, native and browser models, queries, and results also
+have [notebook inspectors](notebook-editing.md). Compiled models and queries use
+their existing connection. Omit `files` and `runtime` when supplying one of these
+values or a materialized result.
 
 The Malloy connection name defaults to `duckdb`. For an `analytics` source, pass
 `connection_name="analytics"`. It stays fixed for the widget's lifetime.
@@ -85,8 +86,9 @@ If frontend assets fail, inspect `widget.bundle_status`. Packaged JavaScript
 travels through anywidget's notebook communication channel. `widget.state`
 reports model compilation and query execution failures.
 
-For a custom [Pyodide](https://pyodide.org/en/stable/) host, which runs Python in
-the browser, load `micropip` and `lzma` with
-`await pyodide.loadPackage(["micropip", "lzma"])` before installing PyMalloy through
-micropip. Pyodide supplies `lzma` separately and the installed guidance reader
-uses it at import time.
+## Browser Python
+
+[Pyodide](https://pyodide.org/en/stable/) runs Python in a browser. The browser
+wheel includes Python authoring, widgets, and an asynchronous query API over the
+browser runtime. Follow [browser Python setup](browser-python.md) to install the
+wheel in a compatible notebook host, display a widget, or execute queries directly.

@@ -1,7 +1,7 @@
 # Edit an existing model
 
 `pm.read_model` parses a [Malloy](https://docs.malloydata.dev/) file into a draft
-with named editing slots. Install `pymalloy[headless]` for the parser.
+with named editing slots. Validate the edited model before saving it:
 
 ```python
 from pathlib import Path
@@ -17,7 +17,7 @@ query: total is orders -> { aggregate: revenue }
 """
 with TemporaryDirectory() as directory:
     path = Path(directory) / "orders.malloy"
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8", newline="\n")
     original = pm.read_model(path)
     candidate = original.sources(
         orders=original["orders"].replace(

@@ -1,0 +1,121 @@
+[workspace]
+name = "pymalloy"
+channels = ["conda-forge"]
+requires-pixi = ">=0.81.0"
+platforms = [
+  { name = "linux-x64", platform = "linux-64", glibc = "2.35" },
+  { name = "linux-arm64", platform = "linux-aarch64", glibc = "2.35" },
+  { name = "macos-x64", platform = "osx-64", macos = "14.0" },
+  { name = "macos-arm64", platform = "osx-arm64", macos = "14.0" },
+  "win-64",
+]
+
+[dependencies]
+nodejs = "==24.19.0"
+pnpm = "==11.10.0"
+git = ">=2.50,<3"
+
+[activation.env]
+CARGO_BUILD_JOBS = "2"
+UV_PYTHON_DOWNLOADS = "never"
+UV_PYTHON_PREFERENCE = "only-system"
+
+[feature.native.dependencies]
+uv = "==0.13.1"
+rust = "==1.99.0"
+cargo-deny = "==0.20.2"
+cargo-shear = "==1.13.4"
+c-compiler = "==2.0.0"
+cxx-compiler = "==2.0.0"
+pkg-config = "==0.29.2"
+actionlint = "==1.7.12"
+
+[feature.native.target.linux.dependencies]
+patchelf = "==0.19.2"
+alsa-lib = "*"
+at-spi2-core = "*"
+cairo = "*"
+libcups = "*"
+dbus = "*"
+libdrm = "*"
+libgbm = "*"
+libglib = "*"
+nspr = "*"
+nss = "*"
+libpango = "*"
+xorg-libx11 = "*"
+libxcb = "*"
+xorg-libxcomposite = "*"
+xorg-libxdamage = "*"
+xorg-libxext = "*"
+xorg-libxfixes = "*"
+libxkbcommon = "*"
+xorg-libxrandr = "*"
+fontconfig = "*"
+libfreetype6 = "*"
+fonts-conda-ecosystem = "*"
+
+[feature.native.target.linux.activation.env]
+LD_LIBRARY_PATH = "$CONDA_PREFIX/lib"
+FONTCONFIG_PATH = "$CONDA_PREFIX/etc/fonts"
+FONTCONFIG_FILE = "$CONDA_PREFIX/etc/fonts/fonts.conf"
+
+[feature.native.target.unix.activation.env]
+UV_PYTHON = "$CONDA_PREFIX/bin/python"
+
+[feature.native.target.win.activation.env]
+UV_PYTHON = "%CONDA_PREFIX%\\python.exe"
+
+[feature.native.target.osx.tasks]
+build-native = { cmd = "uv build --package pymalloy --no-sources --wheel --out-dir dist/native", env = { MACOSX_DEPLOYMENT_TARGET = "12.0" } }
+[feature.native.tasks]
+check-toolchain = { cmd = "python packages/python/rust_tools.py tools", description = "Verify the pinned Rust compiler and Cargo tools." }
+assets = { cmd = "pnpm build", depends-on = [
+  "setup-js",
+  "check-toolchain",
+], description = "Build JavaScript bundles and stage Python assets." }
+install = { cmd = "uv sync --all-packages --frozen", depends-on = [
+  "assets",
+], description = "Install the locked Python workspace and compile its extension." }
+setup = { depends-on = [
+  "install",
+], description = "Prepare the JavaScript and Python development workspaces." }
+check-locks = "uv lock --check && uv run --isolated --frozen --only-group release python scripts/check_release.py && uv run --isolated --frozen --only-group release python apps/e2e/pyodide/lock.py --check"
+lint-python = "uv run --frozen ruff check packages/python examples apps/e2e scripts && uv run --frozen ruff format --check packages/python examples apps/e2e scripts"
+type-python = "uv run --frozen ty check && uv run --frozen pyrefly check && uv run --frozen basedpyright"
+check-python = { depends-on = ["lint-python", "type-python"] }
+check-rust = "pnpm --filter @pymalloy/python check:rust"
+audit-rust = "pnpm --filter @pymalloy/python audit:rust"
+check = { depends-on = ["check-locks", "check-js", "check-python", "check-rust", "audit-rust"] }
+test-python = "uv run --frozen pytest -q"
+test-installed = "uv run --frozen pytest -m e2e -q"
+test-rust = "pnpm --filter @pymalloy/python test:rust"
+test = { depends-on = ["test-js", "test-python", "test-installed", "test-rust"] }
+floors = "uv run --isolated --frozen --only-group release python scripts/test_python_floors.py"
+install-browser = "pnpm --filter @pymalloy/e2e exec playwright install chromium"
+browser = "pnpm e2e"
+build-native = "uv build --package pymalloy --no-sources --wheel --out-dir dist/native"
+lint-workflows = "actionlint"
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py312.activation.env]
+UV_PROJECT_ENVIRONMENT = ".venv"
+
+[feature.py314.dependencies]
+python = "3.14.*"
+
+[feature.py314.activation.env]
+UV_PROJECT_ENVIRONMENT = ".venv-py314"
+
+[environments]
+default = ["native", "py312"]
+py314 = ["native", "py314"]
+js = []
+
+[tasks]
+setup-js = { cmd = "pnpm install --frozen-lockfile", description = "Install the locked JavaScript workspace." }
+check-js = "pnpm check"
+test-js = "pnpm test"
+canary = "pnpm canary"
+docs = "pnpm docs:build"

@@ -1,5 +1,6 @@
 """Execute Python documentation examples against the built workspace."""
 
+import os
 import re
 import shutil
 import subprocess
@@ -34,7 +35,7 @@ def test_python_documentation_examples(example_directory):
     examples = [
         (path.relative_to(ROOT), match.start(), match.group("code"))
         for path in pages
-        for match in FENCE.finditer(path.read_text())
+        for match in FENCE.finditer(path.read_text(encoding="utf-8"))
         if match.group("skip") is None
     ]
 
@@ -42,11 +43,12 @@ def test_python_documentation_examples(example_directory):
 
     def execute(example):
         path, offset, code = example
-        line = (ROOT / path).read_text()[:offset].count("\n") + 1
+        line = (ROOT / path).read_text(encoding="utf-8")[:offset].count("\n") + 1
         result = subprocess.run(
             [sys.executable, "-c", code],
             cwd=example_directory,
-            text=True,
+            encoding="utf-8",
+            env=dict(os.environ, PYTHONIOENCODING="utf-8"),
             capture_output=True,
             timeout=30,
             check=False,
@@ -55,6 +57,6 @@ def test_python_documentation_examples(example_directory):
             f"{path}:{line}\n{result.stdout}\n{result.stderr}"
         )
 
-    # Each fence gets a fresh interpreter. Bound concurrent compiler processes.
+    # Each fence gets a fresh interpreter. Bound concurrent interpreters.
     with ThreadPoolExecutor(max_workers=4) as executor:
         list(executor.map(execute, examples))

@@ -12,12 +12,14 @@ Use references/api.md for immutable Python composition and scoped source edits,
 references/artifacts.md for captured inputs and bundle replay, and
 references/triage.md for compiler and execution failures.
 
-Malloy owns language semantics. Connection.check(source) runs compiler checks and accepts
-optional documentation lint policies. Connection.validate(draft, checks) executes supplied counterexample queries against
-the configured data. Keep analytical intent and review in the producing project.
+Malloy owns language semantics. Connection.check(source) runs compiler checks and
+accepts documentation lint policies. Connection.validate(draft, checks) executes
+supplied counterexample queries against the configured data. Keep analytical
+intent and review in the producing project.
 
-Syntax construction, widgets, and agent discovery use the base package. Parsing existing
-Malloy and runtime checks need pymalloy[headless]. Browser widgets need no Deno.
+Install pymalloy for authoring, validation, native execution, widgets, and agent
+discovery. Browser Python uses the browser wheel and the widget's JavaScript
+runtime.
 """
 
 from __future__ import annotations

@@ -66,7 +66,7 @@ def bundle(
     SQL text and database identifiers without explicit bindings remain unchanged.
     The manifest records parameters, source identities and copied input hashes.
     """
-    from pymalloy._headless.compiler import Compiler
+    from pymalloy._compiler.host import Compiler
 
     accepted = source if isinstance(source, Validation) else None
     if connection_name is not None and (
@@ -178,7 +178,7 @@ def bundle(
     originals.extend(
         (url, text, destinations[url]) for url, text in sorted(source.imports.items())
     )
-    with closing(Compiler(timeout=timeout)) as compiler:
+    with closing(Compiler()) as compiler:
         for url, original, destination in originals:
             if time.monotonic() >= deadline:
                 raise TimeoutError("Source bundle deadline exceeded")

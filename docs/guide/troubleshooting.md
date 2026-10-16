@@ -9,13 +9,14 @@ next check:
 | `CompilationError` caused by `SchemaError` | The engine failed a schema probe                           | Inspect `error.__cause__.sql` and its original cause, then check the connection and files |
 | `ExecutionError`                           | SQL compiled but the engine rejected execution             | Retain `error.context` and `error.__cause__`, then replay with the same data and settings |
 | `ClosedError`                              | A connection or model was closed                           | Create a connection or compile another model                                              |
-| `CompilerError`                            | Compiler process or protocol failed                        | Retain diagnostics and compile another model                                              |
+| `CompilerError`                            | Embedded compiler or boundary validation failed            | Retain diagnostics and compile another model                                              |
 | `ValidationError`                          | A check failed or strict warnings were rejected            | Read `error.report.checks` and its counterexamples before revising the definition         |
 | `TimeoutError` during SQL                  | The statement exceeded its budget                          | Reduce the query or increase `timeout`, then reuse a healthy model                        |
 | `TimeoutError` during compiler work        | An active compiler request exceeded its budget             | Compile another model                                                                     |
 | Missing or wrong file                      | Import URL, process directory, and data search path differ | Inspect each separately and use absolute paths to disambiguate                            |
 | Widget fails to load                       | Packaged assets or browser worker policy                   | Inspect `widget.bundle_status` and browser errors                                         |
 | Widget query fails                         | Source diagnostics, data URL, or network permission        | Inspect `widget.state["error"]` and `diagnostics`                                         |
+| Native API requested in Pyodide            | A synchronous native entry point was selected              | Use `pymalloy.browser.connect()` and await browser operations                             |
 
 ## Diagnose file access
 

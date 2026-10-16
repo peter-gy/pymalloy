@@ -221,6 +221,28 @@ def test_inline_imports_do_not_shadow_physical_files(tmp_path):
     assert pm.connect().model(ONE).query().run().to_polars().item() == 1
 
 
+@pytest.mark.parametrize("reference", ["relative", "uri", "absolute", "localhost"])
+def test_local_model_imports_preserve_unicode_and_spaces(tmp_path, reference):
+    directory = tmp_path / "models café with spaces"
+    directory.mkdir()
+    imported = directory / "base.malloy"
+    text = "source: numbers is duckdb.sql('SELECT 42 AS value')"
+    imported.write_text(text, encoding="utf-8")
+    target = {
+        "relative": "base.malloy",
+        "uri": imported.as_uri(),
+        "absolute": imported.as_posix(),
+        "localhost": imported.as_uri().replace("file:///", "file://localhost/"),
+    }[reference]
+    root = directory / "main.malloy"
+    root.write_text(
+        f'import "{target}"\nrun: numbers -> {{select: value}}', encoding="utf-8"
+    )
+    with pm.connect() as connection, connection.model(root) as model:
+        assert model.query().run().to_pylist() == [{"value": 42}]
+        assert tuple(model.source().imports.values()) == (text,)
+
+
 def test_model_reload_observes_new_schema_and_imports(tmp_path):
     data = tmp_path / "data.csv"
     data.write_text("value\n1\n")
@@ -504,11 +526,40 @@ SELECT * FROM (WITH "orders.csv" AS (SELECT 1 AS value) SELECT * FROM "orders.cs
         ), sql
 
 
-def test_compiler_memory_budget_releases_a_borrowed_connection():
-    with duckdb.connect() as connection:
-        with pytest.raises(pm.errors.CompilerError, match="Compiler process stopped"):
-            pm.connect(database=connection, compiler_memory_mb=1).model(ONE)
-        assert connection.execute("SELECT 42").fetchone() == (42,)
+def test_active_compiler_timeout_closes_its_model_and_preserves_the_connection():
+    source = (
+        "\n".join(
+            f"source: value_{index} is duckdb.sql('SELECT {index} AS value')"
+            for index in range(10_000)
+        )
+        + "\nrun: value_0 -> { select: value }"
+    )
+    with duckdb.connect() as native, pm.connect(native) as connection:
+        model = connection.model(ONE)
+        sibling = connection.model(ONE)
+        assert model.query().run().to_pylist() == [{"value": 1}]
+        with pytest.raises(TimeoutError, match="(?i)deadline|exceeded|timed out"):
+            model.query(malloy=source).run(timeout=0.01)
+        assert model.closed
+        model.close()
+        assert sibling.query().run().to_pylist() == [{"value": 1}]
+        assert native.execute("SELECT 42").fetchone() == (42,)
+        with connection.model(ONE) as replacement:
+            assert replacement.query().run().to_pylist() == [{"value": 1}]
+
+
+def test_compiler_memory_budget_preserves_siblings_and_a_borrowed_connection():
+    with duckdb.connect() as native, pm.connect(native) as connection:
+        sibling = connection.model(ONE)
+        with (
+            pm.connect(native, compiler_memory_mb=1) as constrained,
+            pytest.raises(pm.errors.CompilerError, match="(?i)heap|memory"),
+        ):
+            constrained.model(ONE)
+        assert sibling.query().run().to_pylist() == [{"value": 1}]
+        assert native.execute("SELECT 42").fetchone() == (42,)
+        with connection.model(ONE) as replacement:
+            assert replacement.query().run().to_pylist() == [{"value": 1}]
 
 
 def test_model_context_releases_owned_resources_and_preserves_borrowed_transaction():
@@ -690,16 +741,16 @@ def test_native_config_restricts_external_reads_before_schema_discovery(tmp_path
         "enable_external_access": False,
         "lock_configuration": True,
     }
-    source = f"run: duckdb.table('{allowed}') -> {{ select: amount }}"
+    source = f"run: duckdb.table('{allowed.as_posix()}') -> {{ select: amount }}"
     with pm.connect(config=config).model(source) as model:
         assert model.query().run().to_pylist() == [{"amount": 42}]
         with pytest.raises(CompilationError, match="disabled|Permission"):
             model.query(
-                malloy=f"run: duckdb.table('{denied}') -> {{ select: amount }}"
+                malloy=f"run: duckdb.table('{denied.as_posix()}') -> {{ select: amount }}"
             ).run()
         assert model.query().run().to_pylist() == [{"amount": 42}]
     report = pm.connect(config=config).check(
-        f"run: duckdb.table('{denied}') -> {{ select: amount }}"
+        f"run: duckdb.table('{denied.as_posix()}') -> {{ select: amount }}"
     )
     assert not report.ok
 

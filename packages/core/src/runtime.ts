@@ -21,7 +21,7 @@ type Prepared = ReturnType<CompiledModel["prepare"]> extends Job<infer T> ? T : 
 interface ModelDriver {
   assertAvailable(): void;
   compile<T>(job: Job<T>): Promise<T>;
-  run(sql: string, malloy?: Result["malloy"]): Promise<Result>;
+  run(sql: string, malloy?: Result["malloy"], limit?: number): Promise<Result>;
   submit<T>(task: () => Promise<T>, options?: QueryOptions): Promise<T>;
   release(): void;
 }
@@ -78,8 +78,8 @@ export class Model {
     return Query.create(
       info,
       (options) => execute(options, (prepared) => prepared.sql),
-      (options) =>
-        execute(options, (prepared, driver) => driver.run(prepared.sql, prepared.malloy)),
+      (options, limit) =>
+        execute(options, (prepared, driver) => driver.run(prepared.sql, prepared.malloy, limit)),
     );
   }
   document(options: DocumentOptions = {}) {
@@ -105,7 +105,7 @@ export class Query implements QueryDescriptor {
   private constructor(
     info: QueryDescriptor,
     private readonly compile: (options: QueryOptions) => Promise<string>,
-    private readonly execute: (options: QueryOptions) => Promise<Result>,
+    private readonly execute: (options: QueryOptions, limit?: number) => Promise<Result>,
   ) {
     this.name = info.name;
     this.kind = info.kind;
@@ -115,7 +115,7 @@ export class Query implements QueryDescriptor {
   static create(
     info: QueryDescriptor,
     compile: (options: QueryOptions) => Promise<string>,
-    execute: (options: QueryOptions) => Promise<Result>,
+    execute: (options: QueryOptions, limit?: number) => Promise<Result>,
   ): Query {
     return new Query(info, compile, execute);
   }
@@ -125,11 +125,16 @@ export class Query implements QueryDescriptor {
   async run(options: QueryOptions = {}): Promise<Result> {
     return this.execute(options);
   }
+  async preview(limit = 20, options: QueryOptions = {}): Promise<Result> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 10_000)
+      throw new RangeError("Preview limit must be an integer from 1 to 10000");
+    return this.execute(options, limit);
+  }
 }
 
 interface Execution {
   host(): Host;
-  run(sql: string, malloy?: Result["malloy"]): Promise<Result>;
+  run(sql: string, malloy?: Result["malloy"], limit?: number): Promise<Result>;
   submit<T>(task: () => Promise<T>, options?: QueryOptions): Promise<T>;
   assertAvailable(): void;
   release(): void;
@@ -251,9 +256,9 @@ export class Runtime {
         this.assertHealthy();
       },
       compile: (job) => drive(job, execution.host()),
-      run: (sql, template) => {
+      run: (sql, template, limit) => {
         this.assertActive();
-        return execution.run(sql, template);
+        return execution.run(sql, template, limit);
       },
       submit: (task, options) => execution.submit(task, options),
       release: () => {

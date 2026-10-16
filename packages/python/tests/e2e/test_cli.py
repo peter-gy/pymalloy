@@ -121,7 +121,7 @@ def test_cli_formatter_emits_source_and_checks_without_writing(tmp_path: Path):
     assert path.read_text() == ONE
     assert result.stdout != ONE
     assert cli("format", path, "--check").returncode == 1
-    path.write_text(result.stdout)
+    path.write_text(result.stdout, encoding="utf-8", newline="\n")
     checked = cli("format", path, "--check")
     assert checked.returncode == 0
     assert checked.stdout == ""

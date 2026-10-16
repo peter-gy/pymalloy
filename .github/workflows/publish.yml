@@ -15,9 +15,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build package
-    runs-on: ubuntu-latest
+  verify:
+    name: Verify release tag
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -25,20 +25,61 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up workspace
+      - name: Set up release tools
         uses: ./.github/actions/setup
-
+        with:
+          build: "false"
       - name: Verify the release tag
-        run: scripts/check-release.sh
+        run: |-
+          pixi run --locked uv run --isolated --frozen --only-group release python scripts/check_release.py --tag "$RELEASE_TAG"
 
-      - name: Build distributions
-        run: uv build --package pymalloy --no-sources --out-dir dist
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+  wheels:
+    name: Build distributions
+    needs: verify
+    uses: ./.github/workflows/wheels.yml
 
-      - name: Check distribution metadata
-        run: uv run --frozen --only-group release twine check dist/pymalloy-*
+  build:
+    name: Check release distributions
+    needs:
+      - wheels
+      - checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Run installed-package tests
-        run: uv run --frozen pytest -m e2e -q
+      - name: Set up release tools
+        uses: ./.github/actions/setup
+        with:
+          build: "false"
+      - name: Download native wheels
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: dist
+
+      - name: Download browser wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: browser
+          path: dist
+
+      - name: Download source archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: source
+          path: dist
+
+      - name: Validate the complete release set
+        run: |
+          pixi run --locked uv run --isolated --frozen --only-group release python scripts/check_release.py --distributions dist
+          pixi run --locked uv run --isolated --frozen --only-group release twine check --strict dist/pymalloy-*
 
       - name: Upload distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -51,7 +92,7 @@ jobs:
   attest:
     name: Build provenance
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       attestations: write
@@ -72,7 +113,7 @@ jobs:
   pypi:
     name: Publish to PyPI
     needs: attest
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:
       name: pypi
@@ -98,7 +139,7 @@ jobs:
   release:
     name: GitHub release
     needs: pypi
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
@@ -115,3 +156,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: gh release create "$TAG" dist/pymalloy-* --verify-tag --generate-notes --title "$TAG"
+  checks:
+    name: Source checks
+    needs: verify
+    uses: ./.github/workflows/checks.yml

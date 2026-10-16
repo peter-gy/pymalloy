@@ -3,7 +3,6 @@
 `pymalloy.export` prepares [Malloy](https://docs.malloydata.dev/documentation/)
 source for notebooks and publishes source bundles. Malloy compiles the queries.
 [DuckDB](https://duckdb.org/docs/stable/) supplies native schemas and execution.
-Preparation requires `pymalloy[headless]`.
 
 ```python
 from pymalloy.export import prepare, jupyter
@@ -28,8 +27,7 @@ preparation, including imports, compilation, source capture, and SQL classificat
 supplies discoverable file references. Native profiles restrict external file
 access to discovered and declared paths, plus inferred COPY destinations. This
 restriction applies during preparation and generated execution. Native file aliases must resolve to their
-declared location relative to `data_root`, or use an absolute path. `Profile`
-defines `PRECOMPILED`, `HEADLESS`, and `WIDGET`.
+declared location relative to `data_root`, or use an absolute path.
 
 `remote_files` declares absolute HTTP(S) URLs used inside SQL readers. Direct
 Malloy table URLs are discovered automatically. Remote-enabled native profiles
@@ -58,10 +56,11 @@ is frozen and raises `ValueError` for any other kind. `pymalloy.analysis.Markdow
 text: str)` is re-exported as `pymalloy.export.MarkdownCell` for prose cells. Renderers preserve cell order and COPY dependencies.
 
 `Profile` is `pymalloy.export.Profile`, a string enum with `PRECOMPILED`,
-`HEADLESS`, and `WIDGET` members. Native profiles require file aliases resolving
-through `data_root`. A precompiled document has `source=None`. Headless and widget
-documents require a captured `ModelSource`. Invalid profiles, inconsistent source,
-file bindings, URLs, or extension settings raise `ValueError`.
+`NATIVE`, and `WIDGET` members. The `precompiled` and `native` profiles require
+file aliases resolving through `data_root`. A precompiled document has
+`source=None`. The `native` and `widget` profiles require a captured `ModelSource`.
+Invalid profiles, inconsistent source, file bindings, URLs, or extension settings
+raise `ValueError`.
 
 ## Renderers
 
@@ -70,7 +69,8 @@ file bindings, URLs, or extension settings raise `ValueError`.
 
 `marimo.render(document, *, output_path)` returns Python source. Running that
 notebook requires `marimo` plus the dependencies declared by its execution profile. `jupyter.render(document, *, output_path)` returns notebook JSON.
-The output path determines portable relative data paths. Rendering returns text
+The output path determines relative data paths. Paths on another Windows drive
+remain absolute and refer to that drive when the notebook runs. Rendering returns text
 and does not write the output file or execute queries.
 
 ## Source bundles
@@ -80,9 +80,9 @@ givens=None, connection_name=None, format=True, timeout=120) -> SourceBundle`
 
 Write plain `.malloy` sources, captured imports, copied inputs, `model.py`,
 `replay.py`, and `bundle.json` into a new directory. The parent must exist.
-Existing destinations and notebook document sources are rejected. Native parsing
-and optional formatting require the headless compiler. Publication occurs after
-source and file preparation succeeds.
+Existing destinations and notebook document sources are rejected. Native wheels
+supply parsing and optional formatting. Publication occurs after source and file
+preparation succeeds.
 
 See [bundle models and inputs](../guide/bundles.md) for a complete validation and
 replay workflow.

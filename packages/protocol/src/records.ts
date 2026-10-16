@@ -1,4 +1,4 @@
-import type { Request, Response } from "./headless";
+import type { HostAnswers, Request, Response } from "./compiler";
 import type {
   CheckReport,
   Inspection,
@@ -17,6 +17,7 @@ import type {
 export interface Records {
   request: Request;
   response: Response;
+  hostAnswers: HostAnswers;
   input: Input;
   notebookReply: NotebookReply;
   widgetMessage: WidgetMessage;

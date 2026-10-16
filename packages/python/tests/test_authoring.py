@@ -174,7 +174,7 @@ def test_python_roundtrip_retains_semantics_unicode_imports_and_parameters(
     assert original.text == text
     assert original.names == ("a`b", "other", "answer")
     generated = tmp_path / "generated.py"
-    generated.write_text(original.to_python(name="restored"))
+    generated.write_text(original.to_python(name="restored"), encoding="utf-8")
     restored = runpy.run_path(str(generated))["restored"]
     assert restored["a`b"]["path\\name"].equals(pm.col("value"))
     for trivia in [

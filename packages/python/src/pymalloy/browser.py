@@ -1,9 +1,11 @@
-"""Runtime assets for browser widgets."""
+"""Browser runtime assets and asynchronous Pyodide execution."""
 
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-__all__ = ["Bundle", "Runtime"]
+from pymalloy._browser import Connection, Model, Query, Result, connect
+
+__all__ = ["Bundle", "Connection", "Model", "Query", "Result", "Runtime", "connect"]
 
 
 @dataclass(frozen=True)

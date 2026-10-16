@@ -6,6 +6,11 @@ import { join, resolve } from "node:path";
 import { build } from "vite";
 
 const root = resolve(import.meta.dirname, "..");
+const pnpm = process.env.npm_execpath;
+if (!pnpm) throw new Error("Run packed-package checks with pnpm canary.");
+const pnpmIsJavaScript = /\.(?:c|m)?js$/.test(pnpm);
+const pnpmExecutable = pnpmIsJavaScript ? process.execPath : pnpm;
+const pnpmArguments = pnpmIsJavaScript ? [pnpm] : [];
 const require = createRequire(import.meta.url);
 const directory = await mkdtemp(join(tmpdir(), "malloy-consumer-"));
 try {
@@ -13,7 +18,10 @@ try {
   for (const name of ["core", "duckdb", "node", "browser"]) {
     const cwd = join(root, "packages", name);
     const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf8"));
-    execFileSync("pnpm", ["pack", "--pack-destination", directory], { cwd, stdio: "pipe" });
+    execFileSync(pnpmExecutable, [...pnpmArguments, "pack", "--pack-destination", directory], {
+      cwd,
+      stdio: "pipe",
+    });
     const filename = (await readdir(directory)).find((file) =>
       file.startsWith(pkg.name.replace("@", "").replace("/", "-")),
     );
@@ -41,7 +49,10 @@ try {
     join(directory, "pnpm-workspace.yaml"),
     JSON.stringify({ overrides: dependencies }),
   );
-  execFileSync("pnpm", ["install", "--ignore-scripts"], { cwd: directory, stdio: "inherit" });
+  execFileSync(pnpmExecutable, [...pnpmArguments, "install", "--ignore-scripts"], {
+    cwd: directory,
+    stdio: "inherit",
+  });
   await writeFile(
     join(directory, "consumer.ts"),
     `
@@ -89,7 +100,10 @@ try {
         files: ["consumer.ts"],
       }),
     );
-    execFileSync("pnpm", ["exec", "tsc"], { cwd: directory, stdio: "inherit" });
+    execFileSync(pnpmExecutable, [...pnpmArguments, "exec", "tsc"], {
+      cwd: directory,
+      stdio: "inherit",
+    });
   }
   await writeFile(
     join(directory, "native.mjs"),
@@ -139,8 +153,9 @@ try {
     },
   });
   execFileSync(
-    "pnpm",
+    pnpmExecutable,
     [
+      ...pnpmArguments,
       "--filter",
       "@pymalloy/e2e",
       "exec",

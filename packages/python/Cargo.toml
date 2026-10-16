@@ -1,0 +1,74 @@
+[package]
+name = "pymalloy-native"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+include = [
+  "/Cargo.toml",
+  "/Cargo.lock",
+  "/build.rs",
+  "/rust/**",
+  "/pyproject.toml",
+  "/README.md",
+  "/hatch_build.py",
+  "/build_backend.py",
+  "/native_archive.py",
+  "/native-archives.json",
+  "/src/**/*.py",
+  "/src/**/*.pyi",
+  "/src/pymalloy/py.typed",
+  "/src/pymalloy/_assets/**",
+]
+
+[package.metadata.pymalloy]
+bootstrap-revision = 1
+
+[package.metadata.pymalloy.rust-tools]
+cargo-deny = "0.20.2"
+cargo-shear = "1.13.4"
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+path = "rust/lib.rs"
+
+[dependencies]
+deno_core = { version = "=0.412.0", features = ["include_icu_data"] }
+deno_error = "=0.7.1"
+deno_web = "=0.290.0"
+deno_webidl = "=0.259.0"
+getrandom = "=0.4.2"
+pyo3 = { version = "=0.29.3", features = ["abi3-py312"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.150"
+tokio = { version = "=1.53.3", features = ["rt", "time"] }
+
+[build-dependencies]
+pyo3-build-config = "=0.29.3"
+serde_json = "=1.0.150"
+sha2 = "=0.10.9"
+toml = "=1.1.2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
+[lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+unfulfilled_lint_expectations = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+allow_attributes_without_reason = "deny"

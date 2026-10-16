@@ -30,7 +30,6 @@
   },
   "devDependencies": {
     "@anywidget/types": "catalog:",
-    "@pymalloy/scripts": "workspace:*",
     "@stylexjs/unplugin": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",

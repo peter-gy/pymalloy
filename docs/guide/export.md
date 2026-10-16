@@ -3,8 +3,7 @@
 Prepare [Malloy](https://docs.malloydata.dev/) query cells, then render them as a
 [marimo](https://docs.marimo.io/) reactive Python notebook or
 [Jupyter](https://docs.jupyter.org/) notebook document.
-Install `pymalloy[headless]` for preparation. Run from the repository root to use
-its `examples/orders.malloy` fixture:
+Run from the repository root to use its `examples/orders.malloy` fixture:
 
 ```python
 from pathlib import Path
@@ -21,7 +20,8 @@ with TemporaryDirectory() as directory:
 ```
 
 Expected output is `['orders.by_region']`. Renderers return text.
-`output_path` determines relative data references. The example writes temporary
+`output_path` determines relative data references. Paths on another Windows drive
+remain absolute. The example writes temporary
 notebooks. For sharing, choose a persistent output directory and keep the data
 at the referenced relative paths. Use [source bundles](bundles.md) to copy inputs.
 
@@ -36,12 +36,12 @@ pymalloy export examples/orders.malloy --format marimo --query orders.by_region 
 | Profile                 | Generated notebook behavior                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------------------- |
 | `precompiled` (default) | Executes embedded SQL with native [DuckDB](https://duckdb.org/docs/stable/), an embedded database |
-| `headless`              | Compiles captured `ModelSource` and runs queries with `pymalloy[headless]`                        |
+| `native`                | Compiles captured `ModelSource` and runs queries with `pymalloy`                                  |
 | `widget`                | Sends captured source and virtual files to browser widgets with `pymalloy`                        |
 
-Pass `profile=` or `--profile`. Preparation requires the headless compiler for
-every profile. Install the notebook host and dependencies declared in the
-artifact to run it. Widget execution uses browser assets. Run Jupyter kernels
+Pass `profile=` or `--profile`. Preparation uses the packaged compiler and native
+DuckDB for every profile. Install the notebook host and dependencies declared in
+the artifact to run it. Widget execution uses browser assets. Run Jupyter kernels
 from the exported notebook's directory so relative references resolve correctly.
 
 Documents preserve Markdown, Malloy, and SQL cell order. Plain models select

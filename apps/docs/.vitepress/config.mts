@@ -16,6 +16,7 @@ const sections = [
       { text: "Author and validate a model", link: "/guide/authoring" },
       { text: "Edit an existing model", link: "/guide/editing" },
       { text: "Run queries from Python", link: "/guide/running" },
+      { text: "Run Python in the browser", link: "/guide/browser-python" },
       { text: "Connect files and catalog tables", link: "/guide/data" },
       { text: "Parameterize queries with givens", link: "/guide/givens" },
       { text: "Capture Python data", link: "/guide/dataframes" },
@@ -31,6 +32,7 @@ const sections = [
     items: [
       { text: "Python API", link: "/reference/python" },
       { text: "Python runtime API", link: "/reference/runtime" },
+      { text: "Browser Python API", link: "/reference/browser-python" },
       { text: "Widget API", link: "/reference/widget" },
       { text: "Analysis records", link: "/reference/analysis" },
       { text: "Python authoring API", link: "/reference/authoring" },

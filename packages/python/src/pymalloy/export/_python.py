@@ -31,12 +31,19 @@ def variable(label: str, used: set[str]) -> str:
     return name
 
 
+def _notebook_path(path: Path, parent: Path) -> str:
+    path = path.absolute()
+    if path.drive.casefold() != parent.drive.casefold():
+        return path.as_posix()
+    return Path(os.path.relpath(path, parent)).as_posix()
+
+
 def data_setup(document: Document, output_path: str | Path, base: str) -> str:
     parent = Path(output_path).resolve().parent
-    root = Path(os.path.relpath(document.data_root, parent)).as_posix()
+    root = _notebook_path(document.data_root, parent)
     setup = [f"data_root = ({base} / {root!r}).resolve()"]
     if document.database is not None:
-        database = Path(os.path.relpath(document.database, parent)).as_posix()
+        database = _notebook_path(document.database, parent)
         setup.append(f"database = ({base} / {database!r}).resolve()")
     if document.profile != "widget":
         setup.append(file_configuration(document))
@@ -127,7 +134,7 @@ def connection_setup(document: Document, output_path: str | Path, base: str) -> 
 def model_source_setup(document: Document) -> str:
     source = document.source
     if source is None:
-        raise ValueError("The headless and widget profiles require model source")
+        raise ValueError("The native and widget profiles require model source")
     lines = [
         "model_source = ModelSource(",
         f"    url={source.url!r},",
@@ -160,8 +167,8 @@ def files_setup(document: Document, output_path: str | Path, base: str) -> str:
     parent = Path(output_path).resolve().parent
     lines = ["files = {"]
     for alias, path in sorted(document.files.items()):
-        relative = Path(os.path.relpath(path, parent)).as_posix()
-        lines.append(f"    {alias!r}: ({base} / {relative!r}).read_bytes(),")
+        reference = _notebook_path(path, parent)
+        lines.append(f"    {alias!r}: ({base} / {reference!r}).read_bytes(),")
     lines.append("}")
     return "\n".join(lines)
 

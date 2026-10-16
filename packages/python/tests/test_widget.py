@@ -1,6 +1,7 @@
 import math
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import msgspec
 import pytest
@@ -8,6 +9,33 @@ from traitlets import TraitError
 
 from pymalloy import MalloyWidget, ModelSource, browser
 from pymalloy._protocol.records import Input
+
+
+def test_browser_comm_decodes_null_and_exact_integer_state(monkeypatch):
+    widget = MalloyWidget("run: example")
+    try:
+        null = object()
+        state = browser_state(widget, rows=[{"value": 9007199254740993}], error=null)
+        monkeypatch.setitem(sys.modules, "pyodide.ffi", SimpleNamespace(jsnull=null))
+        monkeypatch.setattr(sys, "platform", "emscripten")
+        widget.set_state({"_state": state})
+        assert widget.state["error"] is None
+        assert widget.state["rows"] == ({"value": 9007199254740993},)
+    finally:
+        widget.close()
+
+
+def test_browser_comm_clears_query_selection(monkeypatch):
+    widget = MalloyWidget("run: example", query="example")
+    try:
+        null = object()
+        monkeypatch.setitem(sys.modules, "pyodide.ffi", SimpleNamespace(jsnull=null))
+        monkeypatch.setattr(sys, "platform", "emscripten")
+        widget.set_state({"query": null})
+        assert widget.query is None
+        assert widget.get_state()["_input"]["query"] is None
+    finally:
+        widget.close()
 
 
 def browser_state(widget, rows=None, **changes):
@@ -386,18 +414,18 @@ def test_widget_rejected_backend_changes_preserve_usable_inputs(attribute):
         widget.close()
 
 
-def test_base_installation_supports_widgets_documents_and_cli_help():
+def test_widgets_documents_and_cli_help_keep_data_and_notebook_imports_lazy():
     program = """
 import importlib.abc
 import io
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
-class HeadlessImports(importlib.abc.MetaPathFinder):
+class DataImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in {'duckdb', 'deno', 'polars', 'pyarrow', 'marimo'}:
-            raise AssertionError(f'Headless dependency imported: {fullname}')
-sys.meta_path.insert(0, HeadlessImports())
+        if fullname.split('.')[0] in {'duckdb', 'polars', 'pyarrow', 'marimo'}:
+            raise AssertionError(f'Data or notebook dependency imported: {fullname}')
+sys.meta_path.insert(0, DataImports())
 import pymalloy as pm
 assert {'MalloyWidget', 'connect', 'Connection', 'parse', 'format'} <= set(dir(pm))
 from pymalloy import MalloyWidget
@@ -424,31 +452,6 @@ for arguments in [['--help'], ['export', '--help'], ['check', '--help'], ['forma
     assert 'usage:' in output.getvalue(), arguments
 """
     subprocess.run([sys.executable, "-c", program], check=True, timeout=20)
-
-
-def test_cli_reports_the_extra_required_for_export(tmp_path):
-    program = """
-import importlib.abc
-import sys
-class HeadlessImports(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname == 'duckdb':
-            raise ModuleNotFoundError('duckdb')
-sys.meta_path.insert(0, HeadlessImports())
-from pymalloy.cli import main
-sys.argv = ['pymalloy', 'export', 'model.malloy', '--format', 'marimo', '-o', sys.argv[1]]
-main()
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", program, str(tmp_path / "report.py")],
-        capture_output=True,
-        text=True,
-        timeout=20,
-        check=False,
-    )
-    assert result.returncode == 1
-    assert result.stdout == ""
-    assert "pip install 'pymalloy[headless]'" in result.stderr
 
 
 def test_widget_diagnostics_preserve_source_locations_and_clear_on_recovery():

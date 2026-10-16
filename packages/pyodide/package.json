@@ -1,0 +1,24 @@
+{
+  "name": "@pymalloy/pyodide",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "vp build",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@malloy-runtime/browser": "workspace:*",
+    "@malloy-runtime/compiler": "workspace:*",
+    "@pymalloy/protocol": "workspace:*",
+    "process": "catalog:",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@malloy-runtime/node": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

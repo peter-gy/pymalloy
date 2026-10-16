@@ -1,8 +1,10 @@
 # Run queries from Python
 
-Install `pymalloy[headless]` to compile [Malloy](https://docs.malloydata.dev/) and
-execute SQL with [DuckDB](https://duckdb.org/docs/stable/), an embedded database.
-Use a connection to scope the database and its compiled models:
+PyMalloy compiles [Malloy](https://docs.malloydata.dev/) and executes SQL with
+[DuckDB](https://duckdb.org/docs/stable/), an embedded database.
+Use a connection to scope the database and its compiled models. For
+[Python running in a browser](browser-python.md), use the asynchronous
+`pymalloy.browser` connection.
 
 ```python
 import pymalloy as pm
@@ -70,8 +72,9 @@ compiler failure. See [errors](../reference/runtime.md#errors).
 
 ## Keep the right owner alive
 
-Reuse a model while source and schemas stay fixed. Each model owns one compiler
-process. `model.close()` invalidates its queries and leaves sibling models usable.
+Reuse a model while source and schemas stay fixed. Each model owns one embedded
+compiler on a dedicated thread. `model.close()` invalidates its queries and leaves
+sibling models usable.
 Models and queries retain the connection. `con.close()` settles work and closes
 its child models and owned engine. Both connection and model support `with`.
 

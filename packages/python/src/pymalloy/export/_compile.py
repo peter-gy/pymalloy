@@ -6,15 +6,15 @@ from contextlib import ExitStack, closing
 from glob import has_magic
 from pathlib import Path, PureWindowsPath
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
 import duckdb
 
 import pymalloy as pm
-from pymalloy._headless.compiler import Compiler
-from pymalloy._headless.runtime import remaining
+from pymalloy._compiler.host import Compiler
 from pymalloy._model.file_access import check_files, settings
-from pymalloy._model.source import read_text
+from pymalloy._model.source import local_path, read_text
+from pymalloy._runtime.model import remaining
 from pymalloy.analysis import QueryCell as CompiledNotebookQuery
 from pymalloy.export._document import (
     Document,
@@ -55,7 +55,7 @@ def compile_document(
     extensions = native_extensions(extensions, profile, remote)
     registered = dict(files)
     with ExitStack() as resources:
-        parser = resources.enter_context(closing(Compiler(timeout=remaining(deadline))))
+        parser = resources.enter_context(closing(Compiler()))
         catalog = None
         pending = [path.resolve()]
         visited = set()
@@ -74,7 +74,7 @@ def compile_document(
                 alias = table.path
                 if alias.startswith("'") and alias.endswith("'"):
                     alias = alias[1:-1].replace("''", "'")
-                scheme = urlsplit(alias).scheme
+                scheme = "" if Path(alias).is_absolute() else urlsplit(alias).scheme
                 if scheme in {"http", "https"}:
                     remote.add(alias)
                     continue
@@ -127,14 +127,15 @@ def compile_document(
                         continue
                 registered[alias] = location.resolve()
             for imported in parsed.imports:
-                target = urlsplit(imported.url)
-                if target.scheme != "file":
+                try:
+                    target = local_path(imported.url)
+                except ValueError:
                     if profile != Profile.WIDGET:
                         continue
                     raise ValueError(
                         "MalloyWidget export source imports must be local files"
-                    )
-                pending.append(Path(unquote(target.path)))
+                    ) from None
+                pending.append(target)
         if catalog is not None:
             catalog.close()
         if profile != Profile.WIDGET:

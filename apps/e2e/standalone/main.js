@@ -6,18 +6,9 @@ const pending = {};
 const snapshots = new Map();
 let firstResult;
 const lifetime = new AbortController();
-const pyodide = await globalThis.loadPyodide();
-// Agent guidance uses Python's lzma module, shipped separately by Pyodide.
-await pyodide.loadPackage(["micropip", "lzma"]);
-pyodide.globals.set("package_index", new URL("/simple", location.href).href);
+const pyodide = await python();
 pyodide.globals.set("asset_root", new URL("/duckdb/", location.href).href);
 await pyodide.runPythonAsync(`
-import importlib.util
-import importlib.metadata
-import micropip
-await micropip.install("pymalloy", index_urls=package_index)
-assert "deno" not in {dist.metadata["Name"].lower() for dist in importlib.metadata.distributions()}
-assert importlib.util.find_spec("duckdb") is None
 from pymalloy.agent import agent_skill
 assert agent_skill().file("references/api.md").is_file()
 import json
@@ -195,3 +186,4 @@ close.addEventListener("click", async () => {
 });
 kernelStatus.textContent = "Python ready";
 publish();
+import { python } from "./python.js";
