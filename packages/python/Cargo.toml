@@ -38,17 +38,17 @@ deno_core = { version = "=0.412.0", features = ["include_icu_data"] }
 deno_error = "=0.7.1"
 deno_web = "=0.290.0"
 deno_webidl = "=0.259.0"
-getrandom = "=0.4.2"
+getrandom = "=0.4.3"
 pyo3 = { version = "=0.29.3", features = ["abi3-py312"] }
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.150"
+serde_json = "=1.0.154"
 tokio = { version = "=1.53.3", features = ["rt", "time"] }
 
 [build-dependencies]
 pyo3-build-config = "=0.29.3"
-serde_json = "=1.0.150"
-sha2 = "=0.10.9"
-toml = "=1.1.2"
+serde_json = "=1.0.154"
+sha2 = "=0.11.1"
+toml = "=1.1.8"
 
 [profile.release]
 lto = "thin"
