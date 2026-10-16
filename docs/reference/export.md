@@ -69,7 +69,8 @@ raise `ValueError`.
 
 `marimo.render(document, *, output_path)` returns Python source. Running that
 notebook requires `marimo` plus the dependencies declared by its execution profile. `jupyter.render(document, *, output_path)` returns notebook JSON.
-The output path determines portable relative data paths. Rendering returns text
+The output path determines relative data paths. Paths on another Windows drive
+remain absolute and refer to that drive when the notebook runs. Rendering returns text
 and does not write the output file or execute queries.
 
 ## Source bundles

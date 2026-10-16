@@ -20,7 +20,8 @@ with TemporaryDirectory() as directory:
 ```
 
 Expected output is `['orders.by_region']`. Renderers return text.
-`output_path` determines relative data references. The example writes temporary
+`output_path` determines relative data references. Paths on another Windows drive
+remain absolute. The example writes temporary
 notebooks. For sharing, choose a persistent output directory and keep the data
 at the referenced relative paths. Use [source bundles](bundles.md) to copy inputs.
 

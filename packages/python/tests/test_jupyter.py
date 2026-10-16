@@ -1,7 +1,9 @@
+import sys
 from pathlib import Path
 
 import duckdb
 import nbformat
+import pytest
 from nbclient import NotebookClient
 from test_compile import EXAMPLES
 
@@ -113,3 +115,40 @@ SELECT * FROM 'answer.parquet'
         assert connection.execute(
             "SELECT * FROM read_parquet(?)", [str(data / "answer.parquet")]
         ).fetchall() == [(42,)]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows drive boundaries")
+@pytest.mark.parametrize("profile", ["precompiled", "native", "widget"])
+def test_notebook_inputs_remain_accessible_across_windows_drives(tmp_path, profile):
+    data = tmp_path / "data"
+    data.mkdir()
+    csv = data / "numbers.csv"
+    csv.write_text("value\n2\n40\n", encoding="utf-8")
+    database = data / "numbers.duckdb"
+    with duckdb.connect(str(database)) as connection:
+        connection.execute("CREATE TABLE marker AS SELECT 1 AS value")
+    model = data / "numbers.malloy"
+    model.write_text(
+        "run: duckdb.table('numbers.csv') -> { aggregate: total is value.sum() }",
+        encoding="utf-8",
+    )
+    document = prepare(
+        model,
+        profile=profile,
+        database=database if profile != "widget" else None,
+    )
+    drive = "Z:" if tmp_path.drive.casefold() != "z:" else "Y:"
+    planned_output = Path(drive + "/notebooks/report.ipynb")
+    rendered = jupyter.render(document, output_path=planned_output)
+
+    # Absolute inputs stay accessible when the notebook moves to another drive.
+    output = tmp_path / "relocated" / "report.ipynb"
+    output.parent.mkdir()
+    output.write_text(rendered, encoding="utf-8")
+    assertions = (
+        f"assert files == {{'numbers.csv': {csv.read_bytes()!r}}}\nrun_0.close()"
+        if profile == "widget"
+        else "assert run_0.to_dicts() == [{'total': 42}]"
+        + ("\nmodel.close()" if profile == "native" else "")
+    )
+    execute_notebook(output, assertions, pymalloy=profile != "precompiled")
