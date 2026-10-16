@@ -22,7 +22,7 @@ runs:
     - name: Install the locked Pixi environment
       uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
       with:
-        pixi-version: 0.81.0
+        pixi-version: v0.81.0
         environments: ${{ inputs.environment }}
         locked: "true"
         activate-environment: "false"
