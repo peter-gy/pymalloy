@@ -1,4 +1,5 @@
 import json
+import sys
 import textwrap
 from pathlib import Path
 
@@ -41,7 +42,7 @@ def _print_model(bundle_dir: Path) -> str:
         """
     )
     completed = run_to_completion(
-        ["python", "-c", program, str(bundle_dir)],
+        [sys.executable, "-c", program, str(bundle_dir)],
         cwd=bundle_dir.parent / "model-cwd",
         timeout=60,
     )
@@ -67,7 +68,8 @@ query: duplicate_ids is orders -> {
   aggregate: n is count()
   having: n > 1
 }
-"""
+""",
+        encoding="utf-8",
     )
     draft = pm.read_model(model)
     with pm.connect(data_root=originals) as connection:
@@ -84,14 +86,14 @@ query: duplicate_ids is orders -> {
         files={"café orders.parquet": parquet},
         query="total",
     )
-    assert json.loads(written.manifest.read_text())["files"]
+    assert json.loads(written.manifest.read_text(encoding="utf-8"))["files"]
     parquet.unlink()
     relocated = tmp_path / "relocated"
     written.model.parent.rename(relocated)
     for name in ("replay-cwd", "model-cwd"):
         (tmp_path / name).mkdir()
     replay = run_to_completion(
-        ["python", str(relocated / "replay.py")],
+        [sys.executable, str(relocated / "replay.py")],
         cwd=tmp_path / "replay-cwd",
         timeout=60,
     )
@@ -118,7 +120,7 @@ def test_bundle_replay_refuses_a_shadowing_directory(tmp_path: Path):
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     replay = run_to_completion(
-        ["python", str(relocated / "replay.py")],
+        [sys.executable, str(relocated / "replay.py")],
         cwd=elsewhere,
         timeout=60,
     )
@@ -127,7 +129,7 @@ def test_bundle_replay_refuses_a_shadowing_directory(tmp_path: Path):
 
     (elsewhere / "rows.csv").write_text("value\n99\n")
     shadowed = run_to_completion(
-        ["python", str(relocated / "replay.py")],
+        [sys.executable, str(relocated / "replay.py")],
         cwd=elsewhere,
         timeout=60,
     )

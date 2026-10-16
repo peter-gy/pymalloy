@@ -221,6 +221,28 @@ def test_inline_imports_do_not_shadow_physical_files(tmp_path):
     assert pm.connect().model(ONE).query().run().to_polars().item() == 1
 
 
+@pytest.mark.parametrize("reference", ["relative", "uri", "absolute", "localhost"])
+def test_local_model_imports_preserve_unicode_and_spaces(tmp_path, reference):
+    directory = tmp_path / "models café with spaces"
+    directory.mkdir()
+    imported = directory / "base.malloy"
+    text = "source: numbers is duckdb.sql('SELECT 42 AS value')"
+    imported.write_text(text, encoding="utf-8")
+    target = {
+        "relative": "base.malloy",
+        "uri": imported.as_uri(),
+        "absolute": imported.as_posix(),
+        "localhost": imported.as_uri().replace("file:///", "file://localhost/"),
+    }[reference]
+    root = directory / "main.malloy"
+    root.write_text(
+        f'import "{target}"\nrun: numbers -> {{select: value}}', encoding="utf-8"
+    )
+    with pm.connect() as connection, connection.model(root) as model:
+        assert model.query().run().to_pylist() == [{"value": 42}]
+        assert tuple(model.source().imports.values()) == (text,)
+
+
 def test_model_reload_observes_new_schema_and_imports(tmp_path):
     data = tmp_path / "data.csv"
     data.write_text("value\n1\n")
@@ -719,16 +741,16 @@ def test_native_config_restricts_external_reads_before_schema_discovery(tmp_path
         "enable_external_access": False,
         "lock_configuration": True,
     }
-    source = f"run: duckdb.table('{allowed}') -> {{ select: amount }}"
+    source = f"run: duckdb.table('{allowed.as_posix()}') -> {{ select: amount }}"
     with pm.connect(config=config).model(source) as model:
         assert model.query().run().to_pylist() == [{"amount": 42}]
         with pytest.raises(CompilationError, match="disabled|Permission"):
             model.query(
-                malloy=f"run: duckdb.table('{denied}') -> {{ select: amount }}"
+                malloy=f"run: duckdb.table('{denied.as_posix()}') -> {{ select: amount }}"
             ).run()
         assert model.query().run().to_pylist() == [{"amount": 42}]
     report = pm.connect(config=config).check(
-        f"run: duckdb.table('{denied}') -> {{ select: amount }}"
+        f"run: duckdb.table('{denied.as_posix()}') -> {{ select: amount }}"
     )
     assert not report.ok
 

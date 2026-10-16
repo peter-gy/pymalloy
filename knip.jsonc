@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
   "ignoreBinaries": ["uv"],
   "workspaces": {
-    "scripts": { "entry": ["*.ts"], "ignoreBinaries": ["cargo-about"] },
+    "scripts": { "entry": ["*.ts"] },
     "packages/duckdb": { "entry": ["src/index.ts", "src/arrow.ts"] },
     "packages/core": {
       "entry": ["src/index.ts", "src/tooling.ts", "src/jobs.ts", "src/adapters.ts"],

@@ -49,45 +49,56 @@ SELECT * FROM %{ numbers -> {select: value where: value > $cutoff} }%
   );
   expect(await drive(model.document({ givens: { cutoff: 10 } }))).toEqual(cells);
 });
-test("loads documents and imports through the supplied URL reader", async () => {
-  const files = new Map([
-    [
+test.each(["\n", "\r\n"])(
+  "loads documents and imports through the supplied URL reader (%j)",
+  async (newline) => {
+    const files = new Map([
+      [
+        "https://models.example/report.malloynb",
+        [
+          ">>>markdown",
+          "# Values  ",
+          "",
+          "    indented markdown  ",
+          ">>>malloy",
+          "import 'base.malloy'",
+          "run: numbers -> { aggregate: total is value.sum() }",
+          ">>>markdown",
+          "## Entries",
+          ">>>sql connection:duckdb",
+          "SELECT * FROM %{ numbers -> { select: value } }%",
+          "",
+        ].join(newline),
+      ],
+      ["https://models.example/base.malloy", "source: numbers is duckdb.sql('SELECT 42 AS value')"],
+    ]);
+    const reads: string[] = [];
+    const model = await compile({
+      url: new URL("https://models.example/report.malloynb"),
+      describe,
+      async readURL(url) {
+        reads.push(url.href);
+        const source = files.get(url.href);
+        if (source === undefined) throw new Error(`Missing model: ${url}`);
+        return source;
+      },
+    });
+    expect(reads).toEqual([
       "https://models.example/report.malloynb",
-      `>>>markdown
-# Values
->>>malloy
-import 'base.malloy'
-run: numbers -> { aggregate: total is value.sum() }
->>>markdown
-## Entries
->>>sql connection:duckdb
-SELECT * FROM %{ numbers -> { select: value } }%
-`,
-    ],
-    ["https://models.example/base.malloy", "source: numbers is duckdb.sql('SELECT 42 AS value')"],
-  ]);
-  const reads: string[] = [];
-  const model = await compile({
-    url: new URL("https://models.example/report.malloynb"),
-    describe,
-    async readURL(url) {
-      reads.push(url.href);
-      const source = files.get(url.href);
-      if (source === undefined) throw new Error(`Missing model: ${url}`);
-      return source;
-    },
-  });
-  expect(reads).toEqual([
-    "https://models.example/report.malloynb",
-    "https://models.example/base.malloy",
-  ]);
-  expect(model.queries.map((query) => query.name)).toEqual(["run:0", "sql:0"]);
-  const cells = await drive(model.document({}));
-  expect(cells.map((cell) => cell.kind)).toEqual(["markdown", "query", "markdown", "query"]);
-  expect(cells[0]).toEqual({ kind: "markdown", text: "# Values" });
-  expect(cells[2]).toEqual({ kind: "markdown", text: "## Entries" });
-  expect((await drive(model.prepare("sql:0", {}))).name).toBe("sql:0");
-});
+      "https://models.example/base.malloy",
+    ]);
+    expect(model.queries.map((query) => query.name)).toEqual(["run:0", "sql:0"]);
+    const cells = await drive(model.document({}));
+    expect(cells.map((cell) => cell.kind)).toEqual(["markdown", "query", "markdown", "query"]);
+    expect(cells[0]).toEqual({
+      kind: "markdown",
+      text: "# Values  " + newline + newline + "    indented markdown  ",
+    });
+    expect(cells[2]).toEqual({ kind: "markdown", text: "## Entries" });
+    expect(model.source().text).toBe(files.get("https://models.example/report.malloynb"));
+    expect((await drive(model.prepare("sql:0", {}))).name).toBe("sql:0");
+  },
+);
 test("inline sources use their URL as the base for imports", async () => {
   const reads: string[] = [];
   const model = await compile({

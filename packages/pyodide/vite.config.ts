@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { compilerVersion } from "@malloy-runtime/compiler/tooling";
-import { bundleNotices } from "@pymalloy/scripts/bundle-notices";
 
 export default defineConfig({
   plugins: [
@@ -37,7 +36,6 @@ export default defineConfig({
         );
       },
     },
-    bundleNotices("runtime.LICENSE.txt"),
   ],
   build: {
     target: "es2023",

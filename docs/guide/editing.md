@@ -17,7 +17,7 @@ query: total is orders -> { aggregate: revenue }
 """
 with TemporaryDirectory() as directory:
     path = Path(directory) / "orders.malloy"
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8", newline="\n")
     original = pm.read_model(path)
     candidate = original.sources(
         orders=original["orders"].replace(

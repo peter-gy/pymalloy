@@ -17,12 +17,12 @@ from pymalloy.export import jupyter, marimo, prepare
 def test_export_file_probe_matches_compiler_identifier_and_catalog_precedence(
     tmp_path, catalog
 ):
-    filename = 'main."orders.csv"' if catalog else "orders-2024.csv"
+    filename = "main.orders" if catalog else "orders-2024.csv"
     (tmp_path / filename).write_text("amount\n2\n")
     database = tmp_path / "data.duckdb"
     with duckdb.connect(str(database)) as native:
         if catalog:
-            native.execute('CREATE TABLE main."orders.csv" AS SELECT 1 amount')
+            native.execute("CREATE TABLE main.orders AS SELECT 1 amount")
     source = tmp_path / "model.malloy"
     source.write_text(
         pm.draft().queries(q=pm.table(filename).pipe(pm.view().select("amount"))).text
@@ -70,7 +70,7 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
   where: value >= $minimum select: value
 } }%)
 """
-    root.write_text(original)
+    root.write_text(original, encoding="utf-8", newline="\n")
     inputs = {"minimum": 20}
     document = prepare(root, profile="native", givens=inputs, data_root=data)
     assert document.profile == "native"
@@ -84,7 +84,7 @@ SELECT SUM(value) AS total FROM (%{ numbers -> {
     output = tmp_path / ("analysis" + suffix)
     content = renderer.render(document, output_path=output)
     assert content == renderer.render(document, output_path=output)
-    output.write_text(content)
+    output.write_text(content, encoding="utf-8")
     for path in (root, base, schema):
         path.unlink()
     if renderer is marimo:

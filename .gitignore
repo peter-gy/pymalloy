@@ -5,6 +5,8 @@ dist/
 wheels/
 *.egg-info/
 .venv/
+.venv-py314/
+.pixi/
 .pytest_cache/
 .ruff_cache/
 target/

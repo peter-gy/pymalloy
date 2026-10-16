@@ -12,12 +12,10 @@ class CustomBuildHook(BuildHookInterface):
             "widget/index.js",
             "widget/anywidget.json",
             "widget/widget.css",
-            "widget/widget.LICENSE.txt",
             "agent/plugin.json",
             "agent/skills/pymalloy/SKILL.md",
             "pyodide/runtime.js",
             "pyodide/runtime.manifest.json",
-            "pyodide/runtime.LICENSE.txt",
         )
         manifest = assets / "widget/anywidget.json"
         if manifest.is_file():

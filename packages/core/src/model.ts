@@ -221,7 +221,10 @@ export class CompiledModel {
     if (statements && !options.queries?.length && !options.all) {
       for (const statement of statements) {
         if (statement.type === "markdown") {
-          cells.push({ kind: "markdown", text: statement.text });
+          cells.push({
+            kind: "markdown",
+            text: statement.text.replace(/^[\r\n]+|[\r\n]+$/g, ""),
+          });
         } else {
           for (const query of compiled) {
             if (

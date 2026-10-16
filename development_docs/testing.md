@@ -5,25 +5,33 @@ The [contributor workflow](README.md#validate-a-change) owns the complete comman
 
 ## Choose tests by contract
 
-| Contract                                                | Focused evidence                                                  | Consumer gate                              |
-| ------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------ |
-| Compiler jobs, imports, document order, query schemas   | `packages/core/tests`, Python tooling/document tests              | `pnpm test`, `uv run --frozen pytest -q`   |
-| Source/View authoring, scoped edits, exact saves        | `test_source_view.py`, `test_authoring.py`, `test_persistence.py` | Python suite and roundtrip checker         |
-| Connection ownership, deadlines, current data           | `test_connection.py`, `test_runtime.py`, `test_execution.py`      | Python and Node suites                     |
-| Native job generations and cancellation                 | Rust ownership tests in `packages/python/rust/worker.rs`          | `pnpm --filter @pymalloy/python test:rust` |
-| Exact integers, nested values, temporal data            | `test_result.py`, DuckDB and Node tests                           | Browser numeric readback                   |
-| Browser Python ownership, async queries, file snapshots | Browser Python tests and `pyodide.spec.ts`                        | Installed browser-wheel acceptance         |
-| Captured inputs, snapshots, relocated bundles           | `test_data_inputs.py`, `test_source_bundle.py`                    | Installed bundle replay                    |
-| README, guide, docstring, installed skill examples      | `test_docs_examples.py`, `test_docstrings.py`, `test_agent.py`    | Python suite                               |
-| Widget revisions, immutable state, view lifetime        | `test_widget.py`, widget lifecycle tests                          | `pnpm e2e`                                 |
-| Installed wheel, exported notebook, CLI process         | `packages/python/tests/e2e`                                       | `uv run --frozen pytest -m e2e -q`         |
-| Release versions, tags, and distribution inventory      | `test_release.py`, installed wheel probes                         | Source checks and wheel targets            |
-| Published TypeScript exports and runtime identity       | `scripts/consumer-canary.ts`                                      | `pnpm canary`                              |
+| Contract                                                | Focused evidence                                                  | Consumer gate                      |
+| ------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------- |
+| Compiler jobs, imports, document order, query schemas   | `packages/core/tests`, Python tooling/document tests              | `pixi run --locked test`           |
+| Source/View authoring, scoped edits, exact saves        | `test_source_view.py`, `test_authoring.py`, `test_persistence.py` | Python suite and roundtrip checker |
+| Connection ownership, deadlines, current data           | `test_connection.py`, `test_runtime.py`, `test_execution.py`      | Python and Node suites             |
+| Native job generations and cancellation                 | Rust ownership tests in `packages/python/rust/worker.rs`          | `pixi run --locked test-rust`      |
+| Exact integers, nested values, temporal data            | `test_result.py`, DuckDB and Node tests                           | Browser numeric readback           |
+| Browser Python ownership, async queries, file snapshots | Browser Python tests and `pyodide.spec.ts`                        | Installed browser-wheel acceptance |
+| Captured inputs, snapshots, relocated bundles           | `test_data_inputs.py`, `test_source_bundle.py`                    | Installed bundle replay            |
+| README, guide, docstring, installed skill examples      | `test_docs_examples.py`, `test_docstrings.py`, `test_agent.py`    | Python suite                       |
+| Widget revisions, immutable state, view lifetime        | `test_widget.py`, widget lifecycle tests                          | `pixi run --locked browser`        |
+| Installed wheel, exported notebook, CLI process         | `packages/python/tests/e2e`                                       | `pixi run --locked test-installed` |
+| Release versions, tags, and distribution inventory      | `test_release.py`, installed wheel probes                         | Source checks and wheel targets    |
+| Published TypeScript exports and runtime identity       | `scripts/consumer-canary.ts`                                      | `pixi run --locked canary`         |
 
-`pnpm test` covers compiler, Node, DuckDB conversion, widget lifecycle, and the
-embedded compiler session. The normal Python suite deselects `e2e` tests. The explicit e2e
-suite builds and installs distributions, executes notebook processes, and invokes
-the CLI. Build assets first.
+`pixi run --locked test-js` covers compiler, Node, DuckDB conversion, widget
+lifecycle, and embedded compiler sessions. The normal Python suite deselects
+`e2e` tests. The explicit e2e suite builds and installs distributions, executes
+notebook processes, and invokes the CLI. Build assets first.
+
+## Python lower bounds
+
+`pixi run --locked floors` runs `scripts/test_python_floors.py` in the default
+Python 3.12 environment. It builds a native wheel, creates a temporary
+installation with each runtime dependency at its declared lower bound, and runs
+the Python suite against that installation. Keep lower-bound testing separate
+from the workspace environment resolved by `uv.lock`.
 
 ## Browser tests
 
@@ -32,7 +40,12 @@ runtime assets, the native wheel for the notebook kernels, and the explicit
 browser wheel for Pyodide using the
 [distribution build commands](releasing.md#browser-wheel). The standalone server
 selects `dist/browser/pymalloy-*-py3-none-any.whl`. Then run
-`pnpm --filter @pymalloy/e2e install-browser` and `pnpm e2e`.
+`pixi run --locked install-browser` and `pixi run --locked browser`.
+Pixi supplies Chromium's Linux shared libraries and points the dynamic linker and
+font configuration at the locked environment. The browser executable is
+selected by the Playwright version in `pnpm-lock.yaml`.
+[Host prerequisites](README.md#host-prerequisites) describe the supported
+operating systems and SDK setup.
 The configured notebook hosts are:
 
 | Host               | Port  | Contract                                                        |
@@ -59,13 +72,13 @@ Native-kernel servers use `uv run --no-sync` to retain the selected installation
 JupyterLite and marimo WebAssembly builders use an isolated, locked
 `notebook-hosts` environment and install the browser wheel inside their kernels.
 For native wheel coverage, install the built wheel immediately before the
-browser suite and restore the editable workspace with the setup sync command
-afterward.
+browser suite, then restore the editable workspace with
+`pixi run --locked install`.
 `PYMALLOY_KERNEL_PYTHON` selects a separate native-wheel Jupyter interpreter.
 Install the wheel and ipykernel there for captured inputs and kernel communication.
 
-`pnpm canary` creates a temporary packed-package consumer. It checks declarations
-under NodeNext and Bundler resolution, executes native exact-value queries, and
+`pixi run --locked canary` creates a temporary packed-package consumer. It
+checks declarations under NodeNext and Bundler resolution, executes native exact-value queries, and
 builds a browser bundle for the browser acceptance test. The standalone server
 reads that bundle from `PYMALLOY_BROWSER_BUNDLE`.
 
@@ -83,15 +96,15 @@ All hosts install the same browser wheel URL and verify its hash.
 Check the lock offline:
 
 ```sh
-uv run --isolated --frozen --only-group release python apps/e2e/pyodide/lock.py --check
+pixi run --locked uv run --isolated --frozen --only-group release python apps/e2e/pyodide/lock.py --check
 ```
 
 After changing the runtime or dependency pins, regenerate it with the pinned
 runtime's package resolver, then test the browser wheel:
 
 ```sh
-uv run --isolated --frozen --only-group release python apps/e2e/pyodide/lock.py
-pnpm --filter @pymalloy/e2e test --project pyodide --project jupyterlite --project marimo-wasm
+pixi run --locked uv run --isolated --frozen --only-group release python apps/e2e/pyodide/lock.py
+pixi run --locked browser --project pyodide --project jupyterlite --project marimo-wasm
 ```
 
 Lock generation downloads and verifies the pinned runtime, resolves dependencies
@@ -104,7 +117,7 @@ before running them locally. The JupyterLite launcher resolves its scoped
 
 Use an existing [Malloy samples](https://github.com/malloydata/malloy-samples)
 checkout and prepared data. The sample checker command is
-`uv run python packages/python/tests/check_samples.py CHECKOUT --data-root DATA
+`pixi run --locked uv run --frozen python packages/python/tests/check_samples.py CHECKOUT --data-root DATA
 --output /tmp/sample-results --runtime`.
 
 `results.json` records the sample revision and per-source outcomes. It checks
@@ -114,7 +127,7 @@ samples return nonzero. `--execute-writes` enables COPY and requires isolated da
 with output destinations prepared.
 
 The roundtrip command is
-`uv run python packages/python/tests/check_roundtrip.py CHECKOUT --data-root DATA
+`pixi run --locked uv run --frozen python packages/python/tests/check_roundtrip.py CHECKOUT --data-root DATA
 --output /tmp/roundtrip-results`.
 It parses models, emits and executes Python, and recompiles captured imports.
 A query needs equivalent SQL or DuckDB syntax trees plus matching typed results.
@@ -132,10 +145,10 @@ The roundtrip checker's SQL-equivalence gate remains in force.
 Run benchmarks separately from builds and tests:
 
 ```sh
-uv run python scripts/benchmark_authoring.py --samples 7 --output /tmp/authoring-timings.json
-uv run python scripts/benchmark_data_inputs.py --rows 1000000 --samples 7 --output /tmp/dataframe-timings.json
-pnpm bench:compiler --samples 7 --output /tmp/compiler-timings.json
-uv run python scripts/benchmark_notebook.py --samples 7 --output /tmp/notebook-timings.json
+pixi run --locked uv run --frozen python scripts/benchmark_authoring.py --samples 7 --output /tmp/authoring-timings.json
+pixi run --locked uv run --frozen python scripts/benchmark_data_inputs.py --rows 1000000 --samples 7 --output /tmp/dataframe-timings.json
+pixi run --locked pnpm bench:compiler --samples 7 --output /tmp/compiler-timings.json
+pixi run --locked uv run --frozen python scripts/benchmark_notebook.py --samples 7 --output /tmp/notebook-timings.json
 ```
 
 Record dependency versions, machine, workload, and every sample. Compare medians

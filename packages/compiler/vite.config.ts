@@ -1,10 +1,9 @@
 import { defineConfig } from "vite-plus";
 
-import { bundleNotices } from "@pymalloy/scripts/bundle-notices";
 import { compilerBundle } from "@pymalloy/scripts/compiler-bundle";
 
 export default defineConfig({
-  plugins: [compilerBundle(), bundleNotices("compiler.LICENSE.txt")],
+  plugins: [compilerBundle()],
   define: { "process.env": "{}" },
   build: {
     target: "es2023",

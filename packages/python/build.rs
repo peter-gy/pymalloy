@@ -109,13 +109,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             .map_err(|error| format!("Invalid native dependency manifest: {error}"))?;
     for (field, path) in [
         ("cargoLockSha256", Path::new("Cargo.lock").to_path_buf()),
-        (
-            "sourcesSha256",
-            Path::new("native-licenses.json").to_path_buf(),
-        ),
-        ("configSha256", Path::new("about.toml").to_path_buf()),
-        ("templateSha256", Path::new("about.hbs").to_path_buf()),
-        ("noticesSha256", assets.join("native.LICENSE.txt")),
         ("runtimeSha256", assets.join("native.runtime.json")),
     ] {
         check_digest(&native_manifest, field, &path)?;
@@ -123,10 +116,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     for name in [
         "widget/index.js",
         "widget/widget.css",
-        "widget/widget.LICENSE.txt",
         "agent/plugin.json",
         "agent/skills/pymalloy/SKILL.md",
-        "compiler.LICENSE.txt",
     ] {
         required(&assets.join(name))?;
     }

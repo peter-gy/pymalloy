@@ -66,7 +66,7 @@ query: total is items -> {where: amount > $cutoff aggregate: revenue}
         files={data: data},
         query="total",
     )
-    manifest = json.loads(written.manifest.read_text())
+    manifest = json.loads(written.manifest.read_text(encoding="utf-8"))
     copied = manifest["files"][0]
     assert (
         copied["sha256"]
@@ -74,7 +74,7 @@ query: total is items -> {where: amount > $cutoff aggregate: revenue}
             (written.model.parent / copied["path"]).read_bytes()
         ).hexdigest()
     )
-    assert "🌈 preserved attribution" in written.model.read_text()
+    assert "🌈 preserved attribution" in written.model.read_text(encoding="utf-8")
     shutil.rmtree(originals)
     relocated = tmp_path / "relocated"
     written.model.parent.rename(relocated)

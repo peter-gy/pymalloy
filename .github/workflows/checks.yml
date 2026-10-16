@@ -9,7 +9,7 @@ permissions:
 jobs:
   lint:
     name: Lint and type-check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out repository
@@ -22,45 +22,25 @@ jobs:
 
       - name: Check lockfiles and release versions
         run: |
-          uv lock --check
-          uv run --frozen --only-group release python scripts/check_release.py
+          pixi run --locked check-locks
           git diff --check
-          uv run --frozen --only-group release python apps/e2e/pyodide/lock.py --check
-
-        env:
-          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/pymalloy-release-env
       - name: Build documentation
-        run: pnpm docs:build
+        run: pixi run --locked -e js docs
         env:
           BASE_PATH: /pymalloy/
       - name: Check JavaScript, generated records, and unused code
-        run: pnpm check
-
-      - name: Lint Python
-        run: uv run --frozen ruff check packages/python examples apps/e2e scripts
-
-      - name: Check Python formatting
-        run: uv run --frozen ruff format --check packages/python examples apps/e2e scripts
-
+        run: pixi run --locked check-js
+      - name: Check Python source and types
+        run: pixi run --locked check-python
       - name: Check Rust source and ownership
         run: |
-          pnpm --filter @pymalloy/python check:rust
-          pnpm --filter @pymalloy/python test:rust
-      - name: Type-check Python with ty
-        run: uv run --frozen ty check
-
-      - name: Type-check Python with Pyrefly
-        run: uv run --frozen pyrefly check
-
-      - name: Type-check Python with basedpyright
-        run: uv run --frozen basedpyright
-
+          pixi run --locked check-rust
+          pixi run --locked test-rust
       - name: Lint workflows
-        run: uvx --from actionlint-py==1.7.12.24 actionlint
-
+        run: pixi run --locked lint-workflows
   javascript:
     name: JavaScript tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out repository
@@ -72,16 +52,27 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Run package tests
-        run: pnpm test
+        run: pixi run --locked test-js
 
   python:
-    name: Python tests (${{ matrix.python }})
-    runs-on: ubuntu-latest
+    name: Python tests (${{ matrix.runner }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.12", "3.14"]
+        runner:
+          - ubuntu-24.04
+          - macos-15
+          - windows-2022
+        python:
+          - "3.12"
+          - "3.14"
+        include:
+          - python: "3.12"
+            environment: default
+          - python: "3.14"
+            environment: py314
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,17 +82,16 @@ jobs:
       - name: Set up workspace
         uses: ./.github/actions/setup
         with:
-          python-version: ${{ matrix.python }}
-
+          environment: ${{ matrix.environment }}
       - name: Run Python tests
-        run: uv run --frozen pytest -q
+        run: pixi run --locked -e "${{ matrix.environment }}" test-python
 
       - name: Run installed-package tests
-        run: uv run --frozen pytest -m e2e -q
+        run: pixi run --locked -e "${{ matrix.environment }}" test-installed
 
   floors:
     name: Python lower bounds
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Check out repository
@@ -113,11 +103,11 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Run Python tests against declared minimum versions
-        run: scripts/test-python-floors.sh
+        run: pixi run --locked floors
 
   browser:
     name: Browser and packed packages
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Check out repository
@@ -129,13 +119,13 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Install Chromium
-        run: pnpm --filter @pymalloy/e2e exec playwright install --with-deps chromium
+        run: pixi run --locked install-browser
 
       - name: Test packed TypeScript packages
-        run: pnpm canary
+        run: pixi run --locked canary
 
       - name: Test notebooks and browser sessions
-        run: pnpm e2e --project marimo --project marimo-export --project jupyterlab --project browser
+        run: pixi run --locked browser --project marimo --project marimo-export --project jupyterlab --project browser
 
       - name: Upload Playwright report
         if: failure()
@@ -148,21 +138,16 @@ jobs:
 
   rust-dependencies:
     name: Rust dependency policy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Set up uv and Python
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+      - name: Set up dependency policy tools
+        uses: ./.github/actions/setup
         with:
-          python-version: "3.12"
-          enable-cache: false
-      - name: Set up Rust policy tools
-        uses: ./.github/actions/setup-rust
-        with:
-          audit: "true"
+          build: "false"
       - name: Audit Rust dependencies
-        run: uv run --no-project --python 3.12 python packages/python/rust_tools.py audit
+        run: pixi run --locked audit-rust

@@ -137,6 +137,21 @@ def read_text(path: Path) -> str:
         return handle.read()
 
 
+def local_path(url: str) -> Path:
+    from urllib import request
+
+    # Pyrefly's Windows stub inherits nturl2path's deprecation through this public re-export.
+    url2pathname: Callable[[str], str] = request.url2pathname  # pyrefly: ignore [deprecated]
+
+    parsed = urlsplit(url)
+    if parsed.scheme == "file" and parsed.netloc in {"", "localhost"}:
+        return Path(url2pathname(parsed.path))
+    path = Path(url)
+    if len(parsed.scheme) == 1 and path.is_absolute() and path.drive.endswith(":"):
+        return Path(url2pathname(url))
+    raise ValueError(f"Import '{url}' must be a local file")
+
+
 if TYPE_CHECKING:
     from pymalloy._authoring.draft import Draft
 

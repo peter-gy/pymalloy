@@ -81,7 +81,7 @@ def test_jupyter_serialization_is_deterministic_and_preserves_authored_markdown(
     content = nbformat.reads(first, as_version=4)
     nbformat.validate(content)
     assert content.cells[0].source == title
-    output.write_text(first)
+    output.write_text(first, encoding="utf-8")
     execute_notebook(
         output,
         "assert report.to_dicts() == [{'value': '{literal}'}]",

@@ -42,25 +42,36 @@ jobs:
           persist-credentials: false
 
       - name: Set up assets and Python
+        id: setup
         uses: ./.github/actions/setup
         with:
           build: "false"
 
-      - name: Set up Rust and notice tooling
-        uses: ./.github/actions/setup-rust
       - name: Build JavaScript assets
-        run: pnpm build
-
-      - name: Verify native engine inputs
-        if: runner.os != 'Linux'
+        run: pixi run --locked assets
+      - name: Read the container Rust toolchain
+        id: rust
+        if: runner.os == 'Linux'
         shell: bash
-        run: uv run --no-project --python 3.12 python packages/python/native_archive.py archive --target ${{ matrix.target }} --github-env "$GITHUB_ENV"
+        run: |
+          pixi run --locked python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
 
-      - name: Build native wheel
+          version = tomllib.loads(Path("pixi.toml").read_text())["feature"]["native"]["dependencies"]["rust"]
+          if not re.fullmatch(r"==\d+\.\d+\.\d+", version):
+              raise SystemExit("Pixi must pin one exact Rust version")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version[2:]}\n")
+          PY
+      - name: Build manylinux wheel
+        if: runner.os == 'Linux'
         uses: PyO3/maturin-action@86b9d133d34bc1b40018696f782949dac11bd380 # v1.49.4
         with:
           maturin-version: v1.11.5
-          rust-toolchain: "${{ env.RUSTUP_TOOLCHAIN }}"
+          rust-toolchain: ${{ steps.rust.outputs.version }}
           working-directory: packages/python
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
@@ -68,7 +79,9 @@ jobs:
           before-script-linux: |
             python3.12 native_archive.py archive --target ${{ matrix.target }} --shell-env /tmp/pymalloy-v8-env
             source /tmp/pymalloy-v8-env
-
+      - name: Build native wheel
+        if: runner.os != 'Linux'
+        run: pixi run --locked build-native
       - name: Upload native wheel
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -77,6 +90,15 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      - name: Save Rust dependencies
+        if: github.ref == 'refs/heads/main' && steps.setup.outputs.rust-cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/pymalloy-v8
+          key: ${{ steps.setup.outputs.rust-cache-key }}
   test-native:
     name: Test installed native wheel (${{ matrix.target }})
     needs: native
@@ -121,36 +143,40 @@ jobs:
           persist-credentials: false
 
       - name: Set up assets and Python
+        id: setup
         uses: ./.github/actions/setup
         with:
           build: "false"
 
-      - name: Set up Rust and notice tooling
-        uses: ./.github/actions/setup-rust
       - name: Build JavaScript assets
-        run: pnpm build
-
+        run: pixi run --locked assets
       - name: Build source archive
-        run: uv build --package pymalloy --no-sources --sdist --out-dir dist/source
-
+        run: pixi run --locked uv build --package pymalloy --no-sources --sdist --out-dir dist/source
       - name: Build browser wheel
-        working-directory: packages/python
-        run: uv run --frozen --only-group release python -m hatchling build --target wheel --directory ../../dist/browser
-
+        run: pixi run --locked uv --directory packages/python run --isolated --frozen --only-group release python -m hatchling build --target wheel --directory ../../dist/browser
       - name: Rebuild source archive with Rust and C toolchains
-        shell: bash
         run: |
-          tools="$RUNNER_TEMP/source-build-tools"
-          mkdir -p "$tools"
-          for name in node deno; do
-            printf '#!/bin/sh\nexit 97\n' > "$tools/$name"
-            chmod +x "$tools/$name"
-          done
-          PATH="$tools:$PATH" uv build --wheel dist/source/pymalloy-*.tar.gz --out-dir dist/rebuilt
+          pixi run --locked python - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
 
+          archives = list(Path("dist/source").glob("pymalloy-*.tar.gz"))
+          if len(archives) != 1:
+              raise SystemExit("Expected exactly one source archive")
+          with TemporaryDirectory(prefix="pymalloy-source-tools-") as directory:
+              tools = Path(directory)
+              for name in ("node", "deno"):
+                  executable = tools / name
+                  executable.write_text("#!/bin/sh\nexit 97\n")
+                  executable.chmod(0o755)
+              environment = dict(os.environ)
+              environment["PATH"] = os.pathsep.join((str(tools), environment["PATH"]))
+              subprocess.run(["uv", "build", "--wheel", str(archives[0]), "--out-dir", "dist/rebuilt"], env=environment, check=True)
+          PY
       - name: Check distribution metadata
-        run: uv run --frozen --only-group release twine check --strict dist/source/pymalloy-*.tar.gz dist/browser/pymalloy-*.whl
-
+        run: pixi run --locked uv run --isolated --frozen --only-group release twine check --strict dist/source/pymalloy-*.tar.gz dist/browser/pymalloy-*.whl
       - name: Upload source archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -173,6 +199,15 @@ jobs:
           path: dist/rebuilt/pymalloy-*-cp312-abi3-*.whl
           retention-days: 1
           if-no-files-found: error
+      - name: Save Rust dependencies
+        if: github.ref == 'refs/heads/main' && steps.setup.outputs.rust-cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/pymalloy-v8
+          key: ${{ steps.setup.outputs.rust-cache-key }}
   test-browser:
     name: Test installed browser wheel
     needs: browser-source
@@ -194,7 +229,7 @@ jobs:
           path: dist/browser
       - name: Select the release artifact
         run: |
-          python - <<'PY'
+          pixi run --locked python - <<'PY'
           import os
           from pathlib import Path
           wheels = list(Path("dist/browser").resolve().glob("pymalloy-*-py3-none-any.whl"))
@@ -204,19 +239,17 @@ jobs:
               environment.write(f"PYMALLOY_BROWSER_WHEEL={wheels[0]}\n")
           PY
       - name: Build browser test drivers
-        run: pnpm --filter @pymalloy/widget... -r --if-present build
+        run: pixi run --locked pnpm --filter @pymalloy/widget... -r --if-present build
       - name: Install notebook hosts and the release wheel
         run: |
-          uv sync --frozen --group notebook-hosts --no-install-workspace
-          uv pip install --no-deps "$PYMALLOY_BROWSER_WHEEL"
+          pixi run --locked uv sync --frozen --group notebook-hosts --no-install-workspace
+          pixi run --locked uv pip install --no-deps "$PYMALLOY_BROWSER_WHEEL"
       - name: Validate the locked Pyodide dependencies
-        run: uv run --frozen --only-group release python apps/e2e/pyodide/lock.py --check
-        env:
-          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/pymalloy-release-env
+        run: pixi run --locked uv run --isolated --frozen --only-group release python apps/e2e/pyodide/lock.py --check
       - name: Install Chromium
-        run: pnpm --filter @pymalloy/e2e exec playwright install --with-deps chromium
+        run: pixi run --locked install-browser
       - name: Test browser execution and notebook hosts
-        run: pnpm e2e --project pyodide --project jupyterlite --project marimo-wasm
+        run: pixi run --locked browser --project pyodide --project jupyterlite --project marimo-wasm
       - name: Upload browser acceptance report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -265,18 +298,17 @@ jobs:
       - browser-source
       - test-source
       - test-browser
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Set up uv and Python
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+      - name: Set up release tools
+        uses: ./.github/actions/setup
         with:
-          python-version: "3.12"
-          enable-cache: false
+          build: "false"
       - name: Download native wheels
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
@@ -295,5 +327,5 @@ jobs:
           path: dist
       - name: Validate archive identities and metadata
         run: |
-          uv run --frozen --only-group release python scripts/check_release.py --distributions dist
-          uv run --frozen --only-group release twine check --strict dist/pymalloy-*
+          pixi run --locked uv run --isolated --frozen --only-group release python scripts/check_release.py --distributions dist
+          pixi run --locked uv run --isolated --frozen --only-group release twine check --strict dist/pymalloy-*

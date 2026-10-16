@@ -58,3 +58,7 @@ For versioned agent guidance, start with `help(pymalloy.agent)` after
 `import pymalloy.agent`.
 
 [Examples](examples) · [Contributing](development_docs/README.md)
+
+PyMalloy builds on [Malloy](https://github.com/malloydata/malloy), which provides
+the language compiler and renderer. PyMalloy is an independent project and is
+not affiliated with or endorsed by the Malloy project.

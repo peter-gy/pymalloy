@@ -42,10 +42,6 @@ include = [
   { path = "Cargo.lock", format = "sdist" },
   { path = "build.rs", format = "sdist" },
   { path = "rust/**", format = "sdist" },
-  { path = "rust-toolchain.toml", format = "sdist" },
-  { path = "about.toml", format = "sdist" },
-  { path = "about.hbs", format = "sdist" },
-  { path = "native-licenses.json", format = "sdist" },
   { path = "native-archives.json", format = "sdist" },
   { path = "build_backend.py", format = "sdist" },
   { path = "native_archive.py", format = "sdist" },
@@ -81,4 +77,21 @@ exclude = [
   "src/pymalloy/_native*.dll",
   "src/pymalloy/_assets/compiler*",
   "src/pymalloy/_assets/native*",
+]
+
+[tool.uv]
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "README.md" },
+  { file = "Cargo.toml" },
+  { file = "Cargo.lock" },
+  { file = "build.rs" },
+  { file = "build_backend.py" },
+  { file = "native_archive.py" },
+  { file = "native-archives.json" },
+  { file = "rust/**/*.rs" },
+  { file = "src/pymalloy/**/*.py" },
+  { file = "src/pymalloy/**/*.pyi" },
+  { file = "src/pymalloy/py.typed" },
+  { file = "src/pymalloy/_assets/**/*" },
 ]

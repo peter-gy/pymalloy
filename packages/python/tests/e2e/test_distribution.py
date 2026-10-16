@@ -50,8 +50,9 @@ def _prepare_metadata(
             *args,
         ],
         cwd=source,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         timeout=180,
         check=False,
     )
@@ -154,7 +155,6 @@ def test_installer_selects_runtime_artifact(
     runtime = target / "pymalloy/_assets/pyodide/runtime.js"
     manifest = json.loads(runtime.with_name("runtime.manifest.json").read_text())
     assert hashlib.sha256(runtime.read_bytes()).hexdigest() == manifest["bundleSha256"]
-    assert (target / "pymalloy/_assets/pyodide/runtime.LICENSE.txt").is_file()
 
 
 def test_source_archive_contains_native_build_inputs(distribution: tuple[Path, Path]):
@@ -168,7 +168,6 @@ def test_source_archive_contains_native_build_inputs(distribution: tuple[Path, P
         "Cargo.toml",
         "Cargo.lock",
         "build.rs",
-        "rust-toolchain.toml",
         "build_backend.py",
         "native_archive.py",
         "native-archives.json",
@@ -176,8 +175,6 @@ def test_source_archive_contains_native_build_inputs(distribution: tuple[Path, P
         "pyproject.toml",
         "src/pymalloy/_assets/compiler.js",
         "src/pymalloy/_assets/compiler.manifest.json",
-        "src/pymalloy/_assets/compiler.LICENSE.txt",
-        "src/pymalloy/_assets/native.LICENSE.txt",
         "src/pymalloy/_assets/native.manifest.json",
         "src/pymalloy/_assets/native.runtime.json",
         "src/pymalloy/_assets/widget/anywidget.json",

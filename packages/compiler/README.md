@@ -11,6 +11,6 @@ resuming the job. Python owns filesystem access and DuckDB execution. Query rows
 remain in the Python data adapter.
 
 Build with `pnpm --filter @pymalloy/compiler build`. Vite emits the self-contained
-`dist/compiler.js` bundle and its dependency notices. The Python build stages
+`dist/compiler.js` bundle. The Python build stages
 and verifies that bundle, then Rust embeds it in the native extension. The
 widget uses its own browser runtime and bundle.

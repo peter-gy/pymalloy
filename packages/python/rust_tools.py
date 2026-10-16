@@ -1,4 +1,4 @@
-"""Run the package's pinned Rust setup, source checks, and dependency audit."""
+"""Check the Pixi Rust toolchain, source policy, and dependency audit."""
 
 from __future__ import annotations
 
@@ -36,65 +36,52 @@ def tool_version(name: str, environment: dict[str, str]) -> str | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "command", choices=["toolchain", "tools", "setup", "check", "test", "audit"]
-    )
-    parser.add_argument("--audit", action="store_true", help="Install audit tools too")
-    parser.add_argument("--github-env", type=Path)
+    parser.add_argument("command", choices=["tools", "check", "test", "audit"])
     options = parser.parse_args()
-    toolchain = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]
-    tools = tomllib.loads((ROOT / "Cargo.toml").read_text())["package"]["metadata"][
-        "pymalloy"
-    ]["rust-tools"]
-    environment = dict(os.environ, RUSTUP_TOOLCHAIN=toolchain["channel"])
-    environment.setdefault("CARGO_BUILD_JOBS", "2")
-    if options.command in {"toolchain", "setup"}:
-        run(
-            [
-                "rustup",
-                "toolchain",
-                "install",
-                toolchain["channel"],
-                "--profile",
-                toolchain["profile"],
-                "--component",
-                ",".join(toolchain["components"]),
-            ],
-            environment,
-        )
-    cargo = subprocess.check_output(
-        ["rustup", "which", "--toolchain", toolchain["channel"], "cargo"],
-        cwd=ROOT,
-        env=environment,
-        text=True,
-    ).strip()
-    toolchain_bin = str(Path(cargo).parent)
-    cargo_bin = str(Path(environment.get("CARGO_HOME", Path.home() / ".cargo")) / "bin")
-    environment["PATH"] = os.pathsep.join(
-        [cargo_bin, toolchain_bin, environment.get("PATH", "")]
+    workspace = tomllib.loads(
+        (ROOT.parents[1] / "pixi.toml").read_text(encoding="utf-8")
     )
-    if options.github_env:
-        with options.github_env.open("a") as output:
-            output.write(f"RUSTUP_TOOLCHAIN={toolchain['channel']}\n")
-        with Path(environment["GITHUB_PATH"]).open("a") as output:
-            output.write(f"{toolchain_bin}\n{cargo_bin}\n")
-    if options.command in {"tools", "setup"}:
-        selected = tools if options.audit else {"cargo-about": tools["cargo-about"]}
-        for name, version in selected.items():
-            if tool_version(name, environment) == version:
-                continue
-            args = [cargo, "install", name, "--version", version, "--locked"]
-            if name == "cargo-about":
-                args.extend(["--features", "cli"])
-            run(args, environment)
+    rust = workspace["feature"]["native"]["dependencies"]["rust"]
+    if not rust.startswith("=="):
+        raise RuntimeError("The Pixi manifest must pin an exact Rust version")
+    tools = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))["package"][
+        "metadata"
+    ]["pymalloy"]["rust-tools"]
+    environment = dict(os.environ)
+    environment.setdefault("CARGO_BUILD_JOBS", "2")
+    for name in ("cargo", "rustc"):
+        if tool_version(name, environment) != rust.removeprefix("=="):
+            raise RuntimeError(f"Run pixi install --locked to provide {name} {rust}")
+    if options.command == "tools":
+        if sys.platform == "win32":
+            missing = [
+                name for name in ("cl", "link", "rc") if shutil.which(name) is None
+            ]
+            if missing:
+                raise RuntimeError(
+                    "Install Visual Studio Build Tools with the repository's .vsconfig "
+                    f"and reopen the Pixi environment. Missing tools: {', '.join(missing)}"
+                )
+        elif sys.platform == "darwin":
+            subprocess.run(
+                ["xcrun", "--show-sdk-path"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        for name, version in tools.items():
+            if tool_version(name, environment) != version:
+                raise RuntimeError(
+                    f"Run pixi install --locked to provide {name} {version}"
+                )
     elif options.command == "check":
-        run([cargo, "fmt", "--check"], environment)
+        run(["cargo", "fmt", "--check"], environment)
         from native_archive import prepare
 
         os.environ.update(environment)
         environment.update(prepare([]))
         run(
-            [cargo, "clippy", "--locked", "--all-targets", "--", "-D", "warnings"],
+            ["cargo", "clippy", "--locked", "--all-targets", "--", "-D", "warnings"],
             environment,
         )
     elif options.command == "test":
@@ -102,16 +89,18 @@ def main() -> None:
 
         os.environ.update(environment)
         environment.update(prepare([]))
-        run([cargo, "test", "--locked", "--lib"], environment)
+        run(["cargo", "test", "--locked", "--lib"], environment)
     elif options.command == "audit":
         for name in ("cargo-deny", "cargo-shear"):
             if tool_version(name, environment) != tools[name]:
                 raise RuntimeError(
-                    "Install the pinned Rust audit tools with "
-                    "python packages/python/rust_tools.py setup --audit"
+                    f"Run pixi install --locked to provide {name} {tools[name]}"
                 )
-        run([cargo, "shear", "--deny-warnings"], environment)
-        run([cargo, "deny", "--locked", "check"], environment)
+        run(["cargo", "shear", "--deny-warnings"], environment)
+        run(
+            ["cargo", "deny", "--locked", "check", "advisories", "bans", "sources"],
+            environment,
+        )
 
 
 if __name__ == "__main__":

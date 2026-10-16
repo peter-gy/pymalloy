@@ -338,9 +338,6 @@ importers:
       '@malloy-runtime/node':
         specifier: workspace:*
         version: link:../node
-      '@pymalloy/scripts':
-        specifier: workspace:*
-        version: link:../../scripts
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
@@ -417,9 +414,6 @@ importers:
       '@anywidget/types':
         specifier: 'catalog:'
         version: 0.4.0
-      '@pymalloy/scripts':
-        specifier: workspace:*
-        version: link:../../scripts
       '@stylexjs/unplugin':
         specifier: 'catalog:'
         version: 0.19.1(unplugin@2.3.11)

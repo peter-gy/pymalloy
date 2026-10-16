@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build:
     name: Build documentation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Check out repository
@@ -28,7 +28,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           build: "false"
-
+          environment: js
       - name: Configure GitHub Pages
         id: pages
         if: github.event_name != 'pull_request'
@@ -37,7 +37,7 @@ jobs:
       - name: Build documentation
         env:
           BASE_PATH: ${{ steps.pages.outputs.base_path || '/pymalloy/' }}
-        run: pnpm docs:build
+        run: pixi run --locked -e js docs
 
       - name: Upload GitHub Pages artifact
         if: github.event_name != 'pull_request'
@@ -49,7 +49,7 @@ jobs:
     name: Deploy documentation
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     # Deployments run one at a time so an older commit never replaces a newer site.
     concurrency:

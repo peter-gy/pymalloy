@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { copyFile, cp, mkdir, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { nativeNotices } from "./native-notices.ts";
+import { stageNativeRuntime } from "./native-runtime.ts";
 
 const root = resolve(import.meta.dirname, "..");
 const assets = join(root, "packages/python/src/pymalloy/_assets");
@@ -31,11 +31,10 @@ for (const [source, digest] of [
 }
 await rm(assets, { recursive: true, force: true });
 await mkdir(assets, { recursive: true });
-await nativeNotices(root, join(assets, "native.LICENSE.txt"));
+await stageNativeRuntime(root, assets);
 for (const [name, source] of Object.entries({
   "compiler.js": "packages/compiler/dist/compiler.js",
   "compiler.manifest.json": "packages/compiler/dist/compiler.manifest.json",
-  "compiler.LICENSE.txt": "packages/compiler/dist/compiler.LICENSE.txt",
   "compiler.protocol.json": "packages/protocol/schema/protocol.json",
   "compiler.malloy.patch": patch,
 })) {
@@ -55,4 +54,4 @@ const agent = join(assets, "agent");
 await mkdir(agent);
 await copyFile(join(root, "plugin.json"), join(agent, "plugin.json"));
 await cp(join(root, "skills/pymalloy"), join(agent, "skills/pymalloy"), { recursive: true });
-console.log("Staged widget, embedded compiler, artifact notices, and agent guidance");
+console.log("Staged widget, embedded compiler, native runtime sources, and agent guidance");

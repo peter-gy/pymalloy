@@ -1,6 +1,7 @@
 import gc
 import json
 import subprocess
+import sys
 import weakref
 
 import duckdb
@@ -149,8 +150,10 @@ def test_captured_input_snapshot_rebinds_after_collection(snapshot_kind, url):
         ]
 
 
-@pytest.mark.parametrize("failure", ["statement", "timeout"])
-def test_borrowed_transaction_recovery_remains_with_caller(failure):
+@pytest.mark.parametrize("failure", ["statement", "timeout", "early-timer"])
+def test_borrowed_transaction_recovery_remains_with_caller(failure, monkeypatch):
+    from threading import Timer
+
     with duckdb.connect() as native:
         with pm.connect(native) as connection:
             sql = (
@@ -164,6 +167,12 @@ def test_borrowed_transaction_recovery_remains_with_caller(failure):
             model.query().sql()
             sibling = connection.model(ONE).query()
             sibling.sql()
+            if failure == "early-timer":
+                # Exercise hosts whose timer wakes before the monotonic deadline.
+                monkeypatch.setattr(
+                    "pymalloy._runtime.deadline.threading.Timer",
+                    lambda interval, callback: Timer(0, callback),
+                )
             native.execute("BEGIN")
             native.execute("CREATE TABLE kept AS SELECT 7 AS n")
             expected = (
@@ -378,7 +387,7 @@ for source in (text, path, pm.ModelSource(path.as_uri(), text), pm.draft(text, u
     assert pm.parse(source).ok
 """
     result = subprocess.run(
-        ["python", "-c", program, str(source)],
+        [sys.executable, "-c", program, str(source)],
         capture_output=True,
         text=True,
         check=False,

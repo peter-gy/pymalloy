@@ -1,17 +1,17 @@
 # Build and package
 
-Complete [contributor setup](README.md), including the pinned Rust toolchain and
-[cargo-about](https://embarkstudios.github.io/cargo-about/) license collector.
-Build JavaScript assets, then package a native Python wheel and source archive
+Complete [contributor setup](README.md), including the host SDK. Build JavaScript
+assets, then package a native wheel for the current host and a source archive
 with [Maturin](https://www.maturin.rs/), the Rust/Python distribution builder:
 
 ```sh
-pnpm build
-uv build --package pymalloy --no-sources --out-dir dist/native
+pixi run --locked assets
+pixi run --locked build-native
+pixi run --locked uv build --package pymalloy --no-sources --sdist --out-dir dist/native
 ```
 
 The native wheel contains the Python package, private `pymalloy._native`
-extension, embedded Malloy compiler, browser widget assets, dependency notices,
+extension, embedded Malloy compiler, browser widget assets,
 and installed agent guidance. [PyO3](https://pyo3.rs/) exposes Rust to CPython.
 Its `abi3-py312` target uses CPython's stable extension interface for Python 3.12
 and newer. Operating systems and processor architectures have separate wheels.
@@ -19,10 +19,11 @@ Runtime requirements install DuckDB, PyArrow, and timezone data. Their
 `sys_platform != 'emscripten'` markers let Pyodide install the browser package's
 authoring and widget dependencies.
 
-Native builds require the Rust toolchain pinned in
-`packages/python/rust-toolchain.toml` and a C/C++ toolchain. `Cargo.lock` fixes the
-resolved Rust dependency graph. Python wheel and editable builds enter the
-private `build_backend.py`, which delegates to Maturin after verifying native
+Repository native builds use the Rust and C/C++ toolchains from `pixi.lock`.
+`packages/python/Cargo.lock` fixes the resolved Rust dependency graph. Microsoft
+and Apple SDK prerequisites are described in
+[contributor setup](README.md#host-prerequisites). Python wheel and editable builds
+enter the private `build_backend.py`, which delegates to Maturin after verifying native
 engine inputs. `--no-sources` checks that Python build requirements resolve
 independently of local uv source overrides.
 
@@ -41,11 +42,11 @@ direct Maturin builds.
 ## JavaScript assets
 
 pnpm builds in dependency order. `scripts/stage-python.ts` copies the compiler,
-widget, Pyodide runtime, per-artifact dependency notices, and agent guidance into
+widget, Pyodide runtime, and agent guidance into
 `pymalloy/_assets`. To build just Python's JavaScript dependencies:
 
 ```sh
-pnpm --filter '@pymalloy/python...' build
+pixi run --locked pnpm --filter '@pymalloy/python...' build
 ```
 
 `@pymalloy/compiler` emits one self-contained `compiler.js`. Its
@@ -57,32 +58,22 @@ Rebuild after JavaScript source or dependency changes.
 
 `@pymalloy/pyodide` emits the browser Python runtime as one closed `runtime.js`
 bundle. Its manifest records the bundle and protocol digests and Malloy version.
-Staging validates the digests before copying the runtime and its dependency
-notices into `pymalloy/_assets/pyodide`. Browser-wheel packaging verifies the
-staged runtime digest.
+Staging validates the digests before copying the runtime into
+`pymalloy/_assets/pyodide`. Browser-wheel packaging verifies the staged runtime
+digest.
 
 [anywidget-bundle](https://github.com/manzt/anywidget-bundle) builds the widget's
-module graph. `BundledWidget` serves its bootstrap, manifest, chunks, extracted
-StyleX stylesheet, and dependency notices from the installed distribution.
+module graph. `BundledWidget` serves its bootstrap, manifest, chunks, and extracted
+StyleX stylesheet from the installed distribution.
 Static imports load with the app. Browser compilation, native
 [Arrow](https://arrow.apache.org/docs/) columnar-data decoding, and the Malloy
 result renderer have dynamic import boundaries. Keep every manifest-listed chunk
 and the stylesheet in wheels and source archives. The native and browser builders
 verify those files before packaging.
 
-JavaScript dependency notices come from modules included in each build. Compiler
-source maps remain beside build outputs.
-
-`scripts/native-notices.ts` uses the cargo-about version pinned in
-`packages/python/Cargo.toml` with the package's `about.toml`
-and `about.hbs` to collect license texts for locked Rust runtime dependencies.
-It fetches licenses for V8, [ICU](https://icu.unicode.org/) Unicode support, and
-C++ runtime code from `native-licenses.json` and verifies their SHA-256 digests.
-This asset-generation step needs network access.
-Staging writes `native.LICENSE.txt` and `native.manifest.json`. The manifest
-records the Rust lockfile, configuration, template, license-source list, and
-notices digests. Staging also collects the locked web-platform JavaScript modules
-in `native.runtime.json`, keyed by their `ext:` module specifiers. These modules
+Compiler source maps remain beside build outputs. Staging collects the locked
+web-platform JavaScript modules in `native.runtime.json`, keyed by their `ext:`
+module specifiers. These modules
 supply URLs, text encoding, blobs, and other JavaScript web APIs.
 Rust's build script verifies the source digest and crate versions, then embeds
 the modules in the extension. Runtime initialization resolves each extension
@@ -95,7 +86,7 @@ Python artifact explicitly with [Hatch](https://hatch.pypa.io/), after staging t
 same widget and guidance assets:
 
 ```sh
-uv --directory packages/python run --isolated --frozen --only-group release python -m hatchling build --target wheel --directory ../../dist/browser
+pixi run --locked uv --directory packages/python run --isolated --frozen --only-group release python -m hatchling build --target wheel --directory ../../dist/browser
 ```
 
 `--isolated` gives the release tools a separate Python environment. The browser
@@ -113,23 +104,23 @@ wheel. Keep the two artifact directories separate when selecting a wheel for tes
 
 The source archive includes Python and Rust sources, `Cargo.lock`, the private
 build backend and archive verifier, pinned engine-input identities, prebuilt
-compiler, widget, and Pyodide assets, native runtime JavaScript, manifests, notices, and
-agent guidance. Rebuilding
-uses Rust and a C/C++ toolchain. It can download Python build dependencies, Rust
-dependencies, and the verified target V8 archive and bindings. JavaScript and
-license notices come from the staged archive contents. Node.js and cargo-about
-run during repository asset generation.
+compiler, widget, and Pyodide assets, native runtime JavaScript, manifests, and
+agent guidance. Rebuilding uses Rust and a C/C++ toolchain. It can download
+Python build dependencies, Rust dependencies, and the verified target V8 archive
+and bindings. JavaScript assets come from the staged archive contents. Node.js
+runs during repository asset generation.
 
 Build directly from the source archive:
 
 ```sh
-uv build --wheel dist/native/pymalloy-*.tar.gz --out-dir dist/from-sdist
+pixi run --locked uv build --wheel dist/native/pymalloy-*.tar.gz --out-dir dist/from-sdist
 ```
 
 ## Validate distributions
 
-`pnpm canary` packs and installs the four public TypeScript packages, checks their
-declarations in NodeNext and Bundler consumer projects, executes a Node query,
+`pixi run --locked canary` packs and installs the four public TypeScript
+packages, checks their declarations in NodeNext and Bundler consumer projects,
+executes a Node query,
 builds a browser consumer bundle, and runs that bundle through the exact-value
 browser test. The browser server reads the bundle from `PYMALLOY_BROWSER_BUNDLE`.
 
@@ -144,7 +135,7 @@ native notebook kernels and the browser artifact.
 Check distribution metadata:
 
 ```sh
-uv run --isolated --frozen --only-group release twine check dist/native/pymalloy-*.whl dist/native/pymalloy-*.tar.gz dist/browser/pymalloy-*.whl
+pixi run --locked uv run --isolated --frozen --only-group release twine check dist/native/pymalloy-*.whl dist/native/pymalloy-*.tar.gz dist/browser/pymalloy-*.whl
 ```
 
 ## Preview documentation
@@ -152,8 +143,8 @@ uv run --isolated --frozen --only-group release twine check dist/native/pymalloy
 Build and preview the deployed URL layout locally:
 
 ```sh
-BASE_PATH=/pymalloy/ pnpm docs:build
-BASE_PATH=/pymalloy/ pnpm docs:preview
+BASE_PATH=/pymalloy/ pixi run --locked -e js docs
+BASE_PATH=/pymalloy/ pixi run --locked -e js pnpm docs:preview
 ```
 
 ## Publish a release
@@ -161,15 +152,15 @@ BASE_PATH=/pymalloy/ pnpm docs:preview
 Set the Python version:
 
 ```sh
-uv version --package pymalloy 0.2.0
+pixi run --locked uv version --package pymalloy 0.2.0
 ```
 
 Set `package.version` in `packages/python/Cargo.toml` to the same version, then
 refresh the workspace package in the Rust lockfile and check alignment:
 
 ```sh
-(cd packages/python && cargo update --workspace)
-uv run --isolated --frozen --only-group release python scripts/check_release.py
+pixi run --locked cargo update --manifest-path packages/python/Cargo.toml --workspace
+pixi run --locked uv run --isolated --frozen --only-group release python scripts/check_release.py
 ```
 
 Merge the version changes to `main`, then push an annotated tag:
@@ -184,8 +175,11 @@ package versions and requires the tag to identify the checked-out commit. It
 runs the same source checks as pull requests and builds native wheels for Linux
 x86_64 and aarch64, macOS arm64 and x86_64, and Windows x86_64, alongside the
 browser wheel and source archive. Linux wheels
-use the `manylinux_2_28` compatibility floor. macOS wheels require macOS 12 or
-newer. Each native wheel is tested on Python 3.12 and 3.14. Before attestation,
+use the `manylinux_2_28` compatibility floor and compile inside the manylinux
+container. macOS wheels require macOS 12 or newer. The `build-native` task sets
+`MACOSX_DEPLOYMENT_TARGET=12.0` on macOS. These wheel targets are separate from
+the developer environment's glibc 2.35 and macOS 14 host requirements. Each
+native wheel is tested on Python 3.12 and 3.14. Before attestation,
 `scripts/check_release.py --distributions dist` validates all five native wheels,
 the browser wheel, and the source archive. It checks versions, platform and
 stable-ABI tags, embedded wheel metadata, extension payloads, and matching wheel

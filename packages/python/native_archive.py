@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -75,13 +76,13 @@ def prepare(
             target = arg.partition("=")[2]
     target = target or os.environ.get("CARGO_BUILD_TARGET")
     if target is None:
-        version = subprocess.check_output(["rustc", "-vV"], text=True, cwd=root)
+        version = subprocess.check_output(["rustc", "-vV"], encoding="utf-8", cwd=root)
         target = next(
             line.removeprefix("host: ")
             for line in version.splitlines()
             if line.startswith("host: ")
         )
-    pinned = json.loads((root / "native-archives.json").read_text())
+    pinned = json.loads((root / "native-archives.json").read_text(encoding="utf-8"))
     if target not in pinned["targets"]:
         raise RuntimeError(
             f"PyMalloy native builds require a pinned V8 target. Target {target!r} has no archive in native-archives.json."
@@ -91,8 +92,41 @@ def prepare(
         if "CARGO_ENCODED_RUSTFLAGS" in os.environ
         else os.environ.get("RUSTFLAGS", "").split()
     )
+    linker = os.environ.get(f"CARGO_TARGET_{target.upper().replace('-', '_')}_LINKER")
+    if (
+        target.endswith("-linux-gnu")
+        and linker
+        and "-conda-linux-gnu-" in Path(linker).name
+    ):
+        specs = subprocess.check_output(
+            [linker, "-print-file-name=builtin.specs"], encoding="utf-8", cwd=root
+        ).strip()
+        if not Path(specs).is_file():
+            raise RuntimeError("The Conda compiler must provide its builtin GCC specs")
+        # Builtin specs keep environment paths out of the wheel. GNU ld resolves
+        # the compiler's sysroot linker scripts through the matching toolchain.
+        for flag in (
+            "-Clink-arg=-specs=builtin.specs",
+            "-Clink-arg=-fuse-ld=bfd",
+        ):
+            if flag not in flags:
+                flags.append(flag)
+    elif target.endswith("-apple-darwin"):
+        prefix = os.environ.get("CONDA_PREFIX")
+        compiler = shutil.which(linker or "cc")
+        if (
+            prefix
+            and compiler
+            and Path(compiler).resolve().is_relative_to(Path(prefix).resolve())
+            and Path(compiler).resolve().name.startswith("clang")
+        ):
+            # The Apple SDK supplies wheel dependencies. Conda's default Clang
+            # configuration selects libraries from its environment directory.
+            flag = "-Clink-arg=--no-default-config"
+            if flag not in flags:
+                flags.append(flag)
     sysroot = subprocess.check_output(
-        ["rustc", "--print", "sysroot"], text=True, cwd=root
+        ["rustc", "--print", "sysroot"], encoding="utf-8", cwd=root
     ).strip()
     prefixes = {}
     for path, replacement in (
@@ -137,7 +171,7 @@ def prepare(
                 "--filter-platform",
                 target,
             ],
-            text=True,
+            encoding="utf-8",
             cwd=root,
         )
     )

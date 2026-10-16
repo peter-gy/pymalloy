@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import shutil
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -92,9 +93,10 @@ if __name__ == "__main__":
         # The export uses marimo's matching frontend assets at their normal paths.
         for asset in static.iterdir():
             if asset.name != "index.html":
-                (root / asset.name).symlink_to(
-                    asset, target_is_directory=asset.is_dir()
-                )
+                if asset.is_dir():
+                    shutil.copytree(asset, root / asset.name)
+                else:
+                    shutil.copy2(asset, root / asset.name)
         handler = functools.partial(SimpleHTTPRequestHandler, directory=str(root))
         with StaticServer(("127.0.0.1", 28446), handler) as server:
             server.serve_forever()

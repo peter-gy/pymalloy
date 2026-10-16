@@ -25,6 +25,13 @@ def interrupt_at(
     completed = threading.Event()
 
     def interrupt() -> None:
+        # Timer waits can finish before the monotonic deadline on coarse host clocks.
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if completed.wait(remaining):
+                return
         expired.set()
         # DuckDB discards an interrupt delivered between statements.
         while not completed.is_set():

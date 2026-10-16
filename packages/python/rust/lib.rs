@@ -26,7 +26,7 @@ impl From<Error> for PyErr {
             Error::Memory => {
                 PyMemoryError::new_err("Compiler exceeded its managed heap memory budget")
             }
-            Error::Timeout => PyTimeoutError::new_err("Compiler operation timed out"),
+            Error::Timeout => PyTimeoutError::new_err("Compiler operation exceeded its deadline"),
             Error::QueueFull => PyRuntimeError::new_err("Compiler startup queue is full"),
         }
     }

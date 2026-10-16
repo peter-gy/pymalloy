@@ -5,12 +5,15 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
-from pathlib import Path
-from urllib.parse import unquote, urlsplit
 
 import msgspec
 
-from pymalloy._model.source import DocumentKind, read_text, resolve_document_kind
+from pymalloy._model.source import (
+    DocumentKind,
+    local_path,
+    read_text,
+    resolve_document_kind,
+)
 from pymalloy._protocol.records import (
     Column,
     CompileError,
@@ -111,10 +114,7 @@ class Compiler:
                     raise ValueError(f"Source bundle is missing '{url}'")
                 text = imports[url]
             else:
-                parsed = urlsplit(url)
-                if parsed.scheme != "file" or parsed.netloc not in {"", "localhost"}:
-                    raise ValueError(f"Import '{url}' must be a local file")
-                text = read_text(Path(unquote(parsed.path)))
+                text = read_text(local_path(url))
             self.sources[url] = text
             return text
 

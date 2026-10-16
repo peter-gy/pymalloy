@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -59,7 +60,7 @@ def _export(model: Path, output: Path, *arguments: str) -> None:
 
 def _definitions(notebook: Path, name: str, cwd: Path) -> str:
     completed = run_to_completion(
-        ["python", "-c", PRINT_DEFINITIONS, str(notebook), name],
+        [sys.executable, "-c", PRINT_DEFINITIONS, str(notebook), name],
         cwd=cwd,
         timeout=30,
     )
@@ -87,7 +88,7 @@ def test_exported_marimo_script_runs_after_the_model_is_gone(tmp_path: Path):
         assert "run_0" in report.read_text()
         model.unlink()
         completed = run_to_completion(
-            ["python", str(report)],
+            [sys.executable, str(report)],
             cwd=away,
             timeout=30,
         )
@@ -101,7 +102,7 @@ def test_exported_marimo_script_runs_after_the_model_is_gone(tmp_path: Path):
     report = copy_dir / "report.py"
     _export(notebook, report, "--profile", "precompiled")
     notebook.unlink()
-    completed = run_to_completion(["python", str(report)], cwd=away, timeout=30)
+    completed = run_to_completion([sys.executable, str(report)], cwd=away, timeout=30)
     assert completed.returncode == 0, completed.stderr
     with duckdb.connect() as connection:
         assert connection.execute(

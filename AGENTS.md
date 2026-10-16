@@ -48,7 +48,11 @@ DuckDB execution, data access, and resource lifetime.
 
 Run the command list in [contributor setup](development_docs/README.md#validate-a-change).
 
-Keep dependencies scoped to the package that imports them and preserve both lockfiles.
+Use `pixi run --locked` for repository commands. `pixi.toml` and `pixi.lock` own
+interpreters, compilers, Cargo tools, and Linux browser libraries. Keep Python
+libraries in `uv.lock`, JavaScript packages in `pnpm-lock.yaml`, and Rust crates
+in `packages/python/Cargo.lock`. Scope dependencies to the package that imports
+them and update each owning manifest and lockfile together.
 
 Test consumer behavior through APIs, files, kernel results, and browser state.
 Keep implementation trivia out of assertions. Document contracts and hidden

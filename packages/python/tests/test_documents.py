@@ -6,9 +6,10 @@ from test_jupyter import execute_notebook
 from pymalloy.export import MarkdownCell, jupyter, marimo, prepare
 
 
-def test_notebook_preserves_markdown_and_embedded_sql(tmp_path):
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_notebook_preserves_markdown_and_embedded_sql(tmp_path, newline):
     model = tmp_path / "sales.malloynb"
-    model.write_text(f'''>>>markdown
+    source = f'''>>>markdown
 # Regional sales
 >>>malloy
 import {{orders}} from "{(EXAMPLES / "orders.malloy").as_posix()}"
@@ -17,7 +18,8 @@ run: orders -> by_region
 ## Total revenue
 >>>sql connection:duckdb
 SELECT SUM(revenue) AS total FROM (%{{ orders -> by_region }}%)
-''')
+'''
+    model.write_bytes(source.replace("\n", newline).encode("utf-8"))
     book = prepare(model, data_root=EXAMPLES)
     assert [query.name for query in book.queries] == ["run:0", "sql:0"]
     assert [cell.text for cell in book.cells if isinstance(cell, MarkdownCell)] == [
