@@ -76,9 +76,9 @@ def main() -> None:
     )
     export.add_argument(
         "--profile",
-        choices=("precompiled", "headless", "widget"),
+        choices=("precompiled", "native", "widget"),
         default="precompiled",
-        help="precompiled SQL, headless Python model, or interactive browser widget (default: precompiled)",
+        help="precompiled SQL, native Python model, or interactive browser widget (default: precompiled)",
     )
     export.add_argument(
         "-o",
@@ -182,7 +182,7 @@ def _tool(args: argparse.Namespace) -> None:
         from pymalloy.errors import CompilationError, PyMalloyError
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install language tools with pip install 'pymalloy[headless]'",
+            f"pymalloy: {error}",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
@@ -228,7 +228,7 @@ def _tool(args: argparse.Namespace) -> None:
                 sys.stdout.write(formatted)
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install language tools with pip install 'pymalloy[headless]'",
+            f"pymalloy: {error}",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
@@ -286,7 +286,7 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
         from pymalloy.export import jupyter, marimo, prepare
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[headless]'",
+            f"pymalloy: {error}",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
@@ -312,7 +312,7 @@ def _export(args: argparse.Namespace, export: argparse.ArgumentParser) -> None:
         args.output.write_text(source, encoding="utf-8")
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install export dependencies with pip install 'pymalloy[headless]'",
+            f"pymalloy: {error}",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
@@ -338,13 +338,13 @@ def _run(args: argparse.Namespace) -> None:
         import pymalloy as pm
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install execution with pip install 'pymalloy[headless]'",
+            f"pymalloy: {error}",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
 
     try:
-        from pymalloy._headless.runtime import deadline_after
+        from pymalloy._runtime.model import deadline_after
 
         deadline = deadline_after(args.timeout)
         with pm.Connection._open(
@@ -365,7 +365,7 @@ def _run(args: argparse.Namespace) -> None:
             )
     except ImportError as error:
         print(
-            f"pymalloy: {error}. Install execution with pip install 'pymalloy[headless]'",
+            f"pymalloy: {error}",
             file=sys.stderr,
         )
         raise SystemExit(1) from None

@@ -504,11 +504,40 @@ SELECT * FROM (WITH "orders.csv" AS (SELECT 1 AS value) SELECT * FROM "orders.cs
         ), sql
 
 
-def test_compiler_memory_budget_releases_a_borrowed_connection():
-    with duckdb.connect() as connection:
-        with pytest.raises(pm.errors.CompilerError, match="Compiler process stopped"):
-            pm.connect(database=connection, compiler_memory_mb=1).model(ONE)
-        assert connection.execute("SELECT 42").fetchone() == (42,)
+def test_active_compiler_timeout_closes_its_model_and_preserves_the_connection():
+    source = (
+        "\n".join(
+            f"source: value_{index} is duckdb.sql('SELECT {index} AS value')"
+            for index in range(10_000)
+        )
+        + "\nrun: value_0 -> { select: value }"
+    )
+    with duckdb.connect() as native, pm.connect(native) as connection:
+        model = connection.model(ONE)
+        sibling = connection.model(ONE)
+        assert model.query().run().to_pylist() == [{"value": 1}]
+        with pytest.raises(TimeoutError, match="(?i)deadline|exceeded|timed out"):
+            model.query(malloy=source).run(timeout=0.01)
+        assert model.closed
+        model.close()
+        assert sibling.query().run().to_pylist() == [{"value": 1}]
+        assert native.execute("SELECT 42").fetchone() == (42,)
+        with connection.model(ONE) as replacement:
+            assert replacement.query().run().to_pylist() == [{"value": 1}]
+
+
+def test_compiler_memory_budget_preserves_siblings_and_a_borrowed_connection():
+    with duckdb.connect() as native, pm.connect(native) as connection:
+        sibling = connection.model(ONE)
+        with (
+            pm.connect(native, compiler_memory_mb=1) as constrained,
+            pytest.raises(pm.errors.CompilerError, match="(?i)heap|memory"),
+        ):
+            constrained.model(ONE)
+        assert sibling.query().run().to_pylist() == [{"value": 1}]
+        assert native.execute("SELECT 42").fetchone() == (42,)
+        with connection.model(ONE) as replacement:
+            assert replacement.query().run().to_pylist() == [{"value": 1}]
 
 
 def test_model_context_releases_owned_resources_and_preserves_borrowed_transaction():

@@ -4,10 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter @pymalloy/scripts stage:python"
+    "build": "pnpm --filter @pymalloy/scripts stage:python",
+    "setup:rust": "uv run --no-project --python 3.12 python rust_tools.py setup --audit",
+    "check:rust": "uv run --no-project --python 3.12 python rust_tools.py check",
+    "test:rust": "uv run --no-project --python 3.12 python rust_tools.py test",
+    "audit:rust": "uv run --no-project --python 3.12 python rust_tools.py audit"
   },
   "devDependencies": {
-    "@pymalloy/headless": "workspace:*",
+    "@pymalloy/compiler": "workspace:*",
+    "@pymalloy/pyodide": "workspace:*",
     "@pymalloy/scripts": "workspace:*",
     "@pymalloy/widget": "workspace:*"
   }

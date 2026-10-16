@@ -70,7 +70,7 @@ def _definitions(notebook: Path, name: str, cwd: Path) -> str:
 def test_exported_marimo_script_runs_after_the_model_is_gone(tmp_path: Path):
     away = tmp_path / "away"
     away.mkdir()
-    for profile in ("precompiled", "headless"):
+    for profile in ("precompiled", "native"):
         work = tmp_path / profile
         work.mkdir()
         model = work / "filtered.malloy"

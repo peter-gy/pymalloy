@@ -1,7 +1,7 @@
 # Edit an existing model
 
 `pm.read_model` parses a [Malloy](https://docs.malloydata.dev/) file into a draft
-with named editing slots. Install `pymalloy[headless]` for the parser.
+with named editing slots. Validate the edited model before saving it:
 
 ```python
 from pathlib import Path

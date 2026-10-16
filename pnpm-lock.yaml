@@ -201,6 +201,31 @@ importers:
         specifier: 'catalog:'
         version: 1.1.0(@types/node@24.19.2)(@vitest/ui@5.0.3)(jiti@2.7.0)(playwright@1.64.0)(typescript@7.0.2)(yaml@2.9.1)
 
+  packages/compiler:
+    dependencies:
+      '@malloy-runtime/compiler':
+        specifier: workspace:*
+        version: link:../core
+      '@malloy-runtime/duckdb':
+        specifier: workspace:*
+        version: link:../duckdb
+      '@pymalloy/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@pymalloy/scripts':
+        specifier: workspace:*
+        version: link:../../scripts
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.1.0(@types/node@24.19.2)(@vitest/ui@5.0.3)(jiti@2.7.0)(playwright@1.64.0)(typescript@7.0.2)(yaml@2.9.1)
+
   packages/core:
     dependencies:
       '@malloydata/malloy':
@@ -254,31 +279,6 @@ importers:
         specifier: 'catalog:'
         version: 1.1.0(@types/node@24.19.2)(@vitest/ui@5.0.3)(jiti@2.7.0)(playwright@1.64.0)(typescript@7.0.2)(yaml@2.9.1)
 
-  packages/headless:
-    dependencies:
-      '@malloy-runtime/compiler':
-        specifier: workspace:*
-        version: link:../core
-      '@malloy-runtime/duckdb':
-        specifier: workspace:*
-        version: link:../duckdb
-      '@pymalloy/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-    devDependencies:
-      '@pymalloy/scripts':
-        specifier: workspace:*
-        version: link:../../scripts
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.19.2
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.1.0(@types/node@24.19.2)(@vitest/ui@5.0.3)(jiti@2.7.0)(playwright@1.64.0)(typescript@7.0.2)(yaml@2.9.1)
-
   packages/node:
     dependencies:
       '@duckdb/node-api':
@@ -317,11 +317,48 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  packages/pyodide:
+    dependencies:
+      '@malloy-runtime/browser':
+        specifier: workspace:*
+        version: link:../browser
+      '@malloy-runtime/compiler':
+        specifier: workspace:*
+        version: link:../core
+      '@pymalloy/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      process:
+        specifier: 'catalog:'
+        version: 0.11.10
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@malloy-runtime/node':
+        specifier: workspace:*
+        version: link:../node
+      '@pymalloy/scripts':
+        specifier: workspace:*
+        version: link:../../scripts
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.1.0(@types/node@24.19.2)(@vitest/ui@5.0.3)(jiti@2.7.0)(playwright@1.64.0)(typescript@7.0.2)(yaml@2.9.1)
+
   packages/python:
     devDependencies:
-      '@pymalloy/headless':
+      '@pymalloy/compiler':
         specifier: workspace:*
-        version: link:../headless
+        version: link:../compiler
+      '@pymalloy/pyodide':
+        specifier: workspace:*
+        version: link:../pyodide
       '@pymalloy/scripts':
         specifier: workspace:*
         version: link:../../scripts

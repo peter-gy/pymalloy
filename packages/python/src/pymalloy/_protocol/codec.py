@@ -9,6 +9,7 @@ from typing import Any
 import msgspec
 from msgspec import Struct
 
+from pymalloy._protocol.records import Result as WireResult
 from pymalloy._protocol.records import State
 
 
@@ -52,17 +53,28 @@ def decode_state(wire: dict[str, Any]) -> dict[str, Any]:
     state.update(sql=None, columns=[], rows=[])
     if result is None:
         return state
+    state.update(_result_data(result))
+    return state
+
+
+def decode_result(wire: dict[str, Any]) -> dict[str, Any]:
+    """Validate a detached Malloy result and decode exact scalar values."""
+    json.dumps(wire, allow_nan=False)
+    msgspec.convert(wire, WireResult, strict=True)
+    return _result_data(wire)
+
+
+def _result_data(result: dict[str, Any]) -> dict[str, Any]:
     fields = result["schema"]["fields"]
     data = result.get("data")
     if data is None or data["kind"] != "array_cell":
-        raise ValueError("Widget results require an array of record cells")
+        raise ValueError("Malloy results require an array of record cells")
     row = _record_decoder(fields)
-    state.update(
-        sql=result.get("sql"),
-        columns=[field["name"] for field in fields],
-        rows=[row(value) for value in data["array_value"]],
-    )
-    return state
+    return {
+        "sql": result.get("sql"),
+        "columns": [field["name"] for field in fields],
+        "rows": [row(value) for value in data["array_value"]],
+    }
 
 
 type CellDecoder = Callable[[dict[str, Any]], Any]

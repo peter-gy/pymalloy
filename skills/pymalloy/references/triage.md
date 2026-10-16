@@ -7,11 +7,11 @@ Identify the stage before changing the definition:
 | Python construction | `TypeError` or `ValueError`. Check argument types and scoped names.                                                          |
 | Compilation         | `pymalloy.errors.CompilationError.diagnostics` gives authored locations. Read source, imports, and compiler version.         |
 | Schema discovery    | A `CompilationError` caused by `SchemaError` retains DESCRIBE SQL and its engine cause. Check connection and data access.    |
-| Compiler service    | `CompilerError` closes the affected compiler. Create another model and retain the cause.                                     |
+| Embedded compiler   | `CompilerError` closes the affected compiler. Create another model and retain the cause.                                     |
 | Engine execution    | `ExecutionError.context` retains source, SQL, selection, bindings, compiler version, and preview limit. Inspect `__cause__`. |
 | Validation          | A failed check retains a counterexample. Review grain, keys, population, denominator, time reference, and joins.             |
 
-This example needs `pymalloy[headless]` and verifies detached failure replay:
+Retain execution evidence and replay the failed query after closing its model:
 
 ```python
 import duckdb

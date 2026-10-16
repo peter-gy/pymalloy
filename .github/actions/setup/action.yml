@@ -1,5 +1,5 @@
 name: Set up workspace
-description: Install the locked Node.js, pnpm, and uv workspaces and build the packaged assets.
+description: Install the locked JavaScript and Python workspaces and build the packaged assets.
 
 inputs:
   python-version:
@@ -27,13 +27,15 @@ runs:
       run: corepack enable pnpm
 
     - name: Set up uv and Python
-      if: inputs.build == 'true'
       uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       with:
         enable-cache: true
         cache-dependency-glob: uv.lock
         python-version: ${{ inputs.python-version }}
 
+    - name: Set up Rust
+      if: inputs.build == 'true'
+      uses: ./.github/actions/setup-rust
     - name: Build packages
       if: inputs.build == 'true'
       shell: bash
@@ -42,4 +44,4 @@ runs:
     - name: Install Python workspace
       if: inputs.build == 'true'
       shell: bash
-      run: uv sync --all-packages --all-extras --frozen
+      run: uv sync --all-packages --frozen

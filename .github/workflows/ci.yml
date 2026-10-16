@@ -13,130 +13,30 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  lint:
-    name: Lint and type-check
+  checks:
+    name: Source checks
+    uses: ./.github/workflows/checks.yml
+  wheels:
+    name: Distribution targets
+    uses: ./.github/workflows/wheels.yml
+  check:
+    name: Check
+    if: always()
+    needs:
+      - checks
+      - wheels
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+      - name: Require every validation job
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
 
-      - name: Set up workspace
-        uses: ./.github/actions/setup
-
-      - name: Check lockfiles
-        run: uv lock --check
-
-      - name: Check JavaScript, generated records, and unused code
-        run: pnpm check
-
-      - name: Lint Python
-        run: uv run --frozen ruff check packages/python examples apps/e2e scripts
-
-      - name: Check Python formatting
-        run: uv run --frozen ruff format --check packages/python examples apps/e2e scripts
-
-      - name: Type-check Python with ty
-        run: uv run --frozen ty check
-
-      - name: Type-check Python with Pyrefly
-        run: uv run --frozen pyrefly check
-
-      - name: Type-check Python with basedpyright
-        run: uv run --frozen basedpyright
-
-      - name: Lint workflows
-        run: uvx --from actionlint-py==1.7.12.24 actionlint
-
-  javascript:
-    name: JavaScript tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up workspace
-        uses: ./.github/actions/setup
-
-      - name: Run package tests
-        run: pnpm test
-
-  python:
-    name: Python tests (${{ matrix.python }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.12", "3.14"]
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up workspace
-        uses: ./.github/actions/setup
-        with:
-          python-version: ${{ matrix.python }}
-
-      - name: Run Python tests
-        run: uv run --frozen pytest -q
-
-      - name: Run installed-package tests
-        run: uv run --frozen pytest -m e2e -q
-
-  floors:
-    name: Python lower bounds
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up workspace
-        uses: ./.github/actions/setup
-
-      - name: Run Python tests against declared minimum versions
-        run: scripts/test-python-floors.sh
-
-  browser:
-    name: Browser and packed packages
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up workspace
-        uses: ./.github/actions/setup
-
-      - name: Install Chromium
-        run: pnpm --filter @pymalloy/e2e exec playwright install --with-deps chromium
-
-      - name: Build the wheel served to Pyodide
-        run: uv build --package pymalloy --no-sources --wheel --out-dir dist
-
-      - name: Test packed TypeScript packages
-        run: pnpm canary
-
-      - name: Test notebooks and browser sessions
-        run: pnpm e2e
-
-      - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: playwright-report
-          path: apps/e2e/playwright-report
-          retention-days: 7
-          if-no-files-found: ignore
+          failed = {name: job["result"] for name, job in json.loads(os.environ["NEEDS_JSON"]).items() if job["result"] != "success"}
+          if failed:
+              raise SystemExit(f"Required jobs did not succeed: {failed}")
+          PY

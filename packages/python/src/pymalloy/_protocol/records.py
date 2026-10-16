@@ -18,39 +18,6 @@ class Connection(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
 type DocumentKind = Literal["model", "notebook"]
 
 
-class URLValue(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="value",
-):
-    value: str
-
-
-class HostError(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="error",
-):
-    error: str
-
-
-class Column(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """
-    An output field name and its native database type text.
-    """
-
-    name: Annotated[str, Meta(description="Output column name.")]
-    type: Annotated[
-        str, Meta(description="Native type description, distinct from an Arrow schema.")
-    ]
-
-
 class MalloyQuery(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     malloy: str
 
@@ -166,17 +133,6 @@ class SyntaxRequest(
 ):
     source: str
     url: str
-
-
-class CompilerReady(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="ready",
-):
-    pass
 
 
 class TableSchemaNeed(
@@ -731,6 +687,39 @@ class TableSyntax(
     path: str
 
 
+class URLValue(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="value",
+):
+    value: str
+
+
+class HostError(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="error",
+):
+    error: str
+
+
+class Column(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    """
+    An output field name and its native database type text.
+    """
+
+    name: Annotated[str, Meta(description="Output column name.")]
+    type: Annotated[
+        str, Meta(description="Native type description, distinct from an Arrow schema.")
+    ]
+
+
 type WidgetAction = Literal["inspect", "check", "run"]
 
 
@@ -745,37 +734,6 @@ class NotebookResult(
     sql: str
     columns: tuple[Column, ...]
     connection_name: str = field(name="connectionName")
-
-
-class ViewMessage(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="pymalloy-view",
-):
-    id: str
-    action: Literal["mount", "unmount"]
-
-
-class ActionRequest(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    revision: Annotated[int, Meta(ge=0)]
-    action: Literal["check", "run"]
-
-
-type ExecutionKind = Literal["browser", "python", "result"]
-
-
-class NotebookBinding(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    name: str
-    kind: str
-    source: str
-
-
-class NotebookInput(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    name: str
-    rows: Annotated[int, Meta(ge=0)]
 
 
 class CellWithStringCell(
@@ -868,6 +826,37 @@ class CellWithSQLNativeCell(
     sql_native_value: str
 
 
+class ViewMessage(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="pymalloy-view",
+):
+    id: str
+    action: Literal["mount", "unmount"]
+
+
+class ActionRequest(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    revision: Annotated[int, Meta(ge=0)]
+    action: Literal["check", "run"]
+
+
+type ExecutionKind = Literal["browser", "python", "result"]
+
+
+class NotebookBinding(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
+    kind: str
+    source: str
+
+
+class NotebookInput(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    name: str
+    rows: Annotated[int, Meta(ge=0)]
+
+
 class BeginRequest(
     Struct,
     frozen=True,
@@ -880,20 +869,6 @@ class BeginRequest(
     document_kind: DocumentKind = field(name="documentKind")
     connection: Connection
     source: str | UnsetType = UNSET
-
-
-type URLAnswer = URLValue | HostError
-
-
-class SchemaValue(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="kind",
-    tag="value",
-):
-    value: tuple[Column, ...]
 
 
 type QuerySelection = str | MalloyQuery
@@ -1049,6 +1024,20 @@ class SyntaxOperation(Struct, frozen=True, forbid_unknown_fields=True, kw_only=T
     arguments: tuple[str, ...]
 
 
+type URLAnswer = URLValue | HostError
+
+
+class SchemaValue(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="value",
+):
+    value: tuple[Column, ...]
+
+
 class NotebookInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     kind: str
     source: str
@@ -1058,9 +1047,6 @@ class NotebookInfo(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True
     references: tuple[str, ...]
     annotations: tuple[str, ...]
     inputs: tuple[NotebookInput, ...]
-
-
-type SchemaAnswer = SchemaValue | HostError
 
 
 class Needs(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
@@ -1221,6 +1207,9 @@ class FormatReady(
     diagnostics: tuple[Diagnostic, ...]
 
 
+type SchemaAnswer = SchemaValue | HostError
+
+
 class NotebookError(
     Struct,
     frozen=True,
@@ -1231,11 +1220,6 @@ class NotebookError(
 ):
     message: str
     diagnostics: tuple[Diagnostic, ...]
-
-
-class HostAnswers(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    urls: Mapping[str, URLAnswer]
-    schemas: Mapping[str, SchemaAnswer]
 
 
 class CompileNeeds(
@@ -1297,15 +1281,9 @@ class ParseReady(
     report: ParseReport
 
 
-class StepRequest(
-    Struct,
-    frozen=True,
-    forbid_unknown_fields=True,
-    kw_only=True,
-    tag_field="op",
-    tag="step",
-):
-    fulfilled: HostAnswers
+class HostAnswers(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    urls: Mapping[str, URLAnswer]
+    schemas: Mapping[str, SchemaAnswer]
 
 
 type Model = Records
@@ -1314,6 +1292,7 @@ type Model = Records
 class Records(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     request: Request
     response: Response
+    host_answers: HostAnswers = field(name="hostAnswers")
     input: Input
     notebook_reply: NotebookReply = field(name="notebookReply")
     widget_message: WidgetMessage = field(name="widgetMessage")
@@ -1329,7 +1308,6 @@ class Records(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
 
 type Request = (
     BeginRequest
-    | StepRequest
     | QueryRequest
     | DocumentRequest
     | InspectRequest
@@ -1400,8 +1378,7 @@ class DocumentRequest(
 
 
 type Response = (
-    CompilerReady
-    | CompileNeeds
+    CompileNeeds
     | CompileError
     | CompilerFailure
     | ModelReady
@@ -2160,7 +2137,9 @@ class NotebookReply(Struct, frozen=True, forbid_unknown_fields=True, kw_only=Tru
     response: NotebookResponse
 
 
-type NotebookResponse = NotebookInspection | NotebookResult | NotebookError
+type NotebookResponse = (
+    NotebookInspection | NotebookResult | NotebookMalloyResult | NotebookError
+)
 
 
 class NotebookInspection(
@@ -2174,40 +2153,15 @@ class NotebookInspection(
     inspection: Inspection
 
 
-type WidgetMessage = NotebookRequest | ViewMessage
-
-
-class NotebookRequest(
+class NotebookMalloyResult(
     Struct,
     frozen=True,
     forbid_unknown_fields=True,
     kw_only=True,
     tag_field="kind",
-    tag="pymalloy-request",
+    tag="malloy",
 ):
-    id: str
-    input: Input
-
-
-class DefinitionMetadata(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    revision: Annotated[int, Meta(ge=0)]
-    source: str
-    document_kind: DocumentKind = field(name="documentKind")
-    connection_name: str = field(name="connectionName")
-    notebook: NotebookInfo
-    queries: tuple[QueryDescriptor, ...]
-    url: str | None = None
-    imports: Mapping[str, str] | None = None
-
-
-class State(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    revision: Annotated[int, Meta(ge=0)]
-    status: Literal["idle", "loading", "ready", "error", "closed"]
-    queries: tuple[QueryDescriptor, ...]
-    result: Result | None
-    error: str | None
-    diagnostics: tuple[Diagnostic, ...]
-    inspection: Inspection | None
+    result: Result
 
 
 class Result(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
@@ -2280,3 +2234,39 @@ class DataWithArrayCell(
     tag="array_cell",
 ):
     array_value: tuple[Cell, ...]
+
+
+type WidgetMessage = NotebookRequest | ViewMessage
+
+
+class NotebookRequest(
+    Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+    tag_field="kind",
+    tag="pymalloy-request",
+):
+    id: str
+    input: Input
+
+
+class DefinitionMetadata(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    revision: Annotated[int, Meta(ge=0)]
+    source: str
+    document_kind: DocumentKind = field(name="documentKind")
+    connection_name: str = field(name="connectionName")
+    notebook: NotebookInfo
+    queries: tuple[QueryDescriptor, ...]
+    url: str | None = None
+    imports: Mapping[str, str] | None = None
+
+
+class State(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    revision: Annotated[int, Meta(ge=0)]
+    status: Literal["idle", "loading", "ready", "error", "closed"]
+    queries: tuple[QueryDescriptor, ...]
+    result: Result | None
+    error: str | None
+    diagnostics: tuple[Diagnostic, ...]
+    inspection: Inspection | None

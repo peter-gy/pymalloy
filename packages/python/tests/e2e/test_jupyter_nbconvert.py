@@ -109,20 +109,20 @@ def _kernel(data: Path, name: str, python: Path) -> None:
 
 
 @pytest.fixture(scope="session")
-def notebook_kernels(tmp_path_factory: pytest.TempPathFactory, headless_venv: Path):
+def notebook_kernels(tmp_path_factory: pytest.TempPathFactory, native_venv: Path):
     root = tmp_path_factory.mktemp("notebook-kernels")
     precompiled = create_venv(root / "precompiled")
     pip_install(precompiled, "duckdb", "polars", "ipykernel")
-    pip_install(headless_venv, "polars", "ipykernel")
+    pip_install(native_venv, "polars", "ipykernel")
     data = root / "jupyter"
     _kernel(data, "e2e-precompiled", precompiled / "bin" / "python")
-    _kernel(data, "e2e-headless", headless_venv / "bin" / "python")
-    return {"precompiled": precompiled, "headless": headless_venv, "data": data}
+    _kernel(data, "e2e-native", native_venv / "bin" / "python")
+    return {"precompiled": precompiled, "native": native_venv, "data": data}
 
 
 @pytest.mark.parametrize(
     ("profile", "kernel"),
-    [("precompiled", "e2e-precompiled"), ("headless", "e2e-headless")],
+    [("precompiled", "e2e-precompiled"), ("native", "e2e-native")],
 )
 def test_jupyter_nbconvert_executes_the_exported_notebook(
     tmp_path: Path, profile: str, kernel: str, notebook_kernels: dict

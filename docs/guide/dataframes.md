@@ -1,7 +1,7 @@
 # Capture Python data
 
 `pm.data(frame)` captures materialized Python values so they travel with a model.
-Install `pymalloy[headless]` and [Polars](https://docs.pola.rs/), a dataframe
+Install `pymalloy` and [Polars](https://docs.pola.rs/), a dataframe
 library, for this example:
 
 ```python
@@ -44,9 +44,10 @@ Schemas, execution, validation, and bundles use those bytes.
 
 Accepted producers include Polars DataFrames, Arrow Tables and RecordBatches,
 [pandas](https://pandas.pydata.org/docs/) DataFrames, and materialized objects
-implementing Arrow's `__arrow_c_stream__` interface. PyArrow is required and comes
-with the headless extra. Install dataframe libraries directly. A pandas index is
-excluded. Collect lazy frames explicitly before capture.
+implementing Arrow's `__arrow_c_stream__` interface. PyMalloy installs
+[PyArrow](https://arrow.apache.org/docs/python/), the Python Arrow library, on
+native Python. Install producer libraries such as Polars or pandas separately.
+A pandas index is excluded. Collect lazy frames explicitly before capture.
 
 Supported values include nested lists and records, nulls, booleans, strings,
 integers, floats, decimals up to precision 38, dates, and timestamps.
@@ -62,8 +63,7 @@ fingerprints, and detached Arrow values. `draft.text` retains logical input path
 
 ## Carry inputs into widgets and bundles
 
-Pass a draft or snapshot directly to `pm.MalloyWidget`. With the base package,
-install PyArrow and the producer library directly. The widget sends captured
+Pass a draft or snapshot directly to `pm.MalloyWidget`. The widget sends captured
 Parquet as browser virtual files. Its browser compiler and engine use their own
 runtime. Explicit `files=` entries cannot shadow managed names.
 See [widgets](widget.md) for display and asynchronous readback.

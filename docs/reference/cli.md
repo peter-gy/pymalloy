@@ -1,8 +1,7 @@
 # CLI
 
 `pymalloy` runs, checks, formats, and exports local
-[Malloy](https://docs.malloydata.dev/documentation/) source files. Install
-`pymalloy[headless]` for compiler and native execution commands.
+[Malloy](https://docs.malloydata.dev/documentation/) source files.
 [DuckDB](https://duckdb.org/docs/stable/) executes their SQL.
 
 ```sh
@@ -117,19 +116,19 @@ The second command exits `0`.
 
 `pymalloy export MODEL --format {marimo,jupyter} -o OUTPUT [options]`
 
-| Argument or flag                          | Default and behavior                                                                              |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `MODEL`                                   | Required local `.malloy`, `.malloynb`, or `.malloysql` file                                       |
-| `--format {marimo,jupyter}`               | Required notebook format                                                                          |
-| `-o PATH`, `--output PATH`                | Required `.py` for marimo or `.ipynb` for Jupyter. Must differ from model and database            |
-| `--profile {precompiled,headless,widget}` | `precompiled`. Chooses embedded SQL, native PyMalloy, or browser widgets                          |
-| `-q NAME`, `--query NAME`                 | Repeat to choose queries in order. Accepts names, `source.view`, `run:N`, and `sql:N`             |
-| `--all`                                   | Select every query. Mutually exclusive with `--query`                                             |
-| `--files JSON`                            | `{}`, mapping source aliases to local file paths for SQL reader inputs                            |
-| `--remote-file URL`                       | Empty list. Repeat for HTTP(S) inputs inside SQL readers                                          |
-| `--title TEXT`                            | Title-cased filename stem with underscores changed to spaces                                      |
-| `--givens JSON`                           | Parameter bindings as a finite JSON object                                                        |
-| Native options                            | `--data-root`, `--database`, `--timeout`, `--extension`, `--connection-name` as specified earlier |
+| Argument or flag                        | Default and behavior                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `MODEL`                                 | Required local `.malloy`, `.malloynb`, or `.malloysql` file                                       |
+| `--format {marimo,jupyter}`             | Required notebook format                                                                          |
+| `-o PATH`, `--output PATH`              | Required `.py` for marimo or `.ipynb` for Jupyter. Must differ from model and database            |
+| `--profile {precompiled,native,widget}` | `precompiled`. Chooses embedded SQL, native PyMalloy, or browser widgets                          |
+| `-q NAME`, `--query NAME`               | Repeat to choose queries in order. Accepts names, `source.view`, `run:N`, and `sql:N`             |
+| `--all`                                 | Select every query. Mutually exclusive with `--query`                                             |
+| `--files JSON`                          | `{}`, mapping source aliases to local file paths for SQL reader inputs                            |
+| `--remote-file URL`                     | Empty list. Repeat for HTTP(S) inputs inside SQL readers                                          |
+| `--title TEXT`                          | Title-cased filename stem with underscores changed to spaces                                      |
+| `--givens JSON`                         | Parameter bindings as a finite JSON object                                                        |
+| Native options                          | `--data-root`, `--database`, `--timeout`, `--extension`, `--connection-name` as specified earlier |
 
 Compilation and rendering finish before an existing output is replaced. Parent
 output directories are created. Default query selection follows document order

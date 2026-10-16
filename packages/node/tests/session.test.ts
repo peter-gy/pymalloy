@@ -50,6 +50,40 @@ afterEach(async () => {
   );
 });
 describe("Node Session", () => {
+  test("previews bound queries while preserving exact values and full execution", async () => {
+    const runtime = await session();
+    const model = await runtime.model({
+      text: "run: duckdb.sql('SELECT 9007199254740993::BIGINT AS id, range AS n FROM range(5)') -> {select: id, n order_by: n}",
+    });
+    const query = model.query();
+    const result = await query.preview(2);
+    expect(result.rows).toEqual([
+      { id: 9007199254740993n, n: 0n },
+      { id: 9007199254740993n, n: 1n },
+    ]);
+    expect(result.columns).toEqual([
+      { name: "id", type: "BIGINT" },
+      { name: "n", type: "BIGINT" },
+    ]);
+    expect((await query.run()).rows).toHaveLength(5);
+    for (const limit of [0, 10001, 1.5, NaN])
+      await expect(query.preview(limit)).rejects.toThrow("Preview limit");
+    model.close();
+  });
+
+  test("preview rejects COPY before writing its target", async () => {
+    const root = await directory();
+    const runtime = await session({ dataRoot: root });
+    const output = resolve(root, "preview.csv");
+    const model = await runtime.model({
+      text: `>>>sql connection: duckdb\nCOPY (SELECT 42 AS n) TO '${output}'\n`,
+      documentKind: "notebook",
+    });
+    await expect(model.query().preview(2)).rejects.toThrow("Expected a single SELECT statement");
+    await expect(readFile(output)).rejects.toMatchObject({ code: "ENOENT" });
+    model.close();
+  });
+
   test("checks drafts, formats source, and inspects SQL without executing it", async () => {
     const runtime = await session({ dataRoot: examples });
     const report = await runtime.check("run: unknown_source", { path: "draft.malloy" });

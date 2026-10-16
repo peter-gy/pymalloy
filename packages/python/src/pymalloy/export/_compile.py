@@ -11,10 +11,10 @@ from urllib.parse import unquote, urlsplit
 import duckdb
 
 import pymalloy as pm
-from pymalloy._headless.compiler import Compiler
-from pymalloy._headless.runtime import remaining
+from pymalloy._compiler.host import Compiler
 from pymalloy._model.file_access import check_files, settings
 from pymalloy._model.source import read_text
+from pymalloy._runtime.model import remaining
 from pymalloy.analysis import QueryCell as CompiledNotebookQuery
 from pymalloy.export._document import (
     Document,
@@ -55,7 +55,7 @@ def compile_document(
     extensions = native_extensions(extensions, profile, remote)
     registered = dict(files)
     with ExitStack() as resources:
-        parser = resources.enter_context(closing(Compiler(timeout=remaining(deadline))))
+        parser = resources.enter_context(closing(Compiler()))
         catalog = None
         pending = [path.resolve()]
         visited = set()

@@ -1,0 +1,299 @@
+name: Build wheel targets
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Build native wheel (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy: &native-targets
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+            interpreter: python3.12
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2_28"
+            interpreter: python3.12
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            manylinux: "off"
+            interpreter: python
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            manylinux: "off"
+            interpreter: python
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            manylinux: "off"
+            interpreter: python
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up assets and Python
+        uses: ./.github/actions/setup
+        with:
+          build: "false"
+
+      - name: Set up Rust and notice tooling
+        uses: ./.github/actions/setup-rust
+      - name: Build JavaScript assets
+        run: pnpm build
+
+      - name: Verify native engine inputs
+        if: runner.os != 'Linux'
+        shell: bash
+        run: uv run --no-project --python 3.12 python packages/python/native_archive.py archive --target ${{ matrix.target }} --github-env "$GITHUB_ENV"
+
+      - name: Build native wheel
+        uses: PyO3/maturin-action@86b9d133d34bc1b40018696f782949dac11bd380 # v1.49.4
+        with:
+          maturin-version: v1.11.5
+          rust-toolchain: "${{ env.RUSTUP_TOOLCHAIN }}"
+          working-directory: packages/python
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --compatibility pypi --interpreter ${{ matrix.interpreter }} --out ../../dist/native
+          before-script-linux: |
+            python3.12 native_archive.py archive --target ${{ matrix.target }} --shell-env /tmp/pymalloy-v8-env
+            source /tmp/pymalloy-v8-env
+
+      - name: Upload native wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.target }}
+          path: dist/native/pymalloy-*-cp312-abi3-*.whl
+          retention-days: 1
+          if-no-files-found: error
+
+  test-native:
+    name: Test installed native wheel (${{ matrix.target }})
+    needs: native
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy: *native-targets
+    steps:
+      - name: Check out installed-wheel probe
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/check_native_wheel.py
+          sparse-checkout-cone-mode: false
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - name: Download native wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: native-${{ matrix.target }}
+          path: dist/native
+      - name: Test installed native wheel
+        shell: bash
+        run: |
+          wheels=("$GITHUB_WORKSPACE"/dist/native/pymalloy-*-cp312-abi3-*.whl)
+          test "${#wheels[@]}" -eq 1
+          cd "$RUNNER_TEMP"
+          for python in 3.12 3.14; do
+            uv run --no-project --python "$python" --with "${wheels[0]}" python -I "$GITHUB_WORKSPACE/scripts/check_native_wheel.py" "${wheels[0]}"
+          done
+
+  browser-source:
+    name: Browser wheel and source archive
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up assets and Python
+        uses: ./.github/actions/setup
+        with:
+          build: "false"
+
+      - name: Set up Rust and notice tooling
+        uses: ./.github/actions/setup-rust
+      - name: Build JavaScript assets
+        run: pnpm build
+
+      - name: Build source archive
+        run: uv build --package pymalloy --no-sources --sdist --out-dir dist/source
+
+      - name: Build browser wheel
+        working-directory: packages/python
+        run: uv run --frozen --only-group release python -m hatchling build --target wheel --directory ../../dist/browser
+
+      - name: Rebuild source archive with Rust and C toolchains
+        shell: bash
+        run: |
+          tools="$RUNNER_TEMP/source-build-tools"
+          mkdir -p "$tools"
+          for name in node deno; do
+            printf '#!/bin/sh\nexit 97\n' > "$tools/$name"
+            chmod +x "$tools/$name"
+          done
+          PATH="$tools:$PATH" uv build --wheel dist/source/pymalloy-*.tar.gz --out-dir dist/rebuilt
+
+      - name: Check distribution metadata
+        run: uv run --frozen --only-group release twine check --strict dist/source/pymalloy-*.tar.gz dist/browser/pymalloy-*.whl
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: source
+          path: dist/source/pymalloy-*.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload browser wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser
+          path: dist/browser/pymalloy-*-py3-none-any.whl
+          retention-days: 1
+          if-no-files-found: error
+      - name: Upload rebuilt source wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: rebuilt-source
+          path: dist/rebuilt/pymalloy-*-cp312-abi3-*.whl
+          retention-days: 1
+          if-no-files-found: error
+  test-browser:
+    name: Test installed browser wheel
+    needs: browser-source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out browser acceptance tests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up JavaScript and Python
+        uses: ./.github/actions/setup
+        with:
+          build: "false"
+      - name: Download browser wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: browser
+          path: dist/browser
+      - name: Select the release artifact
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          wheels = list(Path("dist/browser").resolve().glob("pymalloy-*-py3-none-any.whl"))
+          if len(wheels) != 1:
+              raise SystemExit("Expected exactly one browser wheel")
+          with open(os.environ["GITHUB_ENV"], "a") as environment:
+              environment.write(f"PYMALLOY_BROWSER_WHEEL={wheels[0]}\n")
+          PY
+      - name: Build browser test drivers
+        run: pnpm --filter @pymalloy/widget... -r --if-present build
+      - name: Install notebook hosts and the release wheel
+        run: |
+          uv sync --frozen --group notebook-hosts --no-install-workspace
+          uv pip install --no-deps "$PYMALLOY_BROWSER_WHEEL"
+      - name: Validate the locked Pyodide dependencies
+        run: uv run --frozen --only-group release python apps/e2e/pyodide/lock.py --check
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/pymalloy-release-env
+      - name: Install Chromium
+        run: pnpm --filter @pymalloy/e2e exec playwright install --with-deps chromium
+      - name: Test browser execution and notebook hosts
+        run: pnpm e2e --project pyodide --project jupyterlite --project marimo-wasm
+      - name: Upload browser acceptance report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: browser-wheel-playwright-report
+          path: apps/e2e/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+  test-source:
+    name: Test installed source build
+    needs: browser-source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out installed-wheel probe
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/check_native_wheel.py
+          sparse-checkout-cone-mode: false
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - name: Download rebuilt source wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: rebuilt-source
+          path: dist/rebuilt
+      - name: Test installed source build
+        shell: bash
+        run: |
+          wheels=("$GITHUB_WORKSPACE"/dist/rebuilt/pymalloy-*-cp312-abi3-*.whl)
+          test "${#wheels[@]}" -eq 1
+          cd "$RUNNER_TEMP"
+          for python in 3.12 3.14; do
+            uv run --no-project --python "$python" --with "${wheels[0]}" python -I "$GITHUB_WORKSPACE/scripts/check_native_wheel.py" "${wheels[0]}"
+          done
+
+  check-artifacts:
+    name: Validate distribution set
+    needs:
+      - native
+      - test-native
+      - browser-source
+      - test-source
+      - test-browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - name: Download native wheels
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: dist
+      - name: Download browser wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: browser
+          path: dist
+      - name: Download source archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: source
+          path: dist
+      - name: Validate archive identities and metadata
+        run: |
+          uv run --frozen --only-group release python scripts/check_release.py --distributions dist
+          uv run --frozen --only-group release twine check --strict dist/pymalloy-*

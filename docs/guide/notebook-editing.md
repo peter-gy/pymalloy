@@ -18,8 +18,7 @@ expression acquires execution context when composed into a source or model.
 
 ## Compose and inspect
 
-Install `pymalloy`, [PyArrow](https://arrow.apache.org/docs/python/), the Python
-implementation of the Arrow columnar format, and your notebook host:
+Install `pymalloy` and your notebook host:
 
 ```python
 import pyarrow as pa
@@ -52,22 +51,22 @@ support. Captured inputs become Parquet bytes on the first Check or Run action.
 Put intermediate expressions, sources, and views in separate cells to inspect
 their scopes before composing them.
 
-| Cell output                                   | Inspector behavior                                                               |
-| --------------------------------------------- | -------------------------------------------------------------------------------- |
-| `Expr`, `Sort`, `View`, unresolved `Source`   | Authored syntax, references, and annotations                                     |
-| Self-contained table, SQL, or captured source | Check and run a generated query selecting up to 20 rows                          |
-| `Draft` or `ModelSource`                      | Check and run a selected query in the browser                                    |
-| Native `Model` or `Query`                     | Inspect source, check schema, and preview up to 20 rows on its Python connection |
-| `Result`                                      | Display up to 20 retained rows and executed SQL                                  |
+| Cell output                                   | Inspector behavior                                                                 |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `Expr`, `Sort`, `View`, unresolved `Source`   | Authored syntax, references, and annotations                                       |
+| Self-contained table, SQL, or captured source | Check and run a generated query selecting up to 20 rows                            |
+| `Draft` or `ModelSource`                      | Check and run a selected query in the browser                                      |
+| Native or browser `Model` or `Query`          | Inspect source, check schema, and preview up to 20 rows on its existing connection |
+| `Result`                                      | Display up to 20 retained rows and executed SQL                                    |
 
-Complete draft queries use their authored limits. A bounded source or native
+Complete draft queries use their authored limits. A bounded source or model
 preview can still scan the whole input for aggregation. Browser models need
 captured inputs, virtual files, or browser-accessible URLs. Native models use
 Python filesystem and database access.
 
 ## Preview a native query
 
-With `pymalloy[headless]`, retain the connection while using the inspector:
+Retain the connection while using the inspector:
 
 ```python
 import pymalloy as pm
@@ -82,6 +81,28 @@ Choose **Preview** to return `answer: 42` using the model's timeout.
 `Query.preview` rejects write statements. Closing the inspector leaves the model
 usable. Call `connection.close()` when finished to close its models and database.
 Materialized results remain readable afterward.
+
+## Preview a browser Python query
+
+In [browser Python](browser-python.md), keep the asynchronous connection alive
+while using its inspector:
+
+<!-- not-executed -->
+
+```python
+from pymalloy import browser
+
+connection = browser.connect(timeout=30)
+model = await connection.model(
+    "run: duckdb.sql('SELECT 42 AS answer') -> { select: answer }"
+)
+query = model.query()
+query
+```
+
+**Preview** runs on that connection's DuckDB WebAssembly worker. Closing the
+inspector preserves the model. Call `await connection.close()` when finished.
+A retained result can still be displayed after the connection closes.
 
 Automatic inspectors follow their cell or view lifetime. Rerunning a marimo cell
 closes its previous inspector. Removing the final Jupyter view closes its implicit

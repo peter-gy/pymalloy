@@ -7,6 +7,9 @@ wheels/
 .venv/
 .pytest_cache/
 .ruff_cache/
+target/
+packages/python/src/pymalloy/_native*.so
+packages/python/src/pymalloy/_native*.pyd
 node_modules/
 .vitepress/cache/
 _assets/

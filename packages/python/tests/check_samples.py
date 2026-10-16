@@ -299,7 +299,6 @@ def main():
                 "polars",
                 "pyarrow",
                 "marimo",
-                "deno",
                 "nbclient",
             ]
         },

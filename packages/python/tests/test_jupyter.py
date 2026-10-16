@@ -16,7 +16,7 @@ def execute_notebook(output: Path, assertions: str = "", *, pymalloy: bool = Fal
         notebook.cells.insert(
             0,
             nbformat.v4.new_code_cell(
-                "import sys\nsys.modules.update(pymalloy=None, deno=None, pyarrow=None)"
+                "import sys\nsys.modules.update(pymalloy=None, pyarrow=None)"
             ),
         )
     if assertions:

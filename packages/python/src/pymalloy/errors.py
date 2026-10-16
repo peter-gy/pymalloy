@@ -74,7 +74,7 @@ class ClosedError(PyMalloyError):
 
 
 class CompilerError(PyMalloyError):
-    """The compiler process or protocol failed internally.
+    """The native compiler or its data boundary failed internally.
 
     The affected compiler is closed. Retrying requires a fresh runtime.
     """

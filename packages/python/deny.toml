@@ -1,0 +1,42 @@
+[graph]
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
+
+[advisories]
+yanked = "deny"
+unused-ignored-advisory = "deny"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2024-0436"
+reason = "Maintenance-only advisory: pinned V8 150.4.0 requires paste 1.0.15 for compile-time macros. RustSec reports no patched paste release."
+
+[licenses]
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+  "MPL-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+]
+unused-allowed-license = "deny"
+
+[licenses.private]
+ignore = true
+
+[bans]
+# Pinned engine and platform dependencies can require different major versions.
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -13,7 +13,7 @@ source. Use `draft["orders"].replace(...)` when editing that source's definition
 The latter returns its expression, so assigning it under another name copies the
 expression. Prefer native Malloy text for syntax that reads more clearly that way.
 
-This example requires `pymalloy[headless]` and writes into a temporary workspace:
+Validate a model, bundle its inputs, and replay it from a temporary workspace:
 
 ```python
 import json

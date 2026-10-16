@@ -2,6 +2,8 @@
 
 [Malloy](https://docs.malloydata.dev/documentation/) compiles semantic queries.
 [DuckDB](https://duckdb.org/docs/stable/) executes SQL on the native connection.
+For Python running in Pyodide, use the asynchronous
+[browser Python API](browser-python.md).
 
 ```python
 import pymalloy as pm
@@ -13,8 +15,6 @@ with pm.connect() as con:
 print(result.to_pylist())
 assert result.to_pylist() == [{"answer": 42}]
 ```
-
-Install `pymalloy[headless]` for headless execution.
 
 ## Connection
 
@@ -34,8 +34,12 @@ the connection owner.
 `name` is the Malloy connection name. `data_root` sets the owned connection's
 file search path. `config` supplies native DuckDB settings. `extensions` are
 installed and loaded before file-access restrictions. `timeout` is the default
-operation budget in seconds. `compiler_memory_mb` bounds each compiler's V8 heap.
-[Deno](https://docs.deno.com/runtime/) is the JavaScript runtime running that compiler.
+operation budget in seconds. `compiler_memory_mb` sets each compiler's managed
+[V8](https://v8.dev/) JavaScript heap budget. It excludes native allocations and
+is separate from DuckDB memory settings. Managed heap exhaustion closes the
+affected model. The compiler runs inside Python, so a fatal V8 failure can
+terminate the Python process. Use a separate application process when compiler
+crash containment is required.
 
 `connection.model(source, *, url=None, document_kind=None, timeout=None)` compiles
 Malloy text, a `Path`, `ModelSource`, or `Draft`. Paths and snapshots supply their
@@ -46,8 +50,14 @@ or notebook grammar and otherwise follows the source identity.
 with runtime operations. `connection.name` and `connection.closed` report identity
 and lifetime. `connection.close()` settles work, closes every child model, then
 closes the owned engine. Context management scopes this lifetime. Models and
-queries retain their connection. Each model owns one compiler process and can
-close independently while sibling models remain usable.
+queries retain their connection. Each model owns an embedded compiler on a
+dedicated thread and can close independently while sibling models remain usable.
+
+Connections and compiler owners belong to the process that created them. Use
+`multiprocessing` with its `spawn` start method for child work. After `fork`,
+connection and model operations raise `ClosedError`, and compiler tooling raises
+`CompilerError`, before acquiring inherited PyMalloy locks. PyMalloy cleanup
+abandons inherited owners.
 
 ## Model and Query
 
@@ -96,11 +106,12 @@ in Unicode codepoints. `ParsedImport` and `SourceSpan` are available from
 `pymalloy.analysis`. `document_kind` selects `"model"` or `"notebook"`, with
 URL-based inference when omitted.
 
-Formatting, parsing, syntax projection, and checking share one serialized tooling
-compiler process. It shuts down after 30 idle seconds, and the next call starts
-another process. Checks resolve source and schemas afresh on every call. Their
-timeout includes waiting for the compiler lease. Formatting and parsing have a
-30-second deadline and open no DuckDB connection.
+Native wheels include formatting, parsing, `read_model`, and syntax projection.
+These operations and connection checks lease a serialized tooling compiler with
+its own dedicated thread. It closes after 30 idle seconds, and the next call
+creates another compiler. Checks resolve source and schemas afresh on every
+call. Their timeout includes waiting for the compiler lease. Formatting and
+parsing have a 30-second deadline and open no DuckDB connection.
 
 ## Result
 
@@ -137,7 +148,7 @@ inferred from the URL when omitted. Conflicting identity or invalid shapes raise
 
 - `CompilationError` carries diagnostics for invalid Malloy source or unresolved schemas.
 - `ClosedError` identifies a closed connection or model.
-- `CompilerError` identifies an internal compiler or transport failure.
+- `CompilerError` identifies an internal compiler or native boundary failure.
 - `ExecutionError` retains the original DuckDB query exception in `__cause__`.
 - `SchemaError` retains the failed schema probe and engine exception.
 - `ValidationError` carries a rejected validation in `report`.
@@ -147,8 +158,12 @@ Import these exceptions from `pymalloy.errors`. `PyMalloyError` is also availabl
 Invalid options raise `TypeError` or `ValueError`. Expired deadlines raise
 `TimeoutError`. A SQL timeout interrupts the statement and leaves a healthy model
 available. A queued timeout leaves active work running. An in-flight compiler
-request timeout stops the compiler process and closes its model, as do compiler
-crashes and heap exhaustion. Create a new model after compiler failure.
+request timeout terminates the active JavaScript work and closes its model.
+Managed heap exhaustion and compiler boundary failures also close the model.
+Create a new model after compiler failure. Deadlines cover compiler startup,
+queue waiting, source and schema requests, SQL preparation, and execution.
+Interruption settles active work before its owner accepts another operation.
+Native engine stalls can delay teardown beyond the managed execution budget.
 
 `ExecutionError.context` is detached from the live model. It exposes `source`
 (the captured model and imports), `query` (`QueryDescriptor`), `malloy` (ad hoc

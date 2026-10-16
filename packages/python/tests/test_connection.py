@@ -433,12 +433,11 @@ def test_models_serialize_engine_work_through_the_connection(monkeypatch):
         assert second.query().run().to_pylist() == [{"value": 42}]
 
 
-def test_compiler_failure_closes_its_model_and_preserves_siblings(children):
+def test_compiler_failure_closes_its_model_and_preserves_siblings():
     with pm.connect() as connection:
         first = connection.model(ONE)
         second = connection.model(ONE)
-        children[0].kill()
-        children[0].wait(timeout=5)
+        first._owner._compiler.close()
         with pytest.raises(pm.errors.CompilerError):
             first.query().run()
         assert first.closed

@@ -20,16 +20,17 @@ def test_capability_loads_the_installed_skill_and_references():
         "references/api.md",
         "references/artifacts.md",
         "references/triage.md",
+        "references/browser.md",
     ]:
         assert skill.file(name).read_text(encoding="utf-8")
 
 
-def test_authoring_and_agent_discovery_do_not_import_headless_or_notebook_dependencies():
+def test_authoring_and_agent_discovery_keep_data_and_notebook_imports_lazy():
     program = """
 import importlib.abc, json, sys
 class BlockServer(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in {'deno', 'duckdb', 'polars', 'pyarrow', 'marimo'}:
+        if fullname.split('.')[0] in {'duckdb', 'polars', 'pyarrow', 'marimo'}:
             raise AssertionError('Unexpected dependency: ' + fullname)
 sys.meta_path.insert(0, BlockServer())
 import pymalloy as pm
@@ -51,31 +52,6 @@ print(json.dumps({'plugin': agent.agent_plugin().manifest.name, 'text': candidat
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["plugin"] == "pymalloy"
-
-
-def test_authoring_execution_identifies_the_missing_headless_extra():
-    program = """
-import importlib.abc, sys
-class BaseInstall(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname in {'deno', 'duckdb'}:
-            raise ModuleNotFoundError(f'No module named {fullname!r}', name=fullname)
-sys.meta_path.insert(0, BaseInstall())
-import pymalloy as pm
-from pymalloy.validation import Validation
-candidate = pm.draft().sources(values=pm.sql('SELECT 42 value'))
-for operation in ("model", "check", "validate"):
-    try:
-        getattr(pm.connect(), operation)(candidate)
-    except ImportError as error:
-        assert 'pymalloy[headless]' in str(error)
-    else:
-        raise AssertionError('Execution should require the headless extra')
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", program], text=True, capture_output=True, check=False
-    )
-    assert result.returncode == 0, result.stderr
 
 
 def test_installed_workflow_recipes_execute_through_public_apis(tmp_path):

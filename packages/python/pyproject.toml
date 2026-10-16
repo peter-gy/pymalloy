@@ -11,6 +11,9 @@ dependencies = [
   "anywidget-bundle>=0.1.1",
   "msgspec>=0.18.5",
   "traitlets>=5.13",
+  "duckdb>=1.5; sys_platform != 'emscripten'",
+  "pyarrow>=21.0; sys_platform != 'emscripten'",
+  "tzdata>=2020.1; sys_platform != 'emscripten'",
 ]
 
 [project.urls]
@@ -19,10 +22,6 @@ Documentation = "https://peter-gy.github.io/pymalloy/"
 Source = "https://github.com/peter-gy/pymalloy"
 Issues = "https://github.com/peter-gy/pymalloy/issues"
 
-[project.optional-dependencies]
-# Arrow timestamp rows use stdlib zoneinfo; tzdata also covers systems without an IANA database.
-headless = ["deno>=2.4.5,<3", "duckdb>=1.5", "pyarrow>=21.0", "tzdata>=2020.1"]
-
 [project.scripts]
 pymalloy = "pymalloy.cli:main"
 
@@ -30,16 +29,56 @@ pymalloy = "pymalloy.cli:main"
 pymalloy = "pymalloy.agent"
 
 [build-system]
-requires = ["hatchling>=1.31.0"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.11.5,<2"]
+build-backend = "build_backend"
+backend-path = ["."]
+
+[tool.maturin]
+manifest-path = "Cargo.toml"
+python-source = "src"
+module-name = "pymalloy._native"
+locked = true
+include = [
+  { path = "Cargo.lock", format = "sdist" },
+  { path = "build.rs", format = "sdist" },
+  { path = "rust/**", format = "sdist" },
+  { path = "rust-toolchain.toml", format = "sdist" },
+  { path = "about.toml", format = "sdist" },
+  { path = "about.hbs", format = "sdist" },
+  { path = "native-licenses.json", format = "sdist" },
+  { path = "native-archives.json", format = "sdist" },
+  { path = "build_backend.py", format = "sdist" },
+  { path = "native_archive.py", format = "sdist" },
+  { path = "hatch_build.py", format = "sdist" },
+  { path = "src/pymalloy/_assets/**", format = [
+    "sdist",
+    "wheel",
+  ] },
+]
+exclude = [
+  "node_modules/**",
+  "target/**",
+  "src/pymalloy/__pycache__/**",
+  "src/pymalloy/**/*.pyc",
+  "src/pymalloy/_native*.so",
+  "src/pymalloy/_native*.pyd",
+]
 
 [tool.hatch.build]
-artifacts = ["src/pymalloy/_assets/**"]
+artifacts = [
+  "src/pymalloy/_assets/widget/**",
+  "src/pymalloy/_assets/agent/**",
+  "src/pymalloy/_assets/pyodide/**",
+]
 
 [tool.hatch.build.hooks.custom]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pymalloy"]
-
-[tool.hatch.build.targets.sdist]
-include = ["src", "pyproject.toml", "README.md", "hatch_build.py"]
+exclude = [
+  "src/pymalloy/_native*.so",
+  "src/pymalloy/_native*.pyd",
+  "src/pymalloy/_native*.dll",
+  "src/pymalloy/_assets/compiler*",
+  "src/pymalloy/_assets/native*",
+]

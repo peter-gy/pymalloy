@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build package
+  verify:
+    name: Verify release tag
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -25,20 +25,62 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up workspace
-        uses: ./.github/actions/setup
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
 
       - name: Verify the release tag
-        run: scripts/check-release.sh
+        run: uv run --frozen --only-group release python scripts/check_release.py --tag "$RELEASE_TAG"
 
-      - name: Build distributions
-        run: uv build --package pymalloy --no-sources --out-dir dist
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+  wheels:
+    name: Build distributions
+    needs: verify
+    uses: ./.github/workflows/wheels.yml
 
-      - name: Check distribution metadata
-        run: uv run --frozen --only-group release twine check dist/pymalloy-*
+  build:
+    name: Check release distributions
+    needs:
+      - wheels
+      - checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Run installed-package tests
-        run: uv run --frozen pytest -m e2e -q
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+
+      - name: Download native wheels
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: dist
+
+      - name: Download browser wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: browser
+          path: dist
+
+      - name: Download source archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: source
+          path: dist
+
+      - name: Validate the complete release set
+        run: |
+          uv run --frozen --only-group release python scripts/check_release.py --distributions dist
+          uv run --frozen --only-group release twine check --strict dist/pymalloy-*
 
       - name: Upload distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -115,3 +157,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: gh release create "$TAG" dist/pymalloy-* --verify-tag --generate-notes --title "$TAG"
+  checks:
+    name: Source checks
+    needs: verify
+    uses: ./.github/workflows/checks.yml

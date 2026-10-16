@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -11,11 +12,12 @@ class CustomBuildHook(BuildHookInterface):
             "widget/index.js",
             "widget/anywidget.json",
             "widget/widget.css",
-            "headless.mjs",
             "widget/widget.LICENSE.txt",
-            "headless.LICENSE.txt",
             "agent/plugin.json",
             "agent/skills/pymalloy/SKILL.md",
+            "pyodide/runtime.js",
+            "pyodide/runtime.manifest.json",
+            "pyodide/runtime.LICENSE.txt",
         )
         manifest = assets / "widget/anywidget.json"
         if manifest.is_file():
@@ -29,7 +31,15 @@ class CustomBuildHook(BuildHookInterface):
         ]
         if missing:
             raise RuntimeError(
-                "Missing built PyMalloy assets: "
+                "Missing built PyMalloy browser assets: "
                 + ", ".join(missing)
                 + ". Build JavaScript assets with pnpm build before packaging Python."
+            )
+        runtime = assets / "pyodide/runtime.js"
+        metadata = json.loads((assets / "pyodide/runtime.manifest.json").read_text())
+        with runtime.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if metadata["bundleSha256"] != digest:
+            raise RuntimeError(
+                "PyMalloy browser runtime digest differs. Run pnpm build."
             )

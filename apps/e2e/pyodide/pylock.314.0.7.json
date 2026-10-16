@@ -1,0 +1,274 @@
+{
+  "info": {
+    "abi_version": "2026_0",
+    "arch": "wasm32",
+    "platform": "emscripten_5_0_3",
+    "python": "3.14.2"
+  },
+  "packages": {
+    "agent-plugins": {
+      "name": "agent-plugins",
+      "version": "0.2.4",
+      "file_name": "https://files.pythonhosted.org/packages/8b/e0/fce035140da2730aaf0816dd49b6660d9feb91c6fe5cad7485517c80affd/agent_plugins-0.2.4-py3-none-any.whl",
+      "install_dir": "site",
+      "sha256": "67f5255df2229823f22f2b0eb5e16f7f5828c6d72968eadebb6b3d1099a0ebc8",
+      "imports": [],
+      "depends": []
+    },
+    "anywidget": {
+      "name": "anywidget",
+      "version": "0.11.0",
+      "file_name": "https://files.pythonhosted.org/packages/8e/c2/8fec8e8e2eb920cc2280f569144080cd58622a2eda83bfa4c0c354a63264/anywidget-0.11.0-py3-none-any.whl",
+      "install_dir": "site",
+      "sha256": "c574d9acc6503ad27b37a9acea48f957a8ba7c9c9876cfcb37898931c098ce9d",
+      "imports": [],
+      "depends": ["ipywidgets", "psygnal", "typing-extensions"]
+    },
+    "anywidget-bundle": {
+      "name": "anywidget-bundle",
+      "version": "0.1.1",
+      "file_name": "https://files.pythonhosted.org/packages/3d/97/b061e70494f85a2f92becf3e820d4087c22cf8a77b5cad6626bf56292c97/anywidget_bundle-0.1.1-py3-none-any.whl",
+      "install_dir": "site",
+      "sha256": "f2e46d31cc2c69e9d6abb9efe6bbd4884c901280bb0b1e75cdcb79f8941ca237",
+      "imports": [],
+      "depends": ["anywidget"]
+    },
+    "asttokens": {
+      "depends": ["six"],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/asttokens-3.0.1-py3-none-any.whl",
+      "imports": ["asttokens"],
+      "install_dir": "site",
+      "name": "asttokens",
+      "package_type": "package",
+      "sha256": "c69b99c67d1871f8f80232ca5d0cb5eafbf7e69a946e7981e8f24b31370e2675",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "3.0.1"
+    },
+    "comm": {
+      "name": "comm",
+      "version": "0.2.3",
+      "file_name": "https://files.pythonhosted.org/packages/60/97/891a0971e1e4a8c5d2b20bbe0e524dc04548d2307fee33cdeba148fd4fc7/comm-0.2.3-py3-none-any.whl",
+      "install_dir": "site",
+      "sha256": "c615d91d75f7f04f095b30d1c1711babd43bdc6419c1be9886a85f2f4e489417",
+      "imports": [],
+      "depends": []
+    },
+    "decorator": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/decorator-5.2.1-py3-none-any.whl",
+      "imports": ["decorator"],
+      "install_dir": "site",
+      "name": "decorator",
+      "package_type": "package",
+      "sha256": "da941fd8a421e3e0d0d8b4efa5ec775d63ba553c7262de9fd40ddabee659f547",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "5.2.1"
+    },
+    "executing": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/executing-2.2.1-py2.py3-none-any.whl",
+      "imports": ["executing"],
+      "install_dir": "site",
+      "name": "executing",
+      "package_type": "package",
+      "sha256": "cc5b8219eca44e13f8ca2011d6a8f98d9a57ec75bdcadf1c56e4b779e5f69436",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "2.2.1"
+    },
+    "ipython": {
+      "depends": [
+        "asttokens",
+        "decorator",
+        "executing",
+        "matplotlib-inline",
+        "prompt-toolkit",
+        "pure-eval",
+        "pygments",
+        "six",
+        "stack-data",
+        "traitlets",
+        "wcwidth"
+      ],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/ipython-9.12.0-py3-none-any.whl",
+      "imports": ["IPython"],
+      "install_dir": "site",
+      "name": "ipython",
+      "package_type": "package",
+      "sha256": "0ae2295a90e56496d2a25e8c44ea4d5a5cfb891cca8439eb61d06b68ef145d9a",
+      "tool": {},
+      "unvendored_tests": true,
+      "version": "9.12.0"
+    },
+    "ipywidgets": {
+      "name": "ipywidgets",
+      "version": "8.1.9",
+      "file_name": "https://files.pythonhosted.org/packages/c3/55/298e9b3b864a198234997e87a1471c1b17d7f3546ace6d18fb5cf1ce24b2/ipywidgets-8.1.9-py3-none-any.whl",
+      "install_dir": "site",
+      "sha256": "f2b8cbcaae10252b809fbe4d7470db75c09b769a32cbf816d20e5ca6d3c5a79d",
+      "imports": ["ipywidgets"],
+      "depends": ["comm", "ipython", "jupyterlab-widgets", "traitlets", "widgetsnbextension"]
+    },
+    "jupyterlab-widgets": {
+      "name": "jupyterlab_widgets",
+      "version": "3.0.17",
+      "file_name": "https://files.pythonhosted.org/packages/33/ef/6d27fc118f58cb24886da413545a7efb0853d405fddbfd8b2d9ac09fbed4/jupyterlab_widgets-3.0.17-py3-none-any.whl",
+      "install_dir": "site",
+      "sha256": "40ac1e9955acf116c4d995d9bfa082d86ad9ec6d91c4f134827cf5e0a5eb75e0",
+      "imports": [],
+      "depends": []
+    },
+    "matplotlib-inline": {
+      "depends": ["traitlets"],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/matplotlib_inline-0.2.1-py3-none-any.whl",
+      "imports": ["matplotlib-inline"],
+      "install_dir": "site",
+      "name": "matplotlib-inline",
+      "package_type": "package",
+      "sha256": "2b749891f370a4d6830108b2e21d0e1b929685723c419e288def2ea1dc76428e",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "0.2.1"
+    },
+    "micropip": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/micropip-0.11.1-py3-none-any.whl",
+      "imports": ["micropip"],
+      "install_dir": "site",
+      "name": "micropip",
+      "package_type": "package",
+      "sha256": "e2d52886594fd4cd0d0847110a1c34ae0134d3a970eb4496d3b5eb31ee2d8af6",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "0.11.1"
+    },
+    "msgspec": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/msgspec-0.20.0-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
+      "imports": ["msgspec"],
+      "install_dir": "site",
+      "name": "msgspec",
+      "package_type": "package",
+      "sha256": "2a4075cee8afc2c0424c63ae1a9b0655e727478df7fa2eb78f86f846fc5fb4bd",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "0.20.0"
+    },
+    "prompt-toolkit": {
+      "depends": ["wcwidth"],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/prompt_toolkit-3.0.52-py3-none-any.whl",
+      "imports": ["prompt_toolkit"],
+      "install_dir": "site",
+      "name": "prompt_toolkit",
+      "package_type": "package",
+      "sha256": "0ba08e03583dacc94338b608a88ee95e83ef1c9d4ec1403127a06e80d7a01970",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "3.0.52"
+    },
+    "psygnal": {
+      "name": "psygnal",
+      "version": "0.16.1",
+      "file_name": "https://files.pythonhosted.org/packages/be/f2/973c1280f035cd825af70582bbee776c69545e24534b324cf135eabef57e/psygnal-0.16.1-py3-none-any.whl",
+      "install_dir": "site",
+      "sha256": "93b96894d8c46f0a3c0bfaaf8abe73f0d6db2c20cc6d303624cf08f85abc3c92",
+      "imports": [],
+      "depends": []
+    },
+    "pure-eval": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pure_eval-0.2.3-py3-none-any.whl",
+      "imports": ["pure_eval"],
+      "install_dir": "site",
+      "name": "pure-eval",
+      "package_type": "package",
+      "sha256": "8a302142ea19084d879dd4b411552eb06cd25b37eaa0d4cc46c45ca49c3d1eea",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "0.2.3"
+    },
+    "pygments": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pygments-2.20.0-py3-none-any.whl",
+      "imports": ["pygments"],
+      "install_dir": "site",
+      "name": "Pygments",
+      "package_type": "package",
+      "sha256": "6e0fd0e83d3e725a668aa73110112ffe67e59feb4516eeff3a0b8c12a236462f",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "2.20.0"
+    },
+    "six": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/six-1.17.0-py2.py3-none-any.whl",
+      "imports": ["six"],
+      "install_dir": "site",
+      "name": "six",
+      "package_type": "package",
+      "sha256": "228c50f73aa7addf2c2ccf2979c256802a59ab69cad8152b31b9443cc8140f42",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "1.17.0"
+    },
+    "stack-data": {
+      "depends": ["asttokens", "executing", "pure-eval"],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/stack_data-0.6.3-py3-none-any.whl",
+      "imports": ["stack_data"],
+      "install_dir": "site",
+      "name": "stack-data",
+      "package_type": "package",
+      "sha256": "b28e173d32b19041387f7bd3865b2dec8e100c1237f009f402d3549fecbba864",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "0.6.3"
+    },
+    "traitlets": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/traitlets-5.14.3-py3-none-any.whl",
+      "imports": ["traitlets"],
+      "install_dir": "site",
+      "name": "traitlets",
+      "package_type": "package",
+      "sha256": "9c58da4647924c8f1bb932c64c8a506b309c47115d97668241ea4734125eb320",
+      "tool": {},
+      "unvendored_tests": true,
+      "version": "5.14.3"
+    },
+    "typing-extensions": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/typing_extensions-4.15.0-py3-none-any.whl",
+      "imports": ["typing_extensions"],
+      "install_dir": "site",
+      "name": "typing-extensions",
+      "package_type": "package",
+      "sha256": "4fec68770a05408e668a4fa53d6bf4f0f684b9dacf820c7c5d6e97d3ad225e29",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "4.15.0"
+    },
+    "wcwidth": {
+      "depends": [],
+      "file_name": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/wcwidth-0.6.0-py3-none-any.whl",
+      "imports": ["wcwidth"],
+      "install_dir": "site",
+      "name": "wcwidth",
+      "package_type": "package",
+      "sha256": "ae04c5081c1920e605e9d8b7dffc368a35d8de9b698468819d52e4994a883b76",
+      "tool": {},
+      "unvendored_tests": false,
+      "version": "0.6.0"
+    },
+    "widgetsnbextension": {
+      "name": "widgetsnbextension",
+      "version": "4.0.16",
+      "file_name": "https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl",
+      "install_dir": "site",
+      "sha256": "a31a8774885b96fe825462f5d6496166f0c7cae111195b6465c801d230eb5a4e",
+      "imports": ["widgetsnbextension"],
+      "depends": []
+    }
+  }
+}

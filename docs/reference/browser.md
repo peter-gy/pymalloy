@@ -3,6 +3,7 @@
 `@malloy-runtime/browser` compiles [Malloy](https://docs.malloydata.dev/documentation/)
 models and runs SQL with [DuckDB WebAssembly](https://duckdb.org/docs/stable/clients/wasm/overview),
 a database engine in a browser worker. Bundle the package with your application.
+For Python in the browser, use the [browser Python API](browser-python.md).
 
 ```ts
 import { Session } from "@malloy-runtime/browser";

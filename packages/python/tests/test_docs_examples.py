@@ -55,6 +55,6 @@ def test_python_documentation_examples(example_directory):
             f"{path}:{line}\n{result.stdout}\n{result.stderr}"
         )
 
-    # Each fence gets a fresh interpreter. Bound concurrent compiler processes.
+    # Each fence gets a fresh interpreter. Bound concurrent interpreters.
     with ThreadPoolExecutor(max_workers=4) as executor:
         list(executor.map(execute, examples))

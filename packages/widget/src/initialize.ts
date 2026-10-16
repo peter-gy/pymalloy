@@ -95,8 +95,8 @@ export function initialize(
         }
         publish({ ...empty, queries, inspection, diagnostics, status: "loading" });
         if (backend === "python" || backend === "result") {
-          const { executeNative } = await import("./native");
-          const response = await executeNative(model, input, operation.signal);
+          const { executePython } = await import("./python");
+          const response = await executePython(model, input, operation.signal);
           if (closed || generation !== current) return;
           if ("message" in response) {
             publish({

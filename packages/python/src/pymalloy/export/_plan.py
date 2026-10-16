@@ -54,7 +54,7 @@ def _precompiled(query: NotebookQuery, name: str, after: str | None) -> Code | S
     )
 
 
-def _headless(query: NotebookQuery, name: str, after: str | None) -> Code:
+def _native(query: NotebookQuery, name: str, after: str | None) -> Code:
     if query.kind == "copy":
         source = (
             f"_ = connection.duckdb.execute({query.sql!r})\n{name} = pl.DataFrame()"
@@ -85,9 +85,9 @@ def plan(
             )
             setup = [connection_setup(document, output_path, base)]
             queries = _precompiled
-        case Profile.HEADLESS:
+        case Profile.NATIVE:
             requirements = (
-                f"pymalloy[headless]=={version('pymalloy')}",
+                f"pymalloy=={version('pymalloy')}",
                 "polars>=1.44",
             )
             runtime_imports = "from pathlib import Path\nimport pymalloy as pm\nfrom pymalloy import ModelSource\nimport polars as pl"
@@ -105,7 +105,7 @@ def plan(
                 givens_setup(document),
                 model_setup(document),
             ]
-            queries = _headless
+            queries = _native
         case Profile.WIDGET:
             requirements = (f"pymalloy=={version('pymalloy')}",)
             runtime_imports = "from pymalloy import MalloyWidget, ModelSource"
@@ -170,7 +170,7 @@ def plan(
             cells.append(MarkdownCell(text="## " + query_title(cell.name)))
         name = next(names)
         query = queries(cell, name, writer)
-        if document.files and document.profile == Profile.HEADLESS:
+        if document.files and document.profile == Profile.NATIVE:
             assert isinstance(query, Code)
             query = Code("check_files()\n" + query.source, query.after)
         cells.append(query)

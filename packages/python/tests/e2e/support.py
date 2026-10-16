@@ -11,6 +11,12 @@ REPO = Path(__file__).resolve().parents[4]
 ASSETS = REPO / "packages" / "python" / "src" / "pymalloy" / "_assets"
 
 
+def executable(venv: Path, name: str) -> Path:
+    if os.name == "nt":
+        return venv / "Scripts" / f"{name}.exe"
+    return venv / "bin" / name
+
+
 def create_venv(path: Path) -> Path:
     subprocess.run(
         ["uv", "venv", "--python", "3.12", str(path)],
@@ -22,7 +28,14 @@ def create_venv(path: Path) -> Path:
 
 def pip_install(venv: Path, *packages: str) -> None:
     subprocess.run(
-        ["uv", "pip", "install", "--python", str(venv / "bin" / "python"), *packages],
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(executable(venv, "python")),
+            *packages,
+        ],
         check=True,
         timeout=300,
     )
@@ -39,7 +52,9 @@ def isolated_env(venv: Path) -> dict[str, str]:
         env.pop(name, None)
     env["PYTHONPATH"] = ""
     env["VIRTUAL_ENV"] = str(venv)
-    env["PATH"] = os.pathsep.join((str(venv / "bin"), env.get("PATH", "")))
+    env["PATH"] = os.pathsep.join(
+        (str(executable(venv, "python").parent), env.get("PATH", ""))
+    )
     return env
 
 
@@ -68,7 +83,7 @@ def run_in_venv(
     timeout: float = 60,
 ) -> subprocess.CompletedProcess[str]:
     return run_command(
-        [str(venv / "bin" / args[0]), *args[1:]],
+        [str(executable(venv, args[0])), *args[1:]],
         cwd=cwd,
         env=isolated_env(venv),
         timeout=timeout,
