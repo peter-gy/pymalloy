@@ -24,7 +24,10 @@ fn check_digest(
     field: &str,
     path: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    let digest = format!("{:x}", Sha256::digest(required(path)?));
+    let digest = Sha256::digest(required(path)?)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     if manifest[field].as_str() != Some(digest.as_str()) {
         return Err(format!("Asset digest mismatch for {}: {field}", path.display()).into());
     }
